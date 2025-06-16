@@ -1,0 +1,47 @@
+# ----- Python artifacts -----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# ----- Virtual environments -----
+venv/
+env/
+.venv/
+.env/
+
+# ----- Jupyter -----
+.ipynb_checkpoints
+
+# ----- VSCode -----
+.vscode/
+
+# ----- Data files (MIMIC-IV raw & derived) -----
+physionet.org/
+mimic_iv_hosp.db
+*.csv
+*.csv.gz
+*.parquet
+
+# Your local vectorstore & embeddings
+mimic_vectorstore/
+models/
+
+# ----- Logs & temp -----
+*.log
+*.tmp
+*.bak
+
+# ----- OS files -----
+.DS_Store
+Thumbs.db
+
+# ----- Credentials & secrets -----
+*.pem
+*.key
+.env
+# ----- Optional: Excel / Word / proprietary formats -----
+project_files/
+test_with_sponsor/
