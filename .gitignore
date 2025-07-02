@@ -21,12 +21,13 @@ env/
 # ----- Data files (MIMIC-IV raw & derived) -----
 physionet.org/
 mimic_iv_hosp.db
+mimic_sample_1000/
 *.csv
 *.csv.gz
 *.parquet
 
 # Your local vectorstore & embeddings
-mimic_vectorstore/
+vector_stores/
 models/
 
 # ----- Logs & temp -----
