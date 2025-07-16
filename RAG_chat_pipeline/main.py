@@ -19,6 +19,11 @@ def main():
     return chatbot
 
 
+def initialize_clinical_rag():
+    """Initialize and return the clinical RAG chatbot - used by evaluator"""
+    return main()
+
+
 if __name__ == "__main__":
     chatbot = main()
 
@@ -36,7 +41,7 @@ if __name__ == "__main__":
             if not question:
                 continue
 
-            response = chatbot.ask_with_sources_clinical_chatbot(
+            response = chatbot.ask_with_chat_history(
                 question,
                 chat_history=chat_history,
                 k=5

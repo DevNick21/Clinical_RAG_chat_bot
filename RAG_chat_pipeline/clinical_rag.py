@@ -5,8 +5,10 @@ from langchain_ollama import OllamaLLM as Ollama
 from langchain_community.vectorstores import FAISS
 from typing import List
 from config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY
-from entity_extraction import extract_entities, extract_context_from_chat_history, ask_for_clarification
+from entity_extraction import extract_entities, extract_context_from_chat_history
 from invoke import safe_llm_invoke
+from collections import defaultdict
+import time
 
 
 class ClinicalRAGBot:
@@ -18,22 +20,65 @@ class ClinicalRAGBot:
         # Initialize LLM
         self.llm = Ollama(model=LLM_MODEL)
 
+        # Create metadata indices for faster lookups
+        self._build_metadata_indices()
+
         # Setup prompts
         self.condense_q_prompt = ChatPromptTemplate.from_messages([
-            ("system", "Given the chat history and follow-up question, rephrase the follow-up question as a standalone medical question that can be understood without the chat history."),
+            ("system", """Given the chat history and follow-up question, rephrase the follow-up question as a standalone medical question.
+
+CRITICAL: Preserve all medical identifiers and context:
+- Keep admission IDs (hadm_id) explicit: "admission 12345"
+- Maintain section references: diagnoses, procedures, labs, microbiology, prescriptions
+- Preserve temporal context: dates, times, sequences
+- Keep medical terminology precise
+
+Example:
+History: "What diagnoses does admission 25282710 have?"
+Follow-up: "How serious are they?"
+Standalone: "How serious are the diagnoses for admission 25282710?"
+
+The standalone question must be answerable without chat history while preserving all medical context."""),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}")
         ])
 
         self.clinical_qa_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a clinical AI assistant analyzing medical records. 
+            ("system", """You are a clinical AI assistant analyzing structured medical records from the MIMIC database.
 
-Based on the provided medical context, answer the question accurately and concisely.
-- Focus on specific medical findings, diagnoses, lab values, and treatments
-- If asking about severity, reference ICD codes, lab values, or clinical indicators
-- If information is not available in the context, clearly state this
-- Provide citations to specific admission IDs when possible
-- Use medical terminology appropriately but explain complex terms
+DOCUMENT STRUCTURE - Each document contains one of these sections:
+• header: admission info (admit/discharge times, type, expire flag)
+• diagnoses: ICD diagnosis codes with descriptions
+• procedures: ICD procedure codes with descriptions
+• labs: laboratory tests (values, times, categories, flags)
+• microbiology: culture tests (specimen types, dates, comments)
+• prescriptions: medications (dosages, administration times, order status)
+
+PATIENT CONTEXT:
+- Each document has hadm_id (admission ID) and subject_id (patient ID)
+- Multiple admissions may exist for the same patient (subject_id)
+- When relevant, reference patient history across admissions
+- Always cite specific admission IDs when providing information
+
+RESPONSE GUIDELINES:
+1. **Direct answers**: Start with the specific answer to the question
+2. **Cite sources**: Reference admission IDs and sections when available
+3. **Patient context**: If multiple admissions exist for same patient, mention when relevant
+4. **Handle missing data**: If no relevant data found, state clearly "No [type] records found for admission [ID]"
+5. **Cross-admission insights**: When appropriate, note patterns across patient's admissions
+6. **Use section structure**: Reference the specific section types above
+7. **Include details**: For labs/meds, include values, times, and flags when relevant
+8. **ICD codes**: When discussing diagnoses/procedures, include ICD codes if available
+
+RESPONSE FORMAT:
+- Lead with direct answer
+- Include relevant details from the documents
+- Cite admission ID and section
+- Note patient context when relevant (e.g., "This patient has 3 admissions in the database")
+- End with disclaimer
+
+IMPORTANT: Always end your response with:
+"⚠️ MEDICAL DISCLAIMER: This information is for educational purposes only and should not be used for medical diagnosis or treatment decisions. Always consult with qualified healthcare professionals for medical advice."
 
 Context: {context}"""),
             ("human", "{input}")
@@ -43,208 +88,371 @@ Context: {context}"""),
         self.question_answer_chain = create_stuff_documents_chain(
             self.llm, self.clinical_qa_prompt)
 
-    def clinical_search(self, question, hadm_id=None, section=None, k=DEFAULT_K, chat_history=None):
-        """Clinical search function"""
-        print(f"Query: '{question}' | hadm_id: {hadm_id} | section: {section}")
+    def _build_metadata_indices(self):
+        """Building indices for faster metadata-based filtering"""
+        self.hadm_id_index = defaultdict(list)
+        self.subject_id_index = defaultdict(list)
+        self.section_index = defaultdict(list)
+        self.hadm_section_index = defaultdict(list)
 
-        if chat_history is None:
-            chat_history = []
+        for i, doc in enumerate(self.chunked_docs):
+            hadm_id = doc.metadata.get('hadm_id')
+            subject_id = doc.metadata.get('subject_id')
+            section = doc.metadata.get('section')
 
-        # Single search logic that handles all cases
-        # If hadm_id is provided, filter by it; otherwise, do semantic search
+            # Robust type handling for hadm_id
+            if hadm_id is not None:
+                try:
+                    hadm_id_int = int(hadm_id)
+                    self.hadm_id_index[hadm_id_int].append(i)
+
+                    # Handle subject_id
+                    if subject_id is not None:
+                        try:
+                            subject_id_int = int(subject_id)
+                            self.subject_id_index[subject_id_int].append(i)
+                        except (ValueError, TypeError):
+                            print(
+                                f"⚠️ Invalid subject_id in document {i}: {subject_id}")
+
+                    if section:
+                        section_str = str(section).lower()
+                        self.section_index[section_str].append(i)
+                        self.hadm_section_index[(
+                            hadm_id_int, section_str)].append(i)
+
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid hadm_id in document {i}: {hadm_id}")
+                    continue
+
+            elif section:
+                section_str = str(section).lower()
+                self.section_index[section_str].append(i)
+
+    def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None):
+        """Centralized document filtering logic"""
         if hadm_id is not None:
-            # Direct filter approach
-            candidate_docs = [doc for doc in self.chunked_docs if doc.metadata.get(
-                'hadm_id') == int(hadm_id)]
-            # If section is specified, filter further
+            candidate_indices = self.hadm_id_index.get(hadm_id, [])
             if section is not None:
-                candidate_docs = [
-                    doc for doc in candidate_docs if doc.metadata.get('section') == section]
+                key = (hadm_id, section)
+                candidate_indices = self.hadm_section_index.get(key, [])
+            return [self.chunked_docs[i] for i in candidate_indices]
 
-            # If no documents found, return early as the hadm_id may not exist
-            if not candidate_docs:
-                return {"answer": f"No records found for admission {hadm_id}", "source_documents": [], "citations": []}
-
-            # If candidate_docs is small enough, return them directly
-            # Otherwise, use FAISS for similarity search
-            retrieved_docs = candidate_docs[:k] if len(candidate_docs) <= k else \
-                FAISS.from_documents(
-                    candidate_docs, self.clinical_emb).similarity_search(question, k=k)
-        else:
-            # Semantic search approach
-            retrieved_docs = self.vectorstore.similarity_search(question, k=k)
+        elif subject_id is not None:
+            candidate_indices = self.subject_id_index.get(subject_id, [])
+            candidate_docs = [self.chunked_docs[i] for i in candidate_indices]
             if section is not None:
-                retrieved_docs = [
-                    doc for doc in retrieved_docs if doc.metadata.get('section') == section]
+                candidate_docs = [doc for doc in candidate_docs
+                                  if doc.metadata.get('section', '').lower() == section.lower()]
+            return candidate_docs
 
-        # Single LLM invocation
-        answer = safe_llm_invoke(
-            self.question_answer_chain,
-            {
-                "input": question,
-                "context": retrieved_docs,
-                "chat_history": chat_history
-            },
-            fallback_message="Unable to generate clinical response due to system error (Ollama).",
-            context="Clinical QA"
-        )
+        return None  # Indicates global search needed
 
+    def _no_documents_result(self, entity_type, entity_id, section, start_time):
+        """Helper method for no documents found result"""
+        section_msg = f" in section '{section}'" if section else ""
         return {
-            "answer": answer,
-            "source_documents": retrieved_docs,
-            "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs]
+            "answer": f"No records found for {entity_type} {entity_id}{section_msg}",
+            "source_documents": [],
+            "citations": [],
+            "search_time": time.time() - start_time,
+            "documents_found": 0
         }
 
-    def ask_with_sources_clinical_chatbot(self, question, chat_history=None, hadm_id=None, section=None, k=DEFAULT_K, auto_extract=True):
-        """Main clinical RAG chatbot function with conversation history"""
-        print(f"=== CLINICAL RAG CHATBOT ===")
-        print(f"Question: '{question}'")
+    def _semantic_search_on_docs(self, candidate_docs, question, k):
+        """Perform semantic search on filtered documents"""
+        if len(candidate_docs) <= k:
+            return candidate_docs
+        else:
+            try:
+                faiss_temp = FAISS.from_documents(
+                    candidate_docs, self.clinical_emb)
+                return faiss_temp.similarity_search(question, k=k)
+            except Exception as faiss_error:
+                print(
+                    f"⚠️ FAISS search failed: {faiss_error}, using top {k} documents")
+                return candidate_docs[:k]
+
+    def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None):
+        """Simplified clinical search function"""
+        start_time = time.time()
+
+        print(
+            f"Query: '{question}' | hadm_id: {hadm_id} | subject_id: {subject_id} | section: {section}")
 
         if chat_history is None:
             chat_history = []
 
-        original_hadm_id = hadm_id
-        original_section = section
+        try:
+            # Get filtered documents
+            candidate_docs = self._filter_candidate_documents(
+                hadm_id, subject_id, section)
 
-        # Extract context from chat history if available using extract_context_from_chat_history function
-        chat_context = {"hadm_id": None, "section": None}
-        if len(chat_history) > 0:
+            if candidate_docs is not None:
+                # Filtered search
+                if not candidate_docs:
+                    # No documents found
+                    entity_type = "admission" if hadm_id else "patient/subject"
+                    entity_id = hadm_id or subject_id
+                    return self._no_documents_result(entity_type, entity_id, section, start_time)
+
+                print(
+                    f"Filtering documents by {'admission' if hadm_id else 'subject'} ID...")
+                print(f"Filtered to {len(candidate_docs)} documents")
+                retrieved_docs = self._semantic_search_on_docs(
+                    candidate_docs, question, k)
+            else:
+                # Global semantic search
+                print("Performing semantic search across all records...")
+                retrieved_docs = self.vectorstore.similarity_search(
+                    question, k=k)
+                print(f"Retrieved {len(retrieved_docs)} documents")
+
+                # Post-filter by section if specified
+                if section is not None:
+                    original_count = len(retrieved_docs)
+                    retrieved_docs = [doc for doc in retrieved_docs
+                                      if doc.metadata.get('section', '').lower() == section.lower()]
+                    print(
+                        f"Section filtering: {original_count} → {len(retrieved_docs)} documents")
+
+            # Generate answer with error handling
+            print("Generating clinical response...")
+            try:
+                answer = safe_llm_invoke(
+                    self.question_answer_chain,
+                    {
+                        "input": question,
+                        "context": retrieved_docs,
+                        "chat_history": chat_history
+                    },
+                    fallback_message="Unable to generate clinical response due to system error (Ollama).",
+                    context="Clinical QA"
+                )
+            except Exception as llm_error:
+                print(f"⚠️ LLM response generation failed: {llm_error}")
+                answer = f"I found relevant medical records but encountered an error generating the response. Please try rephrasing your question. Error: {str(llm_error)}"
+
+            # Prepare result with comprehensive metadata
+            search_time = time.time() - start_time
+            result = {
+                "answer": answer,
+                "source_documents": retrieved_docs,
+                "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
+                "search_time": search_time,
+                "documents_found": len(retrieved_docs),
+                "search_method": "filtered" if hadm_id is not None or subject_id is not None else "global_semantic"
+            }
+
+            print(f"Search completed in {search_time:.3f}s")
+            return result
+
+        except Exception as e:
+            print(f"❌ Critical error in clinical_search: {e}")
+            return self._handle_search_fallback(question, hadm_id, section, k, f"Critical search error: {str(e)}")
+
+    def _extract_and_validate_params(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
+        """Centralized parameter extraction and validation"""
+        # Validate inputs
+        question = self._validate_question(question)
+        hadm_id, subject_id, section, k = self._validate_parameters(
+            hadm_id, subject_id, section, k)
+
+        # Extract entities if needed
+        extracted_entities = None
+        if hadm_id is None and subject_id is None and section is None:
+            try:
+                extracted_entities = extract_entities(
+                    question, use_llm_fallback=True, llm=self.llm)
+                if extracted_entities["confidence"] in ["high", "medium"]:
+                    hadm_id = extracted_entities.get("hadm_id") or hadm_id
+                    subject_id = extracted_entities.get(
+                        "subject_id") or subject_id
+                    section = extracted_entities.get("section") or section
+                    print(
+                        f"Auto-extracted - hadm_id: {hadm_id}, subject_id: {subject_id}, section: {section}")
+            except Exception as e:
+                print(f"⚠️ Entity extraction failed: {e}")
+
+        return question, hadm_id, subject_id, section, k, extracted_entities
+
+    def _process_chat_context(self, chat_history, question, hadm_id=None, subject_id=None, section=None):
+        """Centralized chat history processing"""
+        if not chat_history:
+            return question, hadm_id, subject_id, section, {}
+
+        try:
+            # Extract context from chat history
             chat_context = extract_context_from_chat_history(
                 chat_history, question)
 
-            # Use chat history context
-            if chat_context["hadm_id"]:
-                hadm_id = chat_context["hadm_id"]
-                print(f"Using hadm_id from chat history: {hadm_id}")
+            # Use chat context if parameters not explicitly provided
+            hadm_id = hadm_id or chat_context.get("hadm_id")
+            subject_id = subject_id or chat_context.get("subject_id")
+            section = section or chat_context.get("section")
 
-            if chat_context["section"]:
-                section = chat_context["section"]
-                print(f"Using section from chat history: {section}")
+            # Rephrase question using chat history
+            if len(chat_history) > 0:
+                rephrased = safe_llm_invoke(
+                    self.llm,
+                    self.condense_q_prompt.format_messages(
+                        chat_history=chat_history, input=question),
+                    fallback_message=question,
+                    context="Question rephrasing"
+                )
+                question = rephrased if isinstance(rephrased, str) and len(
+                    rephrased.strip()) > 5 else question
 
-        extracted_entities = None
-        if auto_extract and hadm_id is None and section is None:
-            extracted_entities = extract_entities(
-                question, use_llm_fallback=True, llm=self.llm)
+            return question, hadm_id, subject_id, section, chat_context
+        except Exception as e:
+            print(f"⚠️ Chat context processing failed: {e}")
+            return question, hadm_id, subject_id, section, {}
 
-            # Use extracted entities if confidence is high or medium
-            if extracted_entities["confidence"] in ["high", "medium"]:
-                if extracted_entities["hadm_id"] is not None:
-                    hadm_id = extracted_entities["hadm_id"]
-                    print(f"Using extracted hadm_id from question: {hadm_id}")
+    def _validate_question(self, question):
+        """Validate and sanitize user input"""
+        if not isinstance(question, str):
+            raise ValueError("Question must be a string")
 
-                if extracted_entities["section"] is not None:
-                    section = extracted_entities["section"]
-                    print(f"Using extracted section from question: {section}")
+        question = question.strip()
 
-            # Ask for clarification if needed
-            elif extracted_entities["needs_clarification"]:
-                # Get available options for clarification
-                #! I am going to implement a similarity search to find possible hadm_ids from the question
-                available_hadm_ids = list(set(
-                    [doc.metadata["hadm_id"] for doc in self.chunked_docs[:100]]))  # Sample for speed
+        if not question:
+            raise ValueError("Question cannot be empty")
 
-                clarification = ask_for_clarification(
-                    extracted_entities,
-                    {"hadm_ids": available_hadm_ids}
+        if len(question) < 3:
+            raise ValueError("Question is too short (minimum 3 characters)")
+
+        if len(question) > 2000:
+            raise ValueError("Question is too long (maximum 2000 characters)")
+
+        # Remove control characters but preserve medical symbols
+        sanitized = ''.join(char for char in question if ord(
+            char) >= 32 or char in '\n\t')
+
+        return sanitized
+
+    def _validate_parameters(self, hadm_id=None, subject_id=None, section=None, k=None):
+        """Validate search parameters"""
+        if hadm_id is not None:
+            if not isinstance(hadm_id, (int, str)):
+                raise ValueError("hadm_id must be an integer or string")
+            try:
+                hadm_id = int(hadm_id)
+                if hadm_id <= 0:
+                    raise ValueError("hadm_id must be positive")
+            except ValueError:
+                raise ValueError("hadm_id must be a valid integer")
+
+        if subject_id is not None:
+            if not isinstance(subject_id, (int, str)):
+                raise ValueError("subject_id must be an integer or string")
+            try:
+                subject_id = int(subject_id)
+                if subject_id <= 0:
+                    raise ValueError("subject_id must be positive")
+            except ValueError:
+                raise ValueError("subject_id must be a valid integer")
+
+        if section is not None:
+            if not isinstance(section, str) or not section.strip():
+                raise ValueError("section must be a non-empty string")
+            section = section.strip().lower()
+
+        if k is not None:
+            if not isinstance(k, int) or k <= 0 or k > 100:
+                raise ValueError("k must be an integer between 1 and 100")
+
+        return hadm_id, subject_id, section, k
+
+    def _handle_search_fallback(self, question, hadm_id=None, section=None, k=DEFAULT_K, error_msg=""):
+        """Graceful fallback for failed searches"""
+        print(f"⚠️ Search fallback triggered: {error_msg}")
+
+        try:
+            # Try basic semantic search as fallback
+            retrieved_docs = self.vectorstore.similarity_search(question, k=k)
+
+            if section and retrieved_docs:
+                retrieved_docs = [
+                    doc for doc in retrieved_docs if doc.metadata.get('section') == section]
+
+            if retrieved_docs:
+                answer = safe_llm_invoke(
+                    self.question_answer_chain,
+                    {"input": question, "context": retrieved_docs, "chat_history": []},
+                    fallback_message="I found some relevant information, but cannot provide a detailed analysis due to technical limitations.",
+                    context="Fallback search"
                 )
 
-                if clarification["needs_clarification"]:
-                    return {
-                        "answer": f"I need clarification to better help you:\n\n" +
-                        "\n".join([f"• {q}" for q in clarification["clarification_questions"]]) +
-                        f"\n\n{clarification['suggested_format']}",
-                        "source_documents": [],
-                        "citations": [],
-                        "needs_clarification": True,
-                        "extracted_entities": extracted_entities,
-                        "clarification_questions": clarification["clarification_questions"]
-                    }
+                return {
+                    "answer": answer,
+                    "source_documents": retrieved_docs,
+                    "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
+                    "fallback_used": True,
+                    "fallback_reason": error_msg
+                }
+        except Exception as fallback_error:
+            print(f"❌ Fallback search also failed: {fallback_error}")
 
-        print(f"Final filters - hadm_id: {hadm_id}, section: {section}")
-
-        # History-aware retriever for follow-up questions
-        question_to_search = question
-        if len(chat_history) > 0:
-            # For follow-up questions, first rephrase using chat history
-            standalone_question = safe_llm_invoke(
-                self.llm,
-                self.condense_q_prompt.format_messages(
-                    chat_history=chat_history,
-                    input=question
-                ),
-                fallback_message=question,  # Use original question as fallback
-                context="Question rephrasing"
-            )
-            if isinstance(standalone_question, str) and len(standalone_question.strip()) > 5:
-                print(f"Rephrased question: {standalone_question}")
-                question_to_search = standalone_question
-            else:
-                print(
-                    "⚠️ LLM rephrasing produced invalid result, using original question")
-                question_to_search = question
-
-        result = self.clinical_search(
-            question_to_search,
-            hadm_id=hadm_id,
-            section=section,
-            k=k,
-            chat_history=chat_history
-        )
-
-        # Handling empty results
-        if not result.get("source_documents"):
-            fallback_message = "No relevant medical records found."
-            if hadm_id:
-                fallback_message += f" Admission {hadm_id} may not exist in the database."
-            if section:
-                fallback_message += f" Section '{section}' may not have data for this admission."
-
-        # Update chat history
-        chat_history.append(("human", question))
-        chat_history.append(("assistant", result["answer"]))
-
-        # Keep only last 30 exchanges to prevent memory issues
-        if len(chat_history) > MAX_CHAT_HISTORY:
-            chat_history = chat_history[-MAX_CHAT_HISTORY:]
-
-        # Add metadata for clinical context
-        result["chat_history"] = chat_history
-        result["original_question"] = question
-        result["search_question"] = question_to_search
-        result["extracted_entities"] = extracted_entities
-        result["chat_context"] = chat_context
-        result["used_extraction"] = auto_extract and extracted_entities is not None
-        result["manual_override"] = {
-            "hadm_id": original_hadm_id, "section": original_section}
-
-        return result
-
-    def clinical_rag_query(self, question, top_k=DEFAULT_K):
-        """Debug chatbot without chat history"""
-        print(f"=== CLINICAL RAG QUERY ===")
-
-        # Use the new clinical chatbot function
-        result = self.ask_with_sources_clinical_chatbot(
-            question=question,
-            chat_history=[],
-            k=top_k
-        )
-
+        # Ultimate fallback
         return {
-            "answer": result["answer"],
-            "citations": result["citations"],
-            "source_documents": result["source_documents"]
+            "answer": f"I apologize, but I encountered technical difficulties processing your question. {error_msg}",
+            "source_documents": [],
+            "citations": [],
+            "error": True,
+            "fallback_used": True,
+            "fallback_reason": error_msg
         }
 
+    def ask_question(self, question, chat_history=None, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
+        """Unified question method - handles both single and conversational queries"""
+        is_conversational = chat_history is not None
+        print(
+            f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
 
-if __name__ == "__main__":
-    from embeddings_manager import load_or_create_vectorstore
+        try:
+            original_hadm_id, original_subject_id, original_section = hadm_id, subject_id, section
+            chat_history = chat_history or []
 
-    vectorstore, clinical_emb, chunked_docs = load_or_create_vectorstore()
+            # Validate and extract parameters
+            question, hadm_id, subject_id, section, k, extracted_entities = self._extract_and_validate_params(
+                question, hadm_id, subject_id, section, k)
 
-    # Initialize chatbot
-    chatbot = ClinicalRAGBot(vectorstore, clinical_emb, chunked_docs)
+            # Process chat context if conversational
+            if is_conversational and chat_history:
+                search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
+                    chat_history, question, hadm_id, subject_id, section)
+            else:
+                search_question = question
+                chat_context = {}
 
-    # Test queries
-    chat_history = []
+            # Perform search
+            result = self.clinical_search(
+                search_question, hadm_id, subject_id, section, k, chat_history)
 
+            # Update chat history if conversational
+            if is_conversational:
+                chat_history.extend(
+                    [("human", question), ("assistant", result["answer"])])
+                if len(chat_history) > MAX_CHAT_HISTORY:
+                    chat_history = chat_history[-MAX_CHAT_HISTORY:]
+
+            result.update({
+                "mode": "conversational" if is_conversational else "single_question",
+                "chat_history": chat_history if is_conversational else None,
+                "extracted_entities": extracted_entities,
+                "chat_context": chat_context if is_conversational else {},
+                "manual_override": {"hadm_id": original_hadm_id, "subject_id": original_subject_id, "section": original_section} if is_conversational else None,
+                "parameters": {"hadm_id": hadm_id, "subject_id": subject_id, "section": section, "k": k} if not is_conversational else None
+            })
+            return result
+
+        except Exception as e:
+            return self._handle_search_fallback(question, hadm_id, section, k, str(e))
+
+    def ask_single_question(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, search_strategy="auto"):
+        """Backward compatibility wrapper for single questions"""
+        return self.ask_question(question, None, hadm_id, subject_id, section, k)
+
+    def ask_with_chat_history(self, question, chat_history=None, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
+        """Backward compatibility wrapper for conversational mode"""
+        return self.ask_question(question, chat_history, hadm_id, subject_id, section, k)
