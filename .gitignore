@@ -1,48 +1,212 @@
-# ----- Python artifacts -----
+# ============================================================================
+# Clinical RAG System - Git Ignore Configuration
+# ============================================================================
+# Comprehensive .gitignore for clinical RAG system with MIMIC-IV data
+# Covers Python, ML/AI models, data files, and development artifacts
+# Last updated: January 2025
+
+# ---- Python Environment & Artifacts ----
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Byte-compiled / optimized / DLL files
 *.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.wheel
 
-# ----- Virtual environments -----
+# ---- Virtual Environments ----
 venv/
 env/
 .venv/
 .env/
+ENV/
+env.bak/
+venv.bak/
 
-# ----- Jupyter -----
-.ipynb_checkpoints
+# ---- Jupyter Notebooks ----
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+Untitled*.ipynb
+*-checkpoint.ipynb
 
-# ----- VSCode -----
+# ---- IDEs & Editors ----
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
 
-# ----- Data files (MIMIC-IV raw & derived) -----
+# ---- MIMIC-IV Data & Medical Records ----
+# Raw MIMIC-IV data files
 physionet.org/
 mimic_iv_hosp.db
-mimic_sample_1000/
+mimic_sample_*/
 *.csv
 *.csv.gz
 *.parquet
+*.tsv
+*.tsv.gz
 
-# Your local vectorstore & embeddings
-vector_stores/
+# Processed data exports
+**/exports/
+**/processed/
+*.pkl
+*.pickle
+*.joblib
+
+# ---- Machine Learning Models & Artifacts ----
+# Pre-trained models (too large for git)
 models/
+*.model
+*.bin
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.h5
+*.hdf5
 
-# ----- Logs & temp -----
-*.log
+# Model checkpoints
+checkpoints/
+*.ckpt
+model_*/
+
+# ---- Vector Stores & Embeddings ----
+vector_stores/
+embeddings/
+*.faiss
+*.index
+*_embeddings/
+faiss_*/
+
+# ---- Training & Evaluation Artifacts ----
+logs/
+runs/
+experiments/
+results/
+outputs/
+wandb/
+tensorboard/
+mlruns/
+
+# ---- Data Processing Caches ----
+*.cache
+cache/
+.cache/
+tmp/
+temp/
 *.tmp
-*.bak
+*.temp
 
-# ----- OS files -----
-.DS_Store
-Thumbs.db
-
-# ----- Credentials & secrets -----
+# ---- Configuration & Secrets ----
+.env
+.env.local
+.env.production
 *.pem
 *.key
-.env
-# ----- Optional: Excel / Word / proprietary formats -----
+*.p12
+*.pfx
+secrets.json
+config.local.*
+
+# ---- OS & System Files ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Backup & Archive Files ----
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.archive
+*.tar.gz
+*.zip
+*.7z
+
+# ---- Logs & Runtime Files ----
+*.log
+*.log.*
+log/
+logs/
+*.pid
+*.seed
+*.out
+*.err
+
+# ---- Documentation Builds ----
+docs/_build/
+site/
+
+# ---- Test Coverage ----
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ---- Project-Specific Exclusions ----
+# Large reference files
 project_files/
 test_with_sponsor/
+
+# Development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary notebooks & scripts
+*_temp.ipynb
+*_test.ipynb
+scratch_*.py
+temp_*.py
+
+# Research & experimental code
+research/
+experiments/
+sandbox/
+
+# Generated reports & visualizations
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+plots/
+figures/
+charts/
+
+# ---- Package Manager Files ----
+requirements_old.txt
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---- Environment Activation Scripts ----
+activate-rag.sh
+activate-rag.bat
+rag-env.bat
+
+# ---- Cloud & Deployment ----
+.aws/
+.azure/
+.gcp/
+.terraform/
+
+# ============================================================================
+# Note: This .gitignore excludes sensitive medical data, large model files,
+# and experimental artifacts while preserving essential code and configuration.
+# 
+# To track specific large files, use Git LFS:
+# git lfs track "*.model"
+# ============================================================================
