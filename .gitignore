@@ -98,6 +98,21 @@ mlruns/
 cache/
 .cache/
 tmp/
+
+# ---- Medical Data ----
+# Real MIMIC-IV data (exclude from git)
+mimic_sample_1000/*.csv
+mimic_sample_1000/*.csv_sample*.csv
+mimic_sample_1000/*.csv.csv
+mimic_sample_1000/*.pkl
+
+# BUT include synthetic data
+!synthetic_data/*.csv
+!synthetic_data/*.pkl
+!synthetic_data/*.py
+
+# Keep the MIMIC directory structure but not the data
+!mimic_sample_1000/.gitkeep
 temp/
 *.tmp
 *.temp

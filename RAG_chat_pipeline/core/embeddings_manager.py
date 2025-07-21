@@ -3,7 +3,8 @@ import pickle
 from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from config import CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH, CHUNKED_DOCS_PATH
+from RAG_chat_pipeline.config.config import CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH, CHUNKED_DOCS_PATH
+from RAG_chat_pipeline.utils.data_provider import DataProvider
 
 
 def setup_clinical_embeddings():
@@ -54,8 +55,19 @@ def load_or_create_vectorstore():
     """Load existing vectorstore or create new one"""
     clinical_emb = setup_clinical_embeddings()
 
-    with open(CHUNKED_DOCS_PATH, "rb") as f:
-        chunked_docs = pickle.load(f)
+    # Initialize data provider to get appropriate data (real or synthetic)
+    data_provider = DataProvider()
+
+    try:
+        # Get chunked docs from the appropriate source
+        if data_provider.using_synthetic:
+            chunked_docs = data_provider.load_chunked_docs()
+        else:
+            with open(CHUNKED_DOCS_PATH, "rb") as f:
+                chunked_docs = pickle.load(f)
+    except Exception as e:
+        print(f"⚠️ Error loading chunked documents: {e}")
+        chunked_docs = None
 
     # Try to load existing vectorstore
     try:

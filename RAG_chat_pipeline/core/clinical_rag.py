@@ -4,9 +4,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import OllamaLLM as Ollama
 from langchain_community.vectorstores import FAISS
 from typing import List
-from config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY
-from entity_extraction import extract_entities, extract_context_from_chat_history
-from invoke import safe_llm_invoke
+from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY
+from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
+from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
 import time
 

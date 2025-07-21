@@ -1,6 +1,6 @@
 """Main execution script"""
-from embeddings_manager import load_or_create_vectorstore
-from clinical_rag import ClinicalRAGBot
+from RAG_chat_pipeline.core.embeddings_manager import load_or_create_vectorstore
+from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot
 
 
 def main():

@@ -2,35 +2,34 @@ from pathlib import Path
 
 # Initializes the models, embedings, and vectorstore for the RAG chat pipeline
 """Configuration and constants"""
-BASE = Path(__file__).resolve().parents[1]  # Base directory for the project
+BASE = Path(__file__).resolve().parents[2]  # Base directory for the project
 CHUNKED_DOCS_PATH = BASE / "mimic_sample_1000" / "chunked_docs.pkl"
 
 # Default model to use, can be changed to "multi-qa", "mini-lm", or "static-retr"
-model_in_use = "ms-marco"
+model_in_use = "mini-lm"
 
 # Model configuration
 # Clinical model for entity extraction and question answering
-model_names = {"ms-marco": ["S-PubMedBert-MS-MARCO", "pritamdekar/S-PubMedBert-MS-MARCO", "faiss_mimic_sample1000_ms-marco"],
+model_names = {"ms-marco": ["S-PubMedBert-MS-MARCO", "pritamdeka/S-PubMedBert-MS-MARCO", "faiss_mimic_sample1000_ms-marco"],
                "multi-qa": ["multi-qa-mpnet-base-cos-v1", "sentence-transformers/multi-qa-mpnet-base-cos-v1", "faiss_mimic_sample1000_multi-qa"],
                "mini-lm": ["all-MiniLM-L6-v2", "sentence-transformers/all-MiniLM-L6-v2", "faiss_mimic_sample1000_mini-lm"],
-               "static-retr": ["static-retrieval-mrl-en-v1", "sentence-transformers/static-retrieval-mrl-en-v1", "faiss_mimic_sample1000_static-retr"]}
-
-#! "biomedbert": ["BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", "faiss_mimic_sample1000_biomedbert"],
-#! "mpnet-v2": ["all-mpnet-base-v2", "sentence-transformers/all-mpnet-base-v2", "faiss_mimic_sample1000_mpnet-v2"],
-#! "e5-base": ["e5-base-v2", "intfloat/e5-base-v2", "faiss_mimic_sample1000_e5-base"]
+               "biomedbert": ["BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", "faiss_mimic_sample1000_biomedbert"],
+               "mpnet-v2": ["all-mpnet-base-v2", "sentence-transformers/all-mpnet-base-v2", "faiss_mimic_sample1000_mpnet-v2"],
+               "e5-base": ["e5-base-v2", "intfloat/e5-base-v2", "faiss_mimic_sample1000_e5-base"],
+               "BioLORD": ["BioLORD-2023-C", "sentence-transformers/BioLORD-2023-C", "faiss_mimic_sample1000_BioLORD"],
+               "BioBERT": ["BioBERT-mnli-snli-scinli-scitail-mednli-stsb", "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", "faiss_mimic_sample1000_BioBERT"],
+               "MedQuAD": ["S-PubMedBert-MedQuAD", "TimKond/S-PubMedBert-MedQuAD", "faiss_mimic_sample1000_MedQuAD"]
+               }
 
 llms = {
     "deepseek": "deepseek-r1:1.5b",
     "qwen": "qwen3:1.7b",
     "llama": "llama3.2:latest",
+    "gemma": "gemma:2b",
+    "phi3": "phi3:3.8b",
+    "tinyllama": "tinyllama:1.1b",
 }
 
-#! "gemma": "gemma:2b",           # 2B - Google's efficient model
-#! "phi3-mini": "phi3:3.8b-mini",  # If available, smaller version
-#! "tinyllama": "tinyllama:1.1b",  # Ultra-lightweight for testing
-
-# Set the clinical model and LLM to be used in the pipeline
-# You can change these to use different models as needed
 
 # Model name for downloading and saving locally
 CLINICAL_MODEL_NAME = model_names[model_in_use][1]
@@ -205,3 +204,66 @@ EVALUATION_OUTPUT_CONFIG = {
     "separator_length": 50,
     "long_separator_length": 70
 }
+
+# =============================================
+# DYNAMIC CONFIGURATION MANAGEMENT
+# =============================================
+
+
+def set_models(embedding_model: str = "ms-marco", llm_model: str = "deepseek"):
+    """
+    Dynamically set the embedding and LLM models for the current session.
+    This updates the module-level variables without modifying the config file.
+
+    Args:
+        embedding_model: Embedding model nickname (ms-marco, multi-qa, mini-lm, static-retr)
+        llm_model: LLM model nickname (deepseek, qwen, llama)
+
+    Returns:
+        tuple: (embedding_model, llm_model) that were set
+
+    Raises:
+        ValueError: If invalid model names are provided
+    """
+    global model_in_use, LLM_MODEL, CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH
+
+    # Validate embedding model
+    if embedding_model not in model_names:
+        raise ValueError(
+            f"Invalid embedding model: {embedding_model}. Available: {list(model_names.keys())}")
+
+    # Validate LLM model
+    if llm_model not in llms:
+        raise ValueError(
+            f"Invalid LLM model: {llm_model}. Available: {list(llms.keys())}")
+
+    # Update global variables
+    model_in_use = embedding_model
+    LLM_MODEL = llms[llm_model]
+
+    return embedding_model, llm_model
+
+# =============================================
+# CONFIGURATION UTILITIES
+# =============================================
+
+
+def get_config_summary():
+    """Get a summary of current configuration."""
+    llm_nickname = next(k for k, v in llms.items() if v == LLM_MODEL)
+    return f"""
+🔧 Current Configuration:
+   Embedding Model: {model_in_use} ({CLINICAL_MODEL_NAME})
+   LLM Model: {llm_nickname} ({LLM_MODEL})
+   Vector Store: {VECTORSTORE_PATH.name}
+   Model Path: {LOCAL_MODEL_PATH.name}
+"""
+
+
+# Initialize with defaults (this happens when config is imported)
+# This ensures the config is always in a valid state
+try:
+    set_models()  # Uses defaults: ms-marco + deepseek
+except Exception:
+    pass  # Fallback to original static values if something goes wrong
+print(BASE)

@@ -5,11 +5,13 @@ A comprehensive Retrieval-Augmented Generation (RAG) system designed for analyzi
 ## 🏥 Project Overview
 
 This project implements a production-ready clinical RAG system that:
+
 - **Processes MIMIC-IV hospital data** into structured, searchable documents
 - **Supports multiple embedding models** for optimal medical text representation
 - **Enables conversational interaction** with patient medical records
 - **Provides comprehensive evaluation metrics** for system performance assessment
 - **Compares different LLM and embedding combinations** systematically
+- **Includes a React-based web interface** for easy clinical data querying
 
 ## 🏗️ System Architecture
 
@@ -17,11 +19,13 @@ This project implements a production-ready clinical RAG system that:
 graph TD
     A[MIMIC-IV Data] --> B[Data Processing Pipeline]
     B --> C[Document Chunking & Embedding]
-    C --> D[Vector Store Creation]
-    D --> E[Clinical RAG Bot]
-    E --> F[Question Answering]
-    F --> G[Evaluation System]
-    G --> H[Performance Analysis]
+    C --> D[FAISS Vector Database]
+    D --> E[LangChain RAG Pipeline]
+    E --> F[Clinical RAG Bot]
+    F --> G[Results & Evaluation]
+
+    H[React Frontend] --> I[Flask API Server]
+    I --> F
 ```
 
 ### Core Components
@@ -49,62 +53,198 @@ graph TD
 ## 📊 Supported Models
 
 ### Embedding Models
-- **MS-MARCO-MiniLM** - Medical domain-optimized model
-- **Multi-QA-MPNet** - Multi-domain question-answering model  
-- **All-MiniLM-L6-v2** - General-purpose lightweight model
-- **Static-Retrieval-MRL** - Static retrieval specialized model
+
+- **All-MiniLM-L6-v2** - General-purpose lightweight model (default)
+- **S-PubMedBert-MS-MARCO** - Medical domain-optimized model
+- **Multi-QA-MPNet** - Multi-domain question-answering model
+- **BiomedNLP-PubMedBERT** - Biomedical NLP model
+- **All-MPNet-Base-v2** - Powerful general-purpose model
+- **E5-Base-v2** - Efficient sentence embedding model
+- **BioLORD-2023-C** - Specialized biomedical language model
+- **BioBERT** - Biomedical text mining model
+- **S-PubMedBert-MedQuAD** - Medical QA specialized model
 
 ### Language Models (via Ollama)
-- **DeepSeek-R1** (1.5B) - Reasoning-focused model
-- **Qwen2.5** (3B) - Multilingual capabilities
-- **Llama3.2** (3B) - Meta's latest efficient model
 
-## 🚀 Quick Start
+- **DeepSeek-R1** (1.5B) - Reasoning-focused model (default)
+- **Qwen3** (1.7B) - Multilingual capabilities
+- **Llama3.2** - Meta's efficient language model
+- **Gemma** (2B) - Google's lightweight model
+- **Phi3** (3.8B) - Microsoft's instruction-following model
+- **TinyLlama** (1.1B) - Compact and efficient model
+
+## 🚀 Getting Started
 
 ### Prerequisites
-```bash
-# Install Python 3.11+ from https://python.org/downloads/
-# Install Ollama: https://ollama.ai/
 
+- Python 3.10+
+- Node.js 16+ (for frontend, v18+ recommended for all dependencies)
+- MIMIC-IV dataset access (optional - synthetic data available for demo purposes)
+- GPU recommended but not required
+- Ollama for local LLM support
+
+```bash
+# Install Ollama: https://ollama.ai/
 # Pull required LLM models
 ollama pull deepseek-r1:1.5b
-ollama pull qwen2.5:3b  
-ollama pull llama3.2:3b
+ollama pull qwen3:1.7b
+ollama pull llama3.2:latest
+ollama pull gemma:2b
+ollama pull phi3:3.8b
+ollama pull tinyllama:1.1b
 ```
 
 ### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/DevNick21/msc_project.git
+   cd msc_project
+   ```
+
+2. Create and activate a virtual environment:
+
+   ```bash
+   python -m venv venv
+   # Windows:
+   venv\Scripts\activate
+   # Linux/macOS:
+   source venv/bin/activate
+   ```
+
+3. Install the project in development mode (makes imports work correctly):
+
+   ```bash
+   # This installs the project in development mode
+   pip install -e .
+   ```
+
+4. Install frontend dependencies (optional - only needed if using the web interface):
+
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
+
+### Running the Clinical RAG System
+
+#### Model Evaluation Framework
+
+Run evaluations to compare different model combinations (make sure your virtual environment is activated):
+
 ```bash
-# Clone repository
-git clone <repository-url>
-cd msc_project
+# Activate virtual environment (Windows)
+venv\Scripts\activate  # CMD
+# OR
+source venv/Scripts/activate  # Bash/Git Bash
 
-# Create and activate virtual environment
-python -m venv venv
+# Quick test for a specific model combination
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
 
-# Activate environment:
-# Windows:
-venv\Scripts\activate.bat
-# Linux/macOS:
-source venv/bin/activate
+# Run full evaluation for all model combinations
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner all --type full
 
-# Install dependencies
-pip install -r requirements.txt
+# Generate a report from existing evaluations
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner report
 ```
 
-### Automated Setup
+#### Web Interface
 
-For easier setup, use the provided scripts:
+You can start both the Flask API server and React frontend with the provided convenience scripts:
+
+**Windows:**
 
 ```bash
-# Windows
-setup_environment.bat
-
-# Linux/macOS
-chmod +x setup_environment.sh
-./setup_environment.sh
+# Just double-click or run:
+start_app.bat
 ```
+
+**macOS/Linux:**
+
+```bash
+# Make executable first:
+chmod +x start_app.sh
+# Then run:
+./start_app.sh
+```
+
+Or start them separately:
+
+```bash
+# Start API server
+python api/app.py
+
+# In a separate terminal, start React frontend
+cd frontend
+npm start
+```
+
+Then visit [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Data Setup
+
+You have two options for data:
+
+#### Option 1: Use Synthetic Data (No MIMIC-IV access required)
+
+The system will automatically generate and use synthetic medical data if MIMIC-IV data is not found. This is great for:
+
+- Trying out the system without MIMIC-IV credentials
+- Development and testing
+- Public demos and sharing
+
+The synthetic data system:
+
+- Creates realistic fictional medical data matching MIMIC-IV structure
+- Automatically generates patient records, diagnoses, and lab values
+- Works seamlessly with the existing RAG pipeline through the DataProvider abstraction
+- Can be committed to Git for easy sharing (unlike the real MIMIC-IV data)
+
+Simply run the system and it will create synthetic data automatically, or generate it manually:
+
+```bash
+# Generate synthetic data
+python -m RAG_chat_pipeline.utils.synthetic_data.synthetic_data_generator
+
+# Or use it automatically in the RAG system (no special command needed)
+python -m RAG_chat_pipeline.main
+```
+
+For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
+
+```bash
+# Open the synthetic data demo notebook
+jupyter notebook synthetic_data_demo.ipynb
+```
+
+This demonstration notebook guides you through:
+
+- Generating and customizing synthetic medical data
+- Processing data into document chunks
+- Creating vector stores with embeddings
+- Initializing and using the RAG pipeline with synthetic data
+- Comparing synthetic data behavior with real data (if available)
+- Querying the system with various clinical questions
+
+For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
+
+```bash
+# Open the synthetic data demo notebook
+jupyter notebook synthetic_data_demo.ipynb
+```
+
+This demonstration notebook guides you through:
+
+- Generating and customizing synthetic medical data
+- Processing data into document chunks
+- Creating vector stores with embeddings
+- Initializing and using the RAG pipeline with synthetic data
+- Comparing synthetic data behavior with real data (if available)
+- Querying the system with various clinical questions
+
+#### Option 2: Use Real MIMIC-IV Data (Requires credentialed access)
 
 1. **Prepare MIMIC-IV Data**: Place sample data in `mimic_sample_1000/`
 2. **Process Data**: Run `data_handling/creating_docs.ipynb` to:
@@ -115,6 +255,7 @@ chmod +x setup_environment.sh
 ### Usage Examples
 
 #### Interactive Chatbot
+
 ```python
 from RAG_chat_pipeline.main import main
 
@@ -130,24 +271,23 @@ print(response['answer'])
 ```
 
 #### Batch Evaluation
+
 ```bash
 # Run all model combinations
-cd RAG_chat_pipeline
-python model_evaluation_runner.py all short
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner all --type short
 
 # Generate comparison report
-python model_evaluation_runner.py report
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner report
 ```
 
 #### Single Model Evaluation
+
 ```bash
 # Evaluate specific combination
-python model_evaluation_runner.py single ms-marco deepseek short
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner single ms-marco deepseek --type short
 
 # Quick test
-python rag_evaluator.py quick
-```
-
+python -m RAG_chat_pipeline.benchmarks.rag_evaluator quick
 ## 📋 Clinical Data Structure
 
 The system processes six types of medical records:
@@ -164,11 +304,13 @@ The system processes six types of medical records:
 ## 🎯 Evaluation Framework
 
 ### Scoring Methodology
+
 - **Factual Accuracy (60%)**: Validates against actual patient data
-- **Behavioral Assessment (30%)**: Checks appropriate clinical responses  
+- **Behavioral Assessment (30%)**: Checks appropriate clinical responses
 - **Performance Metrics (10%)**: Measures search speed and document retrieval
 
 ### Question Categories
+
 - **Header Questions**: Admission details and administrative info
 - **Diagnostic Questions**: Disease conditions and ICD codes
 - **Procedural Questions**: Medical interventions and operations
@@ -176,96 +318,126 @@ The system processes six types of medical records:
 - **Microbiology Questions**: Culture results and infections
 - **Prescription Questions**: Medications and dosing information
 
+
 ### Automated Evaluation
+
 ```bash
 # Full evaluation suite
-python rag_evaluator.py full
+python -m RAG_chat_pipeline.benchmarks.rag_evaluator full
 
 # Short evaluation (10 questions)
-python rag_evaluator.py short
-
-# Quick test (3 questions)  
-python rag_evaluator.py quick
+python -m RAG_chat_pipeline.benchmarks.rag_evaluator short
 ```
 
 ## 📈 Performance Analysis
 
 ### Results Dashboard
+
 The system generates comprehensive performance reports including:
+
 - **Pass rates by model combination**
 - **Category-specific performance breakdowns**
 - **Search time and efficiency metrics**
 - **Comparative analysis across embedding models**
 
 ### Visualization
+
 - Performance heatmaps comparing model combinations
 - Category breakdown charts
 - Time series analysis of evaluation results
 
 ## 🗂️ Project Structure
 
-```
+```text
 msc_project/
 ├── data_handling/                 # Data processing notebooks
 │   ├── creating_docs.ipynb       # Main data processing pipeline
 │   └── converting_to_sql.ipynb   # Database conversion utilities
-├── mimic_sample_1000/             # MIMIC-IV sample data
+├── mimic_sample_1000/             # MIMIC-IV sample data (or synthetic data)
 │   ├── *.csv                     # Raw clinical data files
 │   ├── chunked_docs.pkl          # Processed document chunks
 │   └── exports/                  # Preprocessed data exports
-├── models/                       # Downloaded embedding models
+├── models/                        # Downloaded embedding models
 │   ├── all-MiniLM-L6-v2/
+│   ├── all-mpnet-base-v2/
+│   ├── BioBERT-mnli-snli-scinli-scitail-mednli-stsb/
+│   ├── BioLORD-2023-C/
+│   ├── e5-base-v2/
 │   ├── multi-qa-mpnet-base-cos-v1/
-│   ├── S-PubMedBert-MS-MARCO/
-│   └── static-retrieval-mrl-en-v1/
-├── vector_stores/                # FAISS vector databases
+│   ├── S-PubMedBert-MedQuAD/
+│   └── S-PubMedBert-MS-MARCO/
+├── vector_stores/                 # FAISS vector databases
+│   ├── faiss_mimic_sample1000_BioBERT/
+│   ├── faiss_mimic_sample1000_BioLORD/
+│   ├── faiss_mimic_sample1000_biomedbert/
+│   ├── faiss_mimic_sample1000_e5-base/
+│   ├── faiss_mimic_sample1000_MedQuAD/
 │   ├── faiss_mimic_sample1000_mini-lm/
+│   ├── faiss_mimic_sample1000_mpnet-v2/
 │   ├── faiss_mimic_sample1000_ms-marco/
-│   ├── faiss_mimic_sample1000_multi-qa/
-│   └── faiss_mimic_sample1000_static-retr/
-├── RAG_chat_pipeline/            # Core RAG system
-│   ├── clinical_rag.py          # Main RAG chatbot
-│   ├── rag_evaluator.py         # Evaluation framework
+│   └── faiss_mimic_sample1000_multi-qa/
+├── RAG_chat_pipeline/             # Core RAG system
+│   ├── clinical_rag.py           # Main RAG chatbot
+│   ├── rag_evaluator.py          # Evaluation framework
 │   ├── model_evaluation_runner.py # Automated model comparison
 │   ├── evaluation_results_manager.py # Results analysis
-│   ├── config.py                # System configuration
-│   ├── main.py                  # Entry point
-│   ├── embeddings_manager.py    # Model management
-│   ├── entity_extraction.py     # Parameter extraction
-│   ├── gold_questions.py        # Test question generation
-│   ├── data_loader.py          # Data loading utilities
-│   └── invoke.py               # LLM invocation wrapper
-├── requirements.txt             # Python dependencies
-├── setup_environment.bat       # Windows setup script
-├── setup_environment.sh        # Linux/macOS setup script
-└── README.md                   # This file
+│   ├── config.py                 # System configuration
+│   ├── main.py                   # Entry point
+│   ├── embeddings_manager.py     # Model management
+│   ├── entity_extraction.py      # Parameter extraction
+│   ├── gold_questions.py         # Test question generation
+│   ├── data_loader.py            # Data loading utilities
+│   └── utils/                    # Utility modules
+│       ├── data_provider.py      # Data source abstraction
+│       └── synthetic_data/       # Synthetic data generation
+│           ├── __init__.py
+│           └── synthetic_data_generator.py  # Creates fictional medical data
+├── frontend/                      # React frontend
+│   ├── src/                      # Frontend source code
+│   └── public/                   # Static assets
+├── api/                          # Flask API server
+│   └── app.py                    # API endpoints
+├── start_app.bat                 # Windows startup script
+├── start_app.sh                  # Linux/Mac startup script
+├── synthetic_data_demo.ipynb     # Demonstration notebook for synthetic data
+└── README.md                     # This file
 ```
 
 ## 🛠️ Configuration
 
 ### Model Selection
+
+Edit `RAG_chat_pipeline/config.py`:
+
+```text
+
+## 🛠️ Configuration
+
+### Model Selection
+
 Edit `RAG_chat_pipeline/config.py`:
 ```python
 # Default embedding model
-model_in_use = "ms-marco"  # Options: ms-marco, multi-qa, mini-lm, static-retr
+model_in_use = "mini-lm"  # Options: mini-lm, ms-marco, multi-qa, biomedbert, mpnet-v2, e5-base, BioLORD, BioBERT, MedQuAD
 
-# Default LLM model  
-LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama
+# Default LLM model
+LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama, gemma, phi3, tinyllama
 ```
 
 ### Evaluation Parameters
+
 ```python
 # Scoring weights
 EVALUATION_SCORING_WEIGHTS = {
     "factual_accuracy": 0.6,
-    "behavior": 0.3, 
+    "behavior": 0.3,
     "performance": 0.1
 }
 
 # Pass thresholds by category
-EVALUATION_PASS_THRESHOLDS = {
-    "labs": 0.65,
-    "diagnoses": 0.75,
+## 🧪 Evaluation Results
+
+### Example Performance Summary
     "prescriptions": 0.70,
     # ...
 }
@@ -274,30 +446,24 @@ EVALUATION_PASS_THRESHOLDS = {
 ## 🧪 Evaluation Results
 
 ### Example Performance Summary
-```
+
+```text
 📊 Model Comparison Report
 Generated: 2025-01-16 10:30:15
 
 ## Overview
-- Total Experiments: 12
-- Embedding Models Tested: 4  
-- LLM Models Tested: 3
+- Total Experiments: 48
+- Embedding Models Tested: 8
+- LLM Models Tested: 6
 
 ## Best Performing Combinations
 ### Highest Overall Score
 - Models: ms-marco + deepseek
 - Overall Score: 0.847
-- Pass Rate: 84.2%
-
-### Category Performance
-- Header Questions: 89.5% pass rate
-- Lab Questions: 82.1% pass rate  
-- Prescription Questions: 76.8% pass rate
-```
-
 ## 🔬 Research Applications
 
 This system is designed for:
+
 - **Clinical Decision Support**: Natural language queries over patient records
 - **Medical Education**: Interactive exploration of clinical cases
 - **RAG System Benchmarking**: Standardized evaluation of clinical NLP models
@@ -306,29 +472,43 @@ This system is designed for:
 ## 🚦 System Status
 
 - ✅ **Data Processing**: Complete MIMIC-IV integration
+- ✅ **Synthetic Data**: Automated generation of fictional medical data
 - ✅ **RAG Pipeline**: Multi-model support with conversation history
 - ✅ **Evaluation Framework**: Comprehensive scoring and comparison
 - ✅ **Model Comparison**: Automated evaluation across 12 combinations
 - ✅ **Results Analysis**: Performance visualization and reporting
+- ✅ **Web Interface**: React frontend with Flask API
 
 ## 📚 Dependencies
 
 ### Core Libraries
+
 - **LangChain**: RAG pipeline framework
 - **FAISS**: Vector similarity search
 - **SentenceTransformers**: Embedding model support
 - **Ollama**: Local LLM hosting
 - **Pandas**: Data manipulation
 - **Matplotlib/Seaborn**: Visualization
+- **Flask**: API server (v3.0.2+)
+- **React**: Frontend framework (v18.2.0+)
+- **Material-UI**: UI component library for React
 
 ### Model Requirements
-- **Embedding Models**: ~1-2GB each (4 models)
-- **LLM Models**: ~2-4GB each (3 models via Ollama)
-- **Vector Stores**: ~500MB each (4 stores)
+
+- **Embedding Models**: ~1-2GB each (8 models)
+- **LLM Models**: ~2-4GB each (6 models via Ollama)
+- **Vector Stores**: ~500MB each (9 stores)
+
+### Utility Modules
+
+- **DataProvider**: Abstraction for data source selection (real or synthetic)
+- **SyntheticDataGenerator**: Creation of fictional medical data
+- **EntityExtractor**: Automatic parameter detection from natural language
 
 ## 🤝 Contributing
 
 This is an academic research project. For questions or collaboration:
+
 1. Review the evaluation framework in `rag_evaluator.py`
 2. Check model configurations in `config.py`
 3. Run the example evaluations to understand the system
@@ -340,9 +520,9 @@ If you use this system in your research, please cite:
 ```bibtex
 @software{clinical_rag_mimic,
   title={Clinical RAG System for MIMIC-IV Data Analysis},
-  author={[Author Name]},
+  author={[Ekenedirichukwu Iheanacho]},
   year={2025},
-  url={[Repository URL]}
+  url={[https://github.com/DevNick21/Clinical_RAG_chat_bot]}
 }
 ```
 

@@ -5,10 +5,11 @@ import sys
 from typing import Dict, List
 from datetime import datetime
 
-from data_loader import get_sample_data
-from clinical_rag import ClinicalRAGBot
-from gold_questions import generate_gold_questions_from_data
-from config import *
+# Now import project modules
+from RAG_chat_pipeline.helper.data_loader import get_sample_data
+from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot
+from RAG_chat_pipeline.benchmarks.gold_questions import generate_gold_questions_from_data
+from RAG_chat_pipeline.config.config import *
 
 
 class ClinicalRAGEvaluator:
@@ -521,7 +522,7 @@ def main():
         print(
             f"  quick - Run quick test with {EVALUATION_DEFAULT_PARAMS['quick_test_limit']} questions")
         return
-    from main import initialize_clinical_rag
+    from RAG_chat_pipeline.core.main import initialize_clinical_rag
 
     print("Initializing RAG system...")
     chatbot = initialize_clinical_rag()

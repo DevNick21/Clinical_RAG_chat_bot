@@ -13,14 +13,8 @@ from typing import Dict, List
 import sys
 from pathlib import Path
 
-# Add parent directory for imports
-sys.path.append(str(Path(__file__).parent))
 
-try:
-    from data_loader import get_sample_data
-except ImportError:
-    print("Warning: Could not import data_loader")
-    get_sample_data = None
+from RAG_chat_pipeline.helper.data_loader import get_sample_data
 
 
 def generate_gold_questions_from_data(num_questions: int = 20,
@@ -31,7 +25,7 @@ def generate_gold_questions_from_data(num_questions: int = 20,
     questions about the available clinical data sections:
     - header: admission info, admit/discharge times, expire flag
     - diagnoses: ICD diagnosis codes with descriptions
-    - procedures: ICD procedure codes with descriptions  
+    - procedures: ICD procedure codes with descriptions
     - labs: laboratory tests with values, times, categories, flags
     - microbiology: culture tests with specimen types and comments
     - prescriptions: medications with dosages, times, order status

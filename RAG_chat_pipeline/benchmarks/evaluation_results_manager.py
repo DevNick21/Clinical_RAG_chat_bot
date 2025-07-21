@@ -8,11 +8,12 @@ import json
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
-import matplotlib.pyplot as plt
-import seaborn as sns
+from typing import Dict, List, Tuple
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from dataclasses import dataclass, asdict
-from config import model_names, llms
+from RAG_chat_pipeline.config.config import model_names, llms
 
 
 @dataclass
@@ -68,8 +69,17 @@ class EvaluationResultsManager:
     """Manages evaluation results across different model combinations"""
 
     def __init__(self, results_dir: Path = None):
-        self.results_dir = results_dir or Path("evaluation_results")
-        self.results_dir.mkdir(exist_ok=True)
+        # Use the results folder in the parent directory with absolute paths
+        if results_dir is None:
+            current_dir = Path(__file__).resolve().parent
+            self.results_dir = current_dir.parent / "results"
+        else:
+            # Ensure provided path is absolute
+            self.results_dir = results_dir.resolve(
+            ) if not results_dir.is_absolute() else results_dir
+
+        # Ensure the results directory exists
+        self.results_dir.mkdir(exist_ok=True, parents=True)
 
         # Main results file
         self.results_file = self.results_dir / "model_comparison_results.json"
@@ -176,7 +186,12 @@ class EvaluationResultsManager:
 
         summary = result.get("summary", {})
         category_breakdown = summary.get("category_breakdown", {})
-        detailed_results = result.get("detailed_results", [])
+
+        # Check if using quick test format or full/short evaluation format
+        if "results" in result:  # Quick test format
+            detailed_results = result.get("results", [])
+        else:  # Full/short evaluation format
+            detailed_results = result.get("detailed_results", [])
 
         # Calculate average component scores
         if detailed_results:
@@ -190,6 +205,14 @@ class EvaluationResultsManager:
             docs_found = [r.get("documents_found", 0)
                           for r in detailed_results]
 
+            # Count passed questions
+            passed_count = sum(
+                1 for r in detailed_results if r.get("passed", False))
+            total_questions = len(detailed_results)
+            pass_rate = passed_count / total_questions if total_questions else 0
+            avg_score = sum(r.get("overall_score", 0)
+                            for r in detailed_results) / total_questions if total_questions else 0
+
             avg_factual = np.mean(factual_scores) if factual_scores else 0
             avg_behavior = np.mean(behavior_scores) if behavior_scores else 0
             avg_performance = np.mean(
@@ -199,17 +222,39 @@ class EvaluationResultsManager:
         else:
             avg_factual = avg_behavior = avg_performance = 0
             avg_search_time = avg_docs_found = 0
+            total_questions = 0
+            passed_count = 0
+            pass_rate = 0
+            avg_score = 0
 
         # Extract category-specific metrics
         def get_category_metrics(category_name: str) -> Tuple[float, float]:
+            # For quick test, we need to calculate this from the results
+            if "results" in result:
+                category_results = [r for r in detailed_results if r.get(
+                    "category") == category_name]
+                if category_results:
+                    passed = sum(
+                        1 for r in category_results if r.get("passed", False))
+                    pass_rate = passed / len(category_results)
+                    avg_score = sum(r.get("overall_score", 0)
+                                    for r in category_results) / len(category_results)
+                    return pass_rate, avg_score
+
+            # For full/short evaluation format
             cat_data = category_breakdown.get(category_name, {})
             return cat_data.get("pass_rate", 0.0), cat_data.get("average_score", 0.0)
 
+        # Use the calculated metrics for quick tests or summary metrics for full evaluations
         metrics = EvaluationMetrics(
-            total_questions=summary.get("total_questions", 0),
-            passed=summary.get("passed", 0),
-            pass_rate=summary.get("pass_rate", 0.0),
-            average_score=summary.get("average_score", 0.0),
+            total_questions=total_questions if detailed_results else summary.get(
+                "total_questions", 0),
+            passed=passed_count if detailed_results else summary.get(
+                "passed", 0),
+            pass_rate=pass_rate if detailed_results else summary.get(
+                "pass_rate", 0.0),
+            average_score=avg_score if detailed_results else summary.get(
+                "average_score", 0.0),
             avg_factual_accuracy=avg_factual,
             avg_behavior_score=avg_behavior,
             avg_performance_score=avg_performance,
@@ -326,26 +371,51 @@ class EvaluationResultsManager:
                                 columns="llm_model",
                                 values=metric)
 
-        # Create the heatmap
-        plt.figure(figsize=(10, 6))
-        sns.heatmap(heatmap_data,
-                    annot=True,
-                    fmt='.3f' if metric != 'pass_rate' else '.1%',
-                    cmap='RdYlGn',
-                    center=0.7 if metric == 'pass_rate' else None)
+        # Create the heatmap with plotly
+        fig = go.Figure(data=go.Heatmap(
+            z=heatmap_data.values,
+            x=heatmap_data.columns,
+            y=heatmap_data.index,
+            colorscale='RdYlGn',
+            text=heatmap_data.values,
+            texttemplate="%{text:.3f}" if metric != 'pass_rate' else "%{text:.1%}",
+            textfont={"size": 10},
+            hoverongaps=False
+        ))
 
-        plt.title(
-            f'Model Performance Heatmap: {metric.replace("_", " ").title()}')
-        plt.xlabel('LLM Model')
-        plt.ylabel('Embedding Model')
-        plt.tight_layout()
+        fig.update_layout(
+            title=f'Model Performance Heatmap: {metric.replace("_", " ").title()}',
+            xaxis_title='LLM Model',
+            yaxis_title='Embedding Model',
+            width=800,
+            height=600
+        )
 
         if save_fig:
-            fig_file = self.results_dir / f"heatmap_{metric}.png"
-            plt.savefig(fig_file, dpi=300, bbox_inches='tight')
-            print(f"📈 Heatmap saved to: {fig_file}")
+            try:
+                # Save as HTML which doesn't require additional dependencies
+                html_file = self.results_dir / f"heatmap_{metric}.html"
+                fig.write_html(str(html_file))
+                print(f"📈 Heatmap HTML saved to: {html_file}")
 
-        plt.show()
+                # Try to save as image if kaleido is installed
+                try:
+                    fig_file = self.results_dir / f"heatmap_{metric}.png"
+                    fig.write_image(str(fig_file))
+                    print(f"📈 Heatmap image saved to: {fig_file}")
+                except Exception as e:
+                    print(f"⚠️ Could not save heatmap as image: {str(e)}")
+                    print(
+                        "   To save as image, install the kaleido package: pip install kaleido")
+            except Exception as e:
+                print(f"❌ Error saving heatmap: {str(e)}")
+
+        # Try to show the figure, but don't crash if it fails
+        try:
+            fig.show()
+        except Exception as e:
+            print(f"⚠️ Could not display interactive heatmap: {str(e)}")
+            print("   Check the saved HTML file for visualization")
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""

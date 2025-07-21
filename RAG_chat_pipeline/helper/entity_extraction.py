@@ -1,7 +1,7 @@
 """Entity extraction utilities"""
 import re
 from typing import Dict, Any, List
-from config import SECTION_KEYWORDS
+from RAG_chat_pipeline.config.config import SECTION_KEYWORDS
 
 
 def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dict[str, Any]:
