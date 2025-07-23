@@ -13,8 +13,6 @@ from typing import Dict, List
 import sys
 from pathlib import Path
 
-# Add parent directory for imports
-sys.path.append(str(Path(__file__).parent))
 
 try:
     from RAG_chat_pipeline.helper.data_loader import get_sample_data

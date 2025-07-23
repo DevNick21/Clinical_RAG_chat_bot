@@ -1,3 +1,4 @@
+from RAG_chat_pipeline.config.config import LLM_MODEL
 import re
 from RAG_chat_pipeline.config.config import LLM_MODEL
 

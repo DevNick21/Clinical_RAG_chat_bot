@@ -1,14 +1,20 @@
+<<<<<<< HEAD
 /**
  * Message List Component - Displays chat messages
  */
 
 import React, { useEffect, useRef } from "react";
 import { Box, Typography, Stack, CircularProgress, Fade } from "@mui/material";
+=======
+import React, { useRef, useEffect } from "react";
+import { Box } from "@mui/material";
+>>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
 import Message from "./Message";
 
 const MessageList = ({ messages, loading }) => {
   const messagesEndRef = useRef(null);
 
+<<<<<<< HEAD
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -77,10 +83,20 @@ const MessageList = ({ messages, loading }) => {
       </Box>
     </Fade>
   );
+=======
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+>>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
 
   return (
     <Box
       sx={{
+<<<<<<< HEAD
         height: "100%",
         overflow: "auto",
         display: "flex",
@@ -126,6 +142,34 @@ const MessageList = ({ messages, loading }) => {
           <div ref={messagesEndRef} />
         </Box>
       )}
+=======
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1,
+        overflowY: "auto",
+        px: 2,
+        py: 1,
+      }}
+    >
+      {messages.map((message, index) => (
+        <Message
+          key={index}
+          message={message}
+          isUser={message.role === "user"}
+        />
+      ))}
+
+      {loading && (
+        <Box sx={{ display: "flex", alignItems: "flex-start", mb: 2 }}>
+          <div className="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </Box>
+      )}
+      <div ref={messagesEndRef} />
+>>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
     </Box>
   );
 };

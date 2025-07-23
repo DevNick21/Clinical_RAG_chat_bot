@@ -3,8 +3,13 @@ API Server for Clinical RAG Chat
 Connects React frontend to the RAG_chat_pipeline backend
 """
 
+<<<<<<< HEAD
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 from RAG_chat_pipeline.config.config import model_names, vector_stores
+=======
+from RAG_chat_pipeline.config.config import model_names, vector_stores
+from RAG_chat_pipeline.core.main import initialize_clinical_rag
+>>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
 import sys
 import os
 from pathlib import Path
@@ -12,12 +17,19 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+<<<<<<< HEAD
 # Add project root to path BEFORE importing any project modules
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # NOW import RAG system components (after path is set)
 
+=======
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+>>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
 # Import RAG system components
 
 # Initialize Flask app
