@@ -29,7 +29,7 @@ const Footer = () => {
           }}
         >
           <Typography variant="body2" color="text.secondary">
-            © 2025 Clinical RAG Assistant - Educational Purpose Only
+            © 2025 Clinical RAG Assistant
           </Typography>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
@@ -37,7 +37,7 @@ const Footer = () => {
               MIMIC Database Integration
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Powered by LangChain & FAISS
+              By Ekenedirichukwu Iheanacho
             </Typography>
           </Box>
         </Box>
@@ -52,8 +52,7 @@ const Footer = () => {
             fontStyle: "italic",
           }}
         >
-          ⚠️ This system is for educational purposes only. Always consult
-          qualified healthcare professionals for medical advice.
+          ⚠️ This system is for educational purposes only.
         </Typography>
       </Container>
     </Box>

@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from RAG_chat_pipeline.config.config import CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH, CHUNKED_DOCS_PATH
+from RAG_chat_pipeline.utils.data_provider import DataProvider
 
 
 def setup_clinical_embeddings():

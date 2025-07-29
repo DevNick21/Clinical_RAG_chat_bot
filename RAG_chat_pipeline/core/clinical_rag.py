@@ -1,15 +1,27 @@
 """Main clinical RAG chatbot"""
 import sys
+import re
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import OllamaLLM as Ollama
 from langchain_community.vectorstores import FAISS
 from typing import List
-from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY
+from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY, SECTION_KEYWORDS
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
 import time
+
+# Common medical term fragments for hallucination detection
+MEDICAL_KEYWORDS = [
+    'cardio', 'neuro', 'hepat', 'renal', 'pulmon', 'gastro', 'endo', 'immuno',
+    'oncol', 'hemat', 'psych', 'ortho', 'derm', 'ophthalm', 'oto', 'gyneco',
+    'obste', 'urolog', 'nephro', 'ather', 'ischemi', 'infarc', 'stenosis',
+    'arteri', 'ventric', 'systolic', 'diastol', 'hypertensi', 'fibrill',
+    'tachyc', 'bradyc', 'thromb', 'embol', 'aneurysm', 'failure', 'insuffic',
+    'pneumonia', 'diabetes', 'hypertension', 'sepsis', 'myocardial', 'cerebral',
+    'respiratory', 'cardiac', 'acute', 'chronic', 'syndrome', 'disease'
+]
 
 
 class ClinicalRAGBot:
@@ -28,18 +40,22 @@ class ClinicalRAGBot:
         self.condense_q_prompt = ChatPromptTemplate.from_messages([
             ("system", """Given the chat history and follow-up question, rephrase the follow-up question as a standalone medical question.
 
-CRITICAL: Preserve all medical identifiers and context:
-- Keep admission IDs (hadm_id) explicit: "admission 12345"
-- Maintain section references: diagnoses, procedures, labs, microbiology, prescriptions
-- Preserve temporal context: dates, times, sequences
-- Keep medical terminology precise
+CRITICAL INSTRUCTIONS:
+1. ONLY add context that was EXPLICITLY mentioned in the chat history
+2. DO NOT introduce new medical terminology, tests, or conditions
+3. ALWAYS maintain these elements from the chat history:
+   - Admission IDs (hadm_id): "admission 12345"
+   - Section references: diagnoses, procedures, labs, microbiology, prescriptions
+   - Temporal references: dates, times, sequences
 
 Example:
 History: "What diagnoses does admission 25282710 have?"
 Follow-up: "How serious are they?"
-Standalone: "How serious are the diagnoses for admission 25282710?"
+Good: "How serious are the diagnoses for admission 25282710?"
+BAD: "How serious are the pneumonia, heart failure, and diabetes diagnoses for admission 25282710?"
 
-The standalone question must be answerable without chat history while preserving all medical context."""),
+NEVER add specific medical conditions, test names, or procedures that weren't explicitly mentioned.
+Keep the rephrased question focused and concise."""),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}")
         ])
@@ -176,10 +192,12 @@ Context: {context}"""),
                     f"⚠️ FAISS search failed: {faiss_error}, using top {k} documents")
                 return candidate_docs[:k]
 
-    def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None):
+    def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
         """Simplified clinical search function"""
         start_time = time.time()
 
+        if original_question and original_question != question:
+            print(f"Original query: '{original_question}'")
         print(
             f"Query: '{question}' | hadm_id: {hadm_id} | subject_id: {subject_id} | section: {section}")
 
@@ -280,22 +298,70 @@ Context: {context}"""),
         return question, hadm_id, subject_id, section, k, extracted_entities
 
     def _process_chat_context(self, chat_history, question, hadm_id=None, subject_id=None, section=None):
-        """Centralized chat history processing"""
+        """Centralized chat history processing with comprehensive debugging"""
         if not chat_history:
+            print("ℹ️ No chat history to process")
             return question, hadm_id, subject_id, section, {}
 
         try:
+            # Debug: Log chat history length and content
+            print(f"ℹ️ Processing chat history: {len(chat_history)} messages")
+            print(
+                f"ℹ️ Last 2 messages: {chat_history[-2:] if len(chat_history) >= 2 else chat_history}")
+            print(f"ℹ️ Original question: '{question}'")
+            print(
+                f"ℹ️ Initial parameters - hadm_id: {hadm_id}, section: {section}")
+
             # Extract context from chat history
             chat_context = extract_context_from_chat_history(
                 chat_history, question)
 
+            print(f"ℹ️ Extracted chat context: {chat_context}")
+
             # Use chat context if parameters not explicitly provided
+            old_hadm_id, old_subject_id, old_section = hadm_id, subject_id, section
             hadm_id = hadm_id or chat_context.get("hadm_id")
             subject_id = subject_id or chat_context.get("subject_id")
             section = section or chat_context.get("section")
 
-            # Rephrase question using chat history
-            if len(chat_history) > 0:
+            # Debug: Log parameter updates from chat context
+            if hadm_id != old_hadm_id or subject_id != old_subject_id or section != old_section:
+                print(
+                    f"ℹ️ Updated parameters from chat history - hadm_id: {hadm_id}, section: {section}")
+
+            # Store original question for validation
+            original_question = question
+
+            # IMPROVED: More strict rephrasing condition
+            # 1. Only rephrase if this is a follow-up question that needs context
+            # 2. Don't rephrase if the question already contains specific context
+            has_admission_context = "admission" in question.lower() and (
+                hadm_id is not None and str(hadm_id) in question
+            )
+            has_section_context = section and any(
+                kw in question.lower() for kw in SECTION_KEYWORDS.get(section, [])
+            )
+
+            # Check if question is likely a follow-up (short and without context)
+            is_likely_followup = len(
+                question.split()) < 10 and not has_admission_context
+
+            needs_rephrasing = (
+                len(chat_history) > 0 and
+                is_likely_followup and
+                not (has_admission_context or has_section_context)
+            )
+
+            # Debug: Log rephrasing decision
+            print(
+                f"ℹ️ Rephrasing decision - needs_rephrasing: {needs_rephrasing}")
+            print(f"  - has_admission_context: {has_admission_context}")
+            print(f"  - has_section_context: {has_section_context}")
+            print(f"  - is_likely_followup: {is_likely_followup}")
+
+            if needs_rephrasing:
+                print(f"🔄 Rephrasing question using chat history...")
+                # Rephrase question using chat history
                 rephrased = safe_llm_invoke(
                     self.llm,
                     self.condense_q_prompt.format_messages(
@@ -303,12 +369,79 @@ Context: {context}"""),
                     fallback_message=question,
                     context="Question rephrasing"
                 )
-                question = rephrased if isinstance(rephrased, str) and len(
-                    rephrased.strip()) > 5 else question
+
+                print(f"ℹ️ Raw rephrased result: '{rephrased}'")
+
+                # Clean up the rephrased question
+                if isinstance(rephrased, str) and len(rephrased.strip()) > 5:
+                    # IMPROVED: More comprehensive prefix removal
+                    rephrased = re.sub(
+                        r'^(The standalone medical question is:?\s*|Standalone question:?\s*|Rephrased question:?\s*|The question is:?\s*)',
+                        '',
+                        rephrased,
+                        flags=re.IGNORECASE
+                    )
+                    rephrased = rephrased.strip('" \t\n\'')
+
+                    print(f"ℹ️ Cleaned rephrased question: '{rephrased}'")
+
+                    # IMPROVED: Better validation to prevent hallucinations
+                    # 1. Check length ratio
+                    # 2. Check for medical terms not in original question
+                    # 3. Check for admission ID preservation
+                    length_ratio = len(rephrased) / \
+                        max(1, len(original_question))
+
+                    # Extract medical terminology that might be hallucinations
+                    original_tokens = set(original_question.lower().split())
+                    rephrased_tokens = set(rephrased.lower().split())
+                    new_tokens = rephrased_tokens - original_tokens
+
+                    # Check for potentially added medical terms
+                    medical_terms_added = [token for token in new_tokens if any(
+                        med_term in token for med_term in MEDICAL_KEYWORDS) or len(token) > 8]
+
+                    # Check if rephrased has the admission ID
+                    has_admission_id = hadm_id and str(hadm_id) in rephrased
+
+                    # Debug: Log validation metrics
+                    print(f"ℹ️ Validation - length ratio: {length_ratio:.2f}")
+                    print(f"ℹ️ Validation - new tokens: {new_tokens}")
+                    print(
+                        f"ℹ️ Validation - potentially added medical terms: {medical_terms_added}")
+                    print(
+                        f"ℹ️ Validation - has admission ID: {has_admission_id}")
+
+                    # Decide if the rephrasing is valid or needs simplification
+                    use_simple = (
+                        length_ratio > 2.5 or  # Too much longer
+                        # Too many new medical terms
+                        len(medical_terms_added) > 2
+                    )
+
+                    if use_simple:
+                        # Simpler and more predictable rephrasing
+                        if hadm_id:
+                            question = f"For admission {hadm_id}, {original_question}"
+                        else:
+                            question = original_question
+                        print(
+                            f"⚠️ Rephrased question too complex, using simplified version: '{question}'")
+                    else:
+                        question = rephrased
+                        print(f"✓ Using rephrased question: '{question}'")
+                else:
+                    print(f"⚠️ Invalid rephrased result, keeping original question")
+            else:
+                print(
+                    f"ℹ️ No rephrasing needed - question already has sufficient context")
 
             return question, hadm_id, subject_id, section, chat_context
         except Exception as e:
-            print(f"⚠️ Chat context processing failed: {e}")
+            print(f"❌ Chat context processing failed: {e}")
+            # Print stack trace for debugging
+            import traceback
+            print(traceback.format_exc())
             return question, hadm_id, subject_id, section, {}
 
     def _validate_question(self, question):
@@ -432,6 +565,7 @@ Context: {context}"""),
                 question, hadm_id, subject_id, section, k)
 
             # Process chat context if conversational
+            original_question = question
             if is_conversational and chat_history:
                 search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
                     chat_history, question, hadm_id, subject_id, section)
@@ -441,7 +575,7 @@ Context: {context}"""),
 
             # Perform search
             result = self.clinical_search(
-                search_question, hadm_id, subject_id, section, k, chat_history)
+                search_question, hadm_id, subject_id, section, k, chat_history, original_question)
 
             # Update chat history if conversational
             if is_conversational:
@@ -496,12 +630,31 @@ Context: {context}"""),
             print(
                 f"Called from: {caller_filename} in function {caller_function}")
 
+        # Debug: Log incoming parameters
+        print(f"🔍 Chat method inputs:")
+        print(f"  - Message: '{message}'")
+        print(f"  - Chat history type: {type(chat_history)}")
+        print(
+            f"  - Chat history length: {len(chat_history) if chat_history else 0}")
+        if chat_history:
+            print(
+                f"  - Chat history sample: {chat_history[:2] if len(chat_history) >= 2 else chat_history}")
+
         # Convert chat history format if needed
         processed_chat_history = self._process_api_chat_history(chat_history)
+
+        # Debug: Log processed chat history
+        print(f"🔍 Processed chat history:")
+        print(f"  - Type: {type(processed_chat_history)}")
+        print(f"  - Length: {len(processed_chat_history)}")
+        if processed_chat_history:
+            print(
+                f"  - Sample: {processed_chat_history[:2] if len(processed_chat_history) >= 2 else processed_chat_history}")
 
         # Truncate chat history if too long
         if processed_chat_history and len(processed_chat_history) > MAX_CHAT_HISTORY:
             processed_chat_history = processed_chat_history[-MAX_CHAT_HISTORY:]
+            print(f"⚠️ Chat history truncated to {MAX_CHAT_HISTORY} messages")
 
         # For non-evaluation contexts, verify message is likely from user input
         if not is_evaluation:
@@ -523,22 +676,37 @@ Context: {context}"""),
     def _process_api_chat_history(self, chat_history):
         """Convert API chat history format to internal format"""
         if not chat_history:
+            print("ℹ️ No chat history to process in _process_api_chat_history")
             return []
 
+        print(f"ℹ️ Processing API chat history: {len(chat_history)} items")
         processed = []
-        for msg in chat_history:
+        for i, msg in enumerate(chat_history):
+            print(
+                f"ℹ️ Processing message {i}: type={type(msg)}, content={msg}")
+
             if isinstance(msg, dict):
                 # Handle API format: {"role": "user", "content": "message"}
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if content.strip():
                     processed.append((role, content))
+                    print(
+                        f"  ✓ Added dict format: ({role}, '{content[:50]}...')")
+                else:
+                    print(f"  ⚠️ Skipped empty dict content")
             elif isinstance(msg, (list, tuple)) and len(msg) >= 2:
                 # Handle tuple format: (role, message)
                 role, content = msg[0], msg[1]
                 if content.strip():
                     processed.append((role, content))
+                    print(
+                        f"  ✓ Added tuple format: ({role}, '{content[:50]}...')")
+                else:
+                    print(f"  ⚠️ Skipped empty tuple content")
             else:
-                print(f"Warning: Unexpected chat history format: {type(msg)}")
+                print(
+                    f"  ❌ Warning: Unexpected chat history format: {type(msg)}")
 
+        print(f"ℹ️ Final processed chat history: {len(processed)} messages")
         return processed

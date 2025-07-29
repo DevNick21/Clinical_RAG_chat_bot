@@ -9,14 +9,9 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple
-<<<<<<< HEAD
 import matplotlib.pyplot as plt
 import seaborn as sns
-=======
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
->>>>>>> 7c90853c1390cb163736bc666c7e2b148c1988b4
 from dataclasses import dataclass, asdict
 from RAG_chat_pipeline.config.config import model_names, llms
 

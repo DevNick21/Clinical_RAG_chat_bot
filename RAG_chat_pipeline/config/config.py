@@ -39,7 +39,7 @@ MODELS_DIR = BASE / "models"
 
 # Path where the model will be saved locally or existing model will be loaded from
 LOCAL_MODEL_PATH = MODELS_DIR / model_names[model_in_use][0]
-LLM_MODEL = llms["deepseek"]
+LLM_MODEL = llms["phi3"]
 
 # Embedding model for vector embeddings
 EMBEDDING_MODEL = model_names[model_in_use][0]

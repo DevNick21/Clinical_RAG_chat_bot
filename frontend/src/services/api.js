@@ -18,7 +18,8 @@ class ApiService {
    */
   async sendMessage(message, chatHistory = []) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
+      // Direct API call without proxy
+      const response = await fetch(`${this.baseUrl}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -70,7 +71,7 @@ class ApiService {
    */
   async getModels() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/models`, {
+      const response = await fetch(`${this.baseUrl}/models`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -113,10 +114,15 @@ class ApiService {
    */
   async checkHealth() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/models`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds timeout
+
+      const response = await fetch(`${this.baseUrl}/models`, {
         method: "GET",
-        timeout: 5000,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       return false;
