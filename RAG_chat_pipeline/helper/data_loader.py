@@ -69,5 +69,7 @@ if __name__ == "__main__":
     sample_data = get_sample_data()
     if sample_data:
         print("\nSample data loaded successfully!")
-        print(f"Sample admission IDs: {sample_data['sample_hadm_ids'][:3]}")
-        print(f"Common diagnoses: {sample_data['common_diagnoses'][:2]}")
+        print(f"Sample admission IDs: {sample_data['hadm_ids'][:3]}")
+        print(f"Common diagnoses: {sample_data['diagnoses'][:2]}")
+        print(f"Common labs: {sample_data['labs'][:2]}")
+        print(f"Common medications: {sample_data['meds'][:2]}")

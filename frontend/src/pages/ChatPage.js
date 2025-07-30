@@ -209,7 +209,11 @@ const ChatPage = () => {
       >
         {/* Messages Area */}
         <Box sx={{ flex: 1, overflow: "hidden" }}>
-          <MessageList messages={messages} loading={loading} />
+          <MessageList
+            messages={messages}
+            loading={loading}
+            onSuggestionClick={sendMessage}
+          />
         </Box>
 
         {/* Loading Indicator */}

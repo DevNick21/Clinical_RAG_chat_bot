@@ -2,17 +2,50 @@
  * Message List Component - Displays chat messages
  */
 
-import React, { useEffect, useRef } from "react";
-import { Box, Typography, Stack, CircularProgress, Fade } from "@mui/material";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Box,
+  Typography,
+  Stack,
+  CircularProgress,
+  Fade,
+  Chip,
+} from "@mui/material";
 import Message from "./Message";
+import apiService from "../services/api";
 
-const MessageList = ({ messages, loading }) => {
+const MessageList = ({ messages, loading, onSuggestionClick }) => {
   const messagesEndRef = useRef(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Load sample suggestions when component mounts
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      try {
+        setLoadingSuggestions(true);
+        const sampleSuggestions = await apiService.getSampleSuggestions();
+        setSuggestions(sampleSuggestions.slice(0, 3)); // Show only first 3
+      } catch (error) {
+        console.error("Failed to load suggestions:", error);
+        // Use fallback suggestions
+        setSuggestions([
+          "What diagnoses does patient 10000032 have?",
+          "Show me lab results for admission 25282710",
+          "What medications were prescribed for patient 10006508?",
+        ]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    loadSuggestions();
+  }, []);
 
   const renderWelcomeMessage = () => (
     <Fade in timeout={800}>
@@ -50,10 +83,54 @@ const MessageList = ({ messages, loading }) => {
             • Microbiology culture results
           </Typography>
         </Stack>
-        <Typography variant="body2" sx={{ mt: 3, fontStyle: "italic" }}>
-          Try asking: "What diagnoses does patient 10000032 have?" or "Show me
-          lab results for admission 25282710"
-        </Typography>
+        {loadingSuggestions ? (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 3 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2" sx={{ fontStyle: "italic" }}>
+              Loading sample queries...
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="body2" sx={{ mb: 2, fontStyle: "italic" }}>
+              Try asking (click to use):
+            </Typography>
+            <Stack spacing={1} alignItems="center">
+              {suggestions.map((suggestion, index) => (
+                <Chip
+                  key={index}
+                  label={`"${suggestion}"`}
+                  variant="outlined"
+                  size="small"
+                  clickable
+                  onClick={() =>
+                    onSuggestionClick && onSuggestionClick(suggestion)
+                  }
+                  sx={{
+                    maxWidth: "600px",
+                    height: "auto",
+                    whiteSpace: "normal",
+                    textAlign: "center",
+                    py: 1,
+                    cursor: "pointer",
+                    "&:hover": {
+                      backgroundColor: "primary.main",
+                      borderColor: "primary.main",
+                      "& .MuiChip-label": {
+                        color: "white",
+                      },
+                    },
+                    "& .MuiChip-label": {
+                      display: "block",
+                      whiteSpace: "normal",
+                      lineHeight: 1.2,
+                    },
+                  }}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
       </Box>
     </Fade>
   );

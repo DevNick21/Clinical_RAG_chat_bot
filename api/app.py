@@ -51,9 +51,24 @@ def chat():
     user_message = data['message']
     chat_history = data.get('chat_history', [])
 
+    # Debug: Log incoming request details
+    print(f"🔍 API Chat Request:")
+    print(f"  - Message: '{user_message}'")
+    print(
+        f"  - Chat history length: {len(chat_history) if chat_history else 0}")
+    if chat_history:
+        print(
+            f"  - Last 2 history items: {chat_history[-2:] if len(chat_history) >= 2 else chat_history}")
+
     # Process with RAG system
     try:
         response = chatbot.chat(user_message, chat_history)
+
+        # Debug: Log response details
+        print(f"✅ API Chat Response:")
+        print(f"  - Response length: {len(str(response))}")
+        print(f"  - Response preview: {str(response)[:200]}...")
+
         return jsonify({
             'response': response,
             'sources': chatbot.sources if hasattr(chatbot, 'sources') else []
@@ -72,6 +87,64 @@ def get_models():
         'embedding_models': list(model_names.keys()),
         'vector_stores': list(vector_stores.keys())
     })
+
+
+@app.route('/api/sample-suggestions', methods=['GET'])
+def get_sample_suggestions():
+    """Return sample query suggestions with real data"""
+    try:
+        from RAG_chat_pipeline.helper.data_loader import get_sample_data
+        import random
+
+        sample_data = get_sample_data()
+        if not sample_data:
+            # Fallback suggestions if data loading fails
+            return jsonify({
+                'suggestions': [
+                    "What diagnoses does patient 10000032 have?",
+                    "Show me lab results for admission 25282710",
+                    "What medications were prescribed for patient 10006508?"
+                ]
+            })
+
+        # Get random sample of HADM IDs
+        hadm_ids = sample_data['hadm_ids']
+        random_hadm_ids = random.sample(hadm_ids, min(10, len(hadm_ids)))
+
+        # Create varied suggestions using real data
+        suggestion_templates = [
+            "What diagnoses are recorded for admission {}?",
+            "Show me lab results for admission {}",
+            "What medications were prescribed for admission {}?",
+            "What procedures were performed during admission {}?",
+            "Show me microbiology results for admission {}",
+            "What transfers occurred during admission {}?",
+            "Tell me about the patient demographics for admission {}",
+            "What are the vital signs recorded for admission {}?",
+            "Show me pharmacy records for admission {}",
+            "What services were involved in admission {}?"
+        ]
+
+        # Generate suggestions with random HADM IDs
+        suggestions = []
+        for i, template in enumerate(suggestion_templates):
+            hadm_id = random_hadm_ids[i % len(random_hadm_ids)]
+            suggestions.append(template.format(hadm_id))
+
+        return jsonify({
+            'suggestions': suggestions
+        })
+
+    except Exception as e:
+        print(f"Error getting sample suggestions: {e}")
+        # Fallback suggestions
+        return jsonify({
+            'suggestions': [
+                "What diagnoses does patient 10000032 have?",
+                "Show me lab results for admission 25282710",
+                "What medications were prescribed for patient 10006508?"
+            ]
+        })
 
 # Serve React static files in production
 

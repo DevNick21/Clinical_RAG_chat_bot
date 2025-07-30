@@ -42,20 +42,23 @@ class ClinicalRAGBot:
 
 CRITICAL INSTRUCTIONS:
 1. ONLY add context that was EXPLICITLY mentioned in the chat history
-2. DO NOT introduce new medical terminology, tests, or conditions
-3. ALWAYS maintain these elements from the chat history:
+2. DO NOT introduce new medical terminology, tests, conditions, or ICD codes
+3. DO NOT add specific disease names, medication names, or test names unless they were mentioned
+4. ALWAYS maintain these elements from the chat history:
    - Admission IDs (hadm_id): "admission 12345"
    - Section references: diagnoses, procedures, labs, microbiology, prescriptions
    - Temporal references: dates, times, sequences
 
 Example:
-History: "What diagnoses does admission 25282710 have?"
-Follow-up: "How serious are they?"
-Good: "How serious are the diagnoses for admission 25282710?"
-BAD: "How serious are the pneumonia, heart failure, and diabetes diagnoses for admission 25282710?"
+History: "What medications were prescribed for admission 25282710?"
+Follow-up: "What are the diagnoses for this patient?"
+Good: "What diagnoses are recorded for admission 25282710?"
+BAD: "What diagnoses like pneumonia, heart failure, and diabetes are recorded for admission 25282710?"
 
-NEVER add specific medical conditions, test names, or procedures that weren't explicitly mentioned.
-Keep the rephrased question focused and concise."""),
+FORBIDDEN: Adding specific medical conditions (pneumonia, diabetes, K5080, etc.), 
+test names (CBC, MRI, etc.), or medications (insulin, aspirin, etc.) that weren't explicitly mentioned.
+
+Keep the rephrased question focused, concise, and free of hallucinated medical terms."""),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}")
         ])
@@ -385,20 +388,51 @@ Context: {context}"""),
 
                     print(f"ℹ️ Cleaned rephrased question: '{rephrased}'")
 
-                    # IMPROVED: Better validation to prevent hallucinations
-                    # 1. Check length ratio
-                    # 2. Check for medical terms not in original question
-                    # 3. Check for admission ID preservation
-                    length_ratio = len(rephrased) / \
-                        max(1, len(original_question))
+                    # Quick hallucination check - look for common problematic patterns
+                    hallucination_patterns = [
+                        r'\b[A-Z]\d{4,5}\b',  # ICD-like codes (K5080, etc.)
+                        r'\bcode\s*[A-Z]?\d+',  # "code K5080"
+                        # Common medical terms
+                        r'\b(pneumonia|diabetes|hypertension|sepsis|myocardial|stroke)\b'
+                    ]
+
+                    has_hallucination = any(re.search(pattern, rephrased, re.IGNORECASE)
+                                            for pattern in hallucination_patterns)
+
+                    if has_hallucination:
+                        print(
+                            f"🚨 HALLUCINATION DETECTED in rephrased question: '{rephrased}'")
+                        print(
+                            f"🚨 Forcing template-based rephrasing to prevent hallucination")
+                        # Force template-based approach
+                        if hadm_id:
+                            question = f"For admission {hadm_id}, {original_question}"
+                        else:
+                            question = original_question
+                        print(
+                            f"✓ Using safe template-based question: '{question}'")
+                    else:
+                        # IMPROVED: Better validation to prevent hallucinations
+                        # 1. Check length ratio
+                        # 2. Check for medical terms not in original question
+                        # 3. Check for admission ID preservation
+                        length_ratio = len(rephrased) / \
+                            max(1, len(original_question))
 
                     # Extract medical terminology that might be hallucinations
                     original_tokens = set(original_question.lower().split())
                     rephrased_tokens = set(rephrased.lower().split())
                     new_tokens = rephrased_tokens - original_tokens
 
-                    # Check for potentially added medical terms
-                    medical_terms_added = [token for token in new_tokens if any(
+                    # Extract tokens from chat history to allow legitimate context
+                    chat_tokens = set()
+                    for role, msg in chat_history[-4:]:  # Last 4 messages
+                        if isinstance(msg, str):
+                            chat_tokens.update(msg.lower().split())
+
+                    # Check for potentially added medical terms (not in original OR chat history)
+                    suspicious_tokens = new_tokens - chat_tokens
+                    medical_terms_added = [token for token in suspicious_tokens if any(
                         med_term in token for med_term in MEDICAL_KEYWORDS) or len(token) > 8]
 
                     # Check if rephrased has the admission ID
@@ -406,30 +440,51 @@ Context: {context}"""),
 
                     # Debug: Log validation metrics
                     print(f"ℹ️ Validation - length ratio: {length_ratio:.2f}")
-                    print(f"ℹ️ Validation - new tokens: {new_tokens}")
+                    # Limit output
                     print(
-                        f"ℹ️ Validation - potentially added medical terms: {medical_terms_added}")
+                        f"ℹ️ Validation - new tokens: {list(new_tokens)[:10]}...")
+                    print(
+                        f"ℹ️ Validation - chat tokens sample: {list(chat_tokens)[:10]}...")
+                    print(
+                        f"ℹ️ Validation - suspicious medical terms: {medical_terms_added}")
                     print(
                         f"ℹ️ Validation - has admission ID: {has_admission_id}")
 
                     # Decide if the rephrasing is valid or needs simplification
                     use_simple = (
-                        length_ratio > 2.5 or  # Too much longer
-                        # Too many new medical terms
-                        len(medical_terms_added) > 2
+                        length_ratio > 3.0 or  # Much too longer
+                        # Any suspicious medical terms
+                        len(medical_terms_added) > 1 or
+                        # Too many new words overall
+                        len(suspicious_tokens) > 8
                     )
 
                     if use_simple:
-                        # Simpler and more predictable rephrasing
-                        if hadm_id:
-                            question = f"For admission {hadm_id}, {original_question}"
+                        # Simpler and more predictable rephrasing using templates
+                        if hadm_id and section:
+                            question = f"For admission {hadm_id}, what {section} information is available? {original_question}"
+                        elif hadm_id:
+                            # Create better contextual rephrasing based on question type
+                            if any(word in original_question.lower() for word in ['diagnose', 'diagnosis', 'condition']):
+                                question = f"What diagnoses are recorded for admission {hadm_id}?"
+                            elif any(word in original_question.lower() for word in ['medication', 'drug', 'prescription', 'med']):
+                                question = f"What medications were prescribed for admission {hadm_id}?"
+                            elif any(word in original_question.lower() for word in ['lab', 'test', 'result']):
+                                question = f"What lab results are available for admission {hadm_id}?"
+                            elif any(word in original_question.lower() for word in ['procedure', 'surgery', 'operation']):
+                                question = f"What procedures were performed for admission {hadm_id}?"
+                            elif any(word in original_question.lower() for word in ['microbiology', 'culture', 'organism']):
+                                question = f"What microbiology results are available for admission {hadm_id}?"
+                            else:
+                                question = f"For admission {hadm_id}, {original_question}"
                         else:
                             question = original_question
                         print(
-                            f"⚠️ Rephrased question too complex, using simplified version: '{question}'")
+                            f"⚠️ Rephrased question failed validation, using template-based version: '{question}'")
                     else:
                         question = rephrased
-                        print(f"✓ Using rephrased question: '{question}'")
+                        print(
+                            f"✓ Using validated rephrased question: '{question}'")
                 else:
                     print(f"⚠️ Invalid rephrased result, keeping original question")
             else:

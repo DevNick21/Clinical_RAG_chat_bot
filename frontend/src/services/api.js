@@ -3,7 +3,8 @@
  * Handles all communication with the Flask backend
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 class ApiService {
   constructor() {
@@ -106,6 +107,36 @@ class ApiService {
       role: msg.type === "user" ? "user" : "assistant",
       content: msg.content,
     }));
+  }
+
+  /**
+   * Get sample query suggestions with real HADM IDs
+   * @returns {Promise<Array>} Array of sample suggestions
+   */
+  async getSampleSuggestions() {
+    try {
+      const response = await fetch(`${this.baseUrl}/sample-suggestions`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.suggestions || [];
+    } catch (error) {
+      console.error("Sample suggestions API Error:", error);
+      // Return fallback suggestions
+      return [
+        "What diagnoses does patient 10000032 have?",
+        "Show me lab results for admission 25282710",
+        "What medications were prescribed for patient 10006508?",
+      ];
+    }
   }
 
   /**
