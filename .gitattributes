@@ -162,6 +162,7 @@ CONTRIBUTING* text eol=lf
 
 # ---- Exclude from language statistics ----
 # Don't count these in GitHub's language breakdown
+report/* linguist-documentation
 models/* linguist-vendored
 vector_stores/* linguist-vendored
 mimic_sample_1000/* linguist-vendored
