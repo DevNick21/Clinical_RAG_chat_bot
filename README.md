@@ -1,558 +1,69 @@
-# Clinical RAG System for MIMIC-IV Data Analysis
+# Preamble
 
-A comprehensive Retrieval-Augmented Generation (RAG) system designed for analyzing clinical data from the MIMIC-IV dataset. This system enables natural language querying of patient medical records and provides a robust evaluation framework for comparing different language models and embedding approaches.
+Before embarking on this journey, I suggest you read my [LaTeX](https://bitsilla.com/blog/2019/01/latex-tips-for-your-dissertation-or-project-write-up/) and [content](https://bitsilla.com/blog/2019/03/content-tips-for-your-dissertation-or-project-write-up/) tips.
 
-## 🏥 Project Overview
+# University of Malta &ndash; LaTeX Dissertation (or Thesis) Template
 
-This project implements a production-ready clinical RAG system that:
+Let us not waste any time, you have a project to write up!  [Here](https://github.com/jp-um/university_of_malta_LaTeX_dissertation_template/blob/master/dissertation_main.pdf) is a complete example (PDF format) of what this LaTeX template looks like.  Or quicker...
 
-- **Processes MIMIC-IV hospital data** into structured, searchable documents
-- **Supports multiple embedding models** for optimal medical text representation
-- **Enables conversational interaction** with patient medical records
-- **Provides comprehensive evaluation metrics** for system performance assessment
-- **Compares different LLM and embedding combinations** systematically
-- **Includes a React-based web interface** for easy clinical data querying
+<img src="images/pg1.png" width="400"><img src="images/pg2.png" width="400">
+<img src="images/pg3.png" width="400"><img src="images/pg4.png" width="400">
 
-## 🏗️ System Architecture
+Now back to the boring bits ...
 
-```mermaid
-graph TD
-    A[MIMIC-IV Data] --> B[Data Processing Pipeline]
-    B --> C[Document Chunking & Embedding]
-    C --> D[FAISS Vector Database]
-    D --> E[LangChain RAG Pipeline]
-    E --> F[Clinical RAG Bot]
-    F --> G[Results & Evaluation]
+A modern, highly configurable assignment/project/fyp/dissertation/thesis template for the University of Malta.  (In reality, there is nothing specific to the University of Malta, and this LaTeX class may be used anywhere).  This template is loosely based on my D.Phil. Thesis at the University of Oxford, which was loosely based on ...  You get the drift.
 
-    H[React Frontend] --> I[Flask API Server]
-    I --> F
+This template was clearly needed, as I keep correcting/examining poorly and inconsistently formatted dissertations all the time.  Updates to the template with examples (2-page landscape table anyone?) are greatly appreciated -- either through pull requests, github issues or emails (jean.p.ebejer@um.edu.mt).
+
+The main file is `dissertation_main.tex`, and this will show you how to organise your dissertation.  Basically replace all `\blindtext` commands with your content and you are there, ready to print.  This is obviously a case of something more easily said than done.
+
+I am also keen on keeping an FAQ with the most common LaTeX problems, which you are bound to face on the night before your submission deadline.
+
+## FAQ
+
+### What is the difference (if any) between a thesis and a dissertation?
+
+> University of Malta regulations specify a thesis only in case of PhD, and SThD degrees.  In all other cases it is a dissertation.
+
+Bet you didn't know this one bit of academic trivia!  (Note: The answer is specific to the University of Malta, answer given by our dear registrar, Ms Veronica Grech).
+
+### May I use this template for my assignment?  What changes do I need?
+
+You must, not should!  You should view any written submission as a training opportunity for your final dissertation.  Getting familiar with the template will help you out later in the course.  Of course, some (very) minor changes to the template are required; as follows:
+
+- From `dissertation_main.tex` comment out (`%`) frontmatter sections for originality, dedication, acknowledgements, and abstract (these would look silly in an assignment).  
+- Also, from the same file `dissertation_main.tex` comment out all the appendix material (unless you actually have an appendix; unlikely)
+
+(Let me know if any more changes are required)
+
+### But how do I use (build) this?
+
+Well, this is the sort of thing your supervisor would expect you to find out on your own.  However, you can either use a GUI like ~~TexMaker (this is what I use) or~~ TexStudio.  Or if you are so inclined, to build your document from the command line (in the directory where `dissertation_main.tex` resides):
+
+```
+latexmk -pdf
 ```
 
-### Core Components
+This generates a lot of clutter, but it is important to go through it as some warnings can give you valuable insight on stuff to fix for a perfect presentation. To clean all the LaTeX generated files:
 
-1. **Data Processing Pipeline** (`data_handling/`)
-   - Converts MIMIC-IV CSV data to structured documents
-   - Creates semantic chunks optimized for clinical queries
-   - Supports multiple vector stores with different embedding models
-
-2. **Clinical RAG Bot** (`RAG_chat_pipeline/core/clinical_rag.py`)
-   - Handles both single questions and conversational interactions
-   - Supports admission-specific and global semantic search
-   - Includes entity extraction for automatic parameter detection
-
-3. **Evaluation Framework** (`RAG_chat_pipeline/benchmarks/`)
-   - Multi-dimensional scoring: Factual Accuracy (60%), Behavior (30%), Performance (10%)
-   - Category-specific validation for different medical question types
-   - Automated gold question generation from real patient data
-   - Chat history evaluation for conversational scenarios
-
-4. **Model Comparison System** (`RAG_chat_pipeline/benchmarks/model_evaluation_runner.py`)
-   - Systematic evaluation across multiple model combinations
-   - Automated results collection and analysis
-   - Performance visualization and reporting
-
-5. **Configuration Management** (`RAG_chat_pipeline/config/`)
-   - Centralized model and system configuration
-   - Easy switching between embedding models and LLMs
-
-6. **Data Abstraction Layer** (`RAG_chat_pipeline/utils/data_provider.py`)
-   - Seamless switching between real MIMIC-IV and synthetic data
-   - Consistent data interface across the system
-
-## 📊 Supported Models
-
-### Embedding Models
-
-- **All-MiniLM-L6-v2** - General-purpose lightweight model (default)
-- **S-PubMedBert-MS-MARCO** - Medical domain-optimized model
-- **Multi-QA-MPNet** - Multi-domain question-answering model
-- **BiomedNLP-PubMedBERT** - Biomedical NLP model
-- **All-MPNet-Base-v2** - Powerful general-purpose model
-- **E5-Base-v2** - Efficient sentence embedding model
-- **BioLORD-2023-C** - Specialized biomedical language model
-- **BioBERT** - Biomedical text mining model
-- **S-PubMedBert-MedQuAD** - Medical QA specialized model
-
-### Language Models (via Ollama)
-
-- **DeepSeek-R1** (1.5B) - Reasoning-focused model (default)
-- **Qwen3** (1.7B) - Multilingual capabilities
-- **Llama3.2** - Meta's efficient language model
-- **Gemma** (2B) - Google's lightweight model
-- **Phi3** (3.8B) - Microsoft's instruction-following model
-- **TinyLlama** (1.1B) - Compact and efficient model
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- Node.js 16+ (for frontend, v18+ recommended for all dependencies)
-- MIMIC-IV dataset access (optional - synthetic data available for demo purposes)
-- GPU recommended but not required
-- Ollama for local LLM support
-
-```bash
-# Install Ollama: https://ollama.ai/
-# Pull required LLM models
-ollama pull deepseek-r1:1.5b
-ollama pull qwen3:1.7b
-ollama pull llama3.2:latest
-ollama pull gemma:2b
-ollama pull phi3:3.8b
-ollama pull tinyllama:1.1b
+```
+latexmk -c
 ```
 
-### Installation
+Note that this will leave the generated `pdf` file, as is desirable most of the cases.
 
-1. Clone the repository:
+### I am a foe of the environment, and don't want to double side print -- how do I fix this?
 
-   ```bash
-   git clone https://github.com/DevNick21/msc_project.git
-   cd msc_project
-   ```
+Well, first of all, **you moron**.  Secondly, by default the template uses two-sided printing settings (margins, recto openings for chapters, table of contents,  etc.).  If you want to change that, simply pass `oneside` as an option to the document class (as opposed to `twoside`).  I suggest you use double-sided layout and printing when you print the examiner's copy (we hate carrying thick manuscripts around) and single sided when you've handed in your corrections, and given out your final copies (to the library, to your supervisors, etc.).
 
-2. Create and activate a virtual environment:
+### Why are there so many blank pages?
 
-   ```bash
-   python -m venv venv
-   # Windows:
-   venv\Scripts\activate
-   # Linux/macOS:
-   source venv/bin/activate
-   ```
+First, blank pages are only generated with the `twopage` option.  This is because typesetters don't start new chapters (and abstracts/acknowledgements/etc.) on the *verso* side (left in the western-world) when using both sides of the paper.  Chapters start on the *recto* side (right), so an empty page is inserted if the chapter start falls on the *verso* side (left).  The `onepage` option clearly has no empty pages (or has blank pages at the back of each paper, so every *verso* page is empty).  Note that the page margins are different for the *recto* and *verso* sides in the `twopage` option, this is because of the spline (which is on the right for *verso* and left for *recto*).  I hope this is clear, I am an amateur typesetter.
 
-3. Install the project in development mode (makes imports work correctly):
+### My supervisor(s) says section X should be named Y.  What should I do?
 
-   ```bash
-   # This installs the project in development mode
-   pip install -e .
-   ```
+It is always counter-productive to **not** listen to your supervisor.  This is a generic template, and your specific use-case may have different requirements.  For example, in some departments it is common to have a "Methodology" section instead of the (more experimental) "Materials & Methods".  Elsewhere, the "Evaluation" section is sometimes merged in the "Results and Discussion" chapter.  Some faculties require a standard cover page.  This template is very flexible, and any changes are easy/trivial to make.  The important thing is to use good judgement and that **you follow your supervisor's advice**.
 
-4. Install frontend dependencies (optional - only needed if using the web interface):
+### For references, which is better [42] or [Ebejer et al., 2019]?
 
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
-
-### Running the Clinical RAG System
-
-#### Model Evaluation Framework
-
-Run evaluations to compare different model combinations (make sure your virtual environment is activated):
-
-```bash
-# Activate virtual environment (Windows)
-venv\Scripts\activate  # CMD
-# OR
-source venv/Scripts/activate  # Bash/Git Bash
-
-# Quick test for a specific model combination
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
-
-# Run full evaluation for all model combinations
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner all --type full
-
-# Generate a report from existing evaluations
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner report
-```
-
-#### Web Interface
-
-You can start both the Flask API server and React frontend with the provided convenience scripts:
-
-**Windows:**
-
-```bash
-# Just double-click or run:
-start_app.bat
-```
-
-**macOS/Linux:**
-
-```bash
-# Make executable first:
-chmod +x start_app.sh
-# Then run:
-./start_app.sh
-```
-
-Or start them separately:
-
-```bash
-# Start API server
-python api/app.py
-
-# In a separate terminal, start React frontend
-cd frontend
-npm start
-```
-
-Then visit [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Data Setup
-
-You have two options for data:
-
-#### Option 1: Use Synthetic Data (No MIMIC-IV access required)
-
-The system will automatically generate and use synthetic medical data if MIMIC-IV data is not found. This is great for:
-
-- Trying out the system without MIMIC-IV credentials
-- Development and testing
-- Public demos and sharing
-
-The synthetic data system:
-
-- Creates realistic fictional medical data matching MIMIC-IV structure
-- Automatically generates patient records, diagnoses, and lab values
-- Works seamlessly with the existing RAG pipeline through the DataProvider abstraction
-- Can be committed to Git for easy sharing (unlike the real MIMIC-IV data)
-
-Simply run the system and it will create synthetic data automatically, or generate it manually:
-
-```bash
-# Generate synthetic data
-python -m RAG_chat_pipeline.utils.synthetic_data.synthetic_data_generator
-
-# Or use it automatically in the RAG system (no special command needed)
-python -m RAG_chat_pipeline.main
-```
-
-For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
-
-```bash
-# Open the synthetic data demo notebook
-jupyter notebook synthetic_data_demo.ipynb
-```
-
-This demonstration notebook guides you through:
-
-- Generating and customizing synthetic medical data
-- Processing data into document chunks
-- Creating vector stores with embeddings
-- Initializing and using the RAG pipeline with synthetic data
-- Comparing synthetic data behavior with real data (if available)
-- Querying the system with various clinical questions
-
-For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
-
-```bash
-# Open the synthetic data demo notebook
-jupyter notebook synthetic_data_demo.ipynb
-```
-
-This demonstration notebook guides you through:
-
-- Generating and customizing synthetic medical data
-- Processing data into document chunks
-- Creating vector stores with embeddings
-- Initializing and using the RAG pipeline with synthetic data
-- Comparing synthetic data behavior with real data (if available)
-- Querying the system with various clinical questions
-
-#### Option 2: Use Real MIMIC-IV Data (Requires credentialed access)
-
-1. **Prepare MIMIC-IV Data**: Place sample data in `mimic_sample_1000/`
-2. **Process Data**: Run `data_handling/creating_docs.ipynb` to:
-   - Load and merge MIMIC-IV tables
-   - Create semantic document chunks
-   - Generate vector stores for all embedding models
-
-### Usage Examples
-
-#### Interactive Chatbot
-
-```python
-from RAG_chat_pipeline.core.main import main
-
-# Initialize system
-chatbot = main()
-
-# Ask questions
-response = chatbot.ask_question(
-    "What lab values were abnormal for admission 25282710?",
-    k=5
-)
-print(response['answer'])
-```
-
-#### Batch Evaluation
-
-```bash
-# Run all model combinations
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner all --type short
-
-# Generate comparison report
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner report
-```
-
-#### Single Model Evaluation
-
-```bash
-# Evaluate specific combination
-python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner single ms-marco deepseek --type short
-
-# Quick test
-python -m RAG_chat_pipeline.benchmarks.rag_evaluator quick
-## 📋 Clinical Data Structure
-
-The system processes six types of medical records:
-
-| Section | Content | Example Queries |
-|---------|---------|-----------------|
-| **Header** | Admission info, dates, types | "When was patient admitted?" |
-| **Diagnoses** | ICD codes, conditions | "What diagnoses does admission X have?" |
-| **Procedures** | Operations, interventions | "What procedures were performed?" |
-| **Labs** | Test results, values, flags | "Show abnormal lab values" |
-| **Microbiology** | Cultures, infections | "Were any cultures positive?" |
-| **Prescriptions** | Medications, dosages | "What medications was patient on?" |
-
-## 🎯 Evaluation Framework
-
-### Scoring Methodology
-
-- **Factual Accuracy (60%)**: Validates against actual patient data
-- **Behavioral Assessment (30%)**: Checks appropriate clinical responses
-- **Performance Metrics (10%)**: Measures search speed and document retrieval
-
-### Question Categories
-
-- **Header Questions**: Admission details and administrative info
-- **Diagnostic Questions**: Disease conditions and ICD codes
-- **Procedural Questions**: Medical interventions and operations
-- **Laboratory Questions**: Test results and abnormal values
-- **Microbiology Questions**: Culture results and infections
-- **Prescription Questions**: Medications and dosing information
-
-
-### Automated Evaluation
-
-```bash
-# Full evaluation suite
-python -m RAG_chat_pipeline.benchmarks.rag_evaluator full
-
-# Short evaluation (10 questions)
-python -m RAG_chat_pipeline.benchmarks.rag_evaluator short
-```
-
-## 📈 Performance Analysis
-
-### Results Dashboard
-
-The system generates comprehensive performance reports including:
-
-- **Pass rates by model combination**
-- **Category-specific performance breakdowns**
-- **Search time and efficiency metrics**
-- **Comparative analysis across embedding models**
-
-### Visualization
-
-- Performance heatmaps comparing model combinations
-- Category breakdown charts
-- Time series analysis of evaluation results
-
-## 🗂️ Project Structure
-
-```text
-msc_project/
-├── .gitignore                     # Git ignore rules
-├── .hintrc                        # Code hint configuration
-├── setup.py                       # Python package setup
-├── requirements.txt               # Python dependencies
-├── cli_chat.py                    # Command-line chat interface
-├── synthetic_data_demo.ipynb      # Demonstration notebook for synthetic data
-├── start_app.bat                  # Windows startup script
-├── start_app.sh                   # Linux/Mac startup script
-├── data_handling/                 # Data processing notebooks
-│   ├── creating_docs.ipynb        # Main data processing pipeline
-│   ├── creating_samples.ipynb     # Sample data creation
-│   └── converting_to_sql.ipynb    # Database conversion utilities
-├── synthetic_data/                # Synthetic data generation (standalone)
-├── RAG_chat_pipeline/             # Core RAG system
-│   ├── __init__.py
-│   ├── config/                    # Configuration management
-│   │   ├── __init__.py
-│   │   └── config.py              # System configuration and model settings
-│   ├── core/                      # Core RAG functionality
-│   │   ├── __init__.py
-│   │   ├── main.py                # System entry point
-│   │   ├── clinical_rag.py        # Main RAG chatbot implementation
-│   │   └── embeddings_manager.py  # Embedding model management
-│   ├── helper/                    # Utility modules
-│   │   ├── __init__.py
-│   │   ├── data_loader.py         # Data loading utilities
-│   │   ├── entity_extraction.py   # Parameter extraction from queries
-│   │   └── invoke.py              # System invocation helpers
-│   ├── utils/                     # Core utilities
-│   │   ├── __init__.py
-│   │   └── data_provider.py       # Data source abstraction (real/synthetic)
-│   ├── benchmarks/                # Evaluation framework
-│   │   ├── __init__.py
-│   │   ├── rag_evaluator.py       # Single-turn evaluation
-│   │   ├── chat_history_evaluator.py # Conversational evaluation
-│   │   ├── model_evaluation_runner.py # Automated model comparison
-│   │   ├── evaluation_results_manager.py # Results analysis and storage
-│   │   ├── gold_questions.py      # Test question generation
-│   │   └── results/               # Evaluation results storage
-│   └── results/                   # System-wide results and outputs
-├── frontend/                      # React frontend
-│   ├── package.json               # Node.js dependencies
-│   ├── package-lock.json          # Locked dependency versions
-│   ├── .env                       # Frontend environment variables
-│   ├── .gitignore                 # Frontend-specific git ignore
-│   ├── README.md                  # Frontend documentation
-│   ├── public/                    # Static assets
-│   └── src/                       # Frontend source code
-└── api/                           # Flask API server
-    ├── app.py                     # API endpoints and server
-    └── README.md                  # API documentation
-```
-
-### Excluded from Git (Large/Generated Files)
-
-The following directories contain large files, sensitive data, or generated artifacts that are excluded from version control:
-
-- `mimic_sample_1000/` - MIMIC-IV sample data (or auto-generated synthetic data)
-- `models/` - Downloaded embedding models (~1-2GB each)
-- `vector_stores/` - FAISS vector databases (~500MB each)
-- `physionet.org/` - Original MIMIC-IV data source
-- `project_files/` - Project documentation (may contain sensitive info)
-- `test_with_sponsor/` - Sponsor-specific test data
-- `venv/` - Python virtual environment
-- `node_modules/` - Node.js dependencies
-- `__pycache__/` - Python bytecode cache
-- `*.pkl` - Pickle files with processed data
-- `*.csv` - Raw data files
-- `*.log` - Log files
-
-## 🛠️ Configuration
-
-### Model Selection
-
-Edit `RAG_chat_pipeline/config/config.py`:
-
-```python
-# Default embedding model
-model_in_use = "mini-lm"  # Options: mini-lm, ms-marco, multi-qa, biomedbert, mpnet-v2, e5-base, BioLORD, BioBERT, MedQuAD
-
-# Default LLM model
-LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama, gemma, phi3, tinyllama
-```
-
-### Evaluation Parameters
-
-```python
-# Scoring weights
-EVALUATION_SCORING_WEIGHTS = {
-    "factual_accuracy": 0.6,
-    "behavior": 0.3,
-    "performance": 0.1
-}
-
-# Pass thresholds by category
-## 🧪 Evaluation Results
-
-### Example Performance Summary
-    "prescriptions": 0.70,
-    # ...
-}
-```
-
-## 🧪 Evaluation Results
-
-### Example Performance Summary
-
-```text
-📊 Model Comparison Report
-Generated: 2025-01-16 10:30:15
-
-## Overview
-- Total Experiments: 48
-- Embedding Models Tested: 8
-- LLM Models Tested: 6
-
-## Best Performing Combinations
-### Highest Overall Score
-- Models: ms-marco + deepseek
-- Overall Score: 0.847
-## 🔬 Research Applications
-
-This system is designed for:
-
-- **Clinical Decision Support**: Natural language queries over patient records
-- **Medical Education**: Interactive exploration of clinical cases
-- **RAG System Benchmarking**: Standardized evaluation of clinical NLP models
-- **Healthcare AI Research**: Foundation for medical language model development
-
-## 🚦 System Status
-
-- ✅ **Data Processing**: Complete MIMIC-IV integration
-- ✅ **Synthetic Data**: Automated generation of fictional medical data
-- ✅ **RAG Pipeline**: Multi-model support with conversation history
-- ✅ **Evaluation Framework**: Comprehensive scoring and comparison
-- ✅ **Model Comparison**: Automated evaluation across 12 combinations
-- ✅ **Results Analysis**: Performance visualization and reporting
-- ✅ **Web Interface**: React frontend with Flask API
-
-## 📚 Dependencies
-
-### Core Libraries
-
-- **LangChain**: RAG pipeline framework
-- **FAISS**: Vector similarity search
-- **SentenceTransformers**: Embedding model support
-- **Ollama**: Local LLM hosting
-- **Pandas**: Data manipulation
-- **Matplotlib/Seaborn**: Visualization
-- **Flask**: API server (v3.0.2+)
-- **React**: Frontend framework (v18.2.0+)
-- **Material-UI**: UI component library for React
-
-### Model Requirements
-
-- **Embedding Models**: ~1-2GB each (8 models)
-- **LLM Models**: ~2-4GB each (6 models via Ollama)
-- **Vector Stores**: ~500MB each (9 stores)
-
-### Utility Modules
-
-- **DataProvider**: Abstraction for data source selection (real or synthetic)
-- **SyntheticDataGenerator**: Creation of fictional medical data
-- **EntityExtractor**: Automatic parameter detection from natural language
-
-## 🤝 Contributing
-
-This is an academic research project. For questions or collaboration:
-
-1. Review the evaluation framework in `rag_evaluator.py`
-2. Check model configurations in `config.py`
-3. Run the example evaluations to understand the system
-4. Refer to the data processing notebook for MIMIC-IV integration
-
-## 📖 Citation
-
-If you use this system in your research, please cite:
-```bibtex
-@software{clinical_rag_mimic,
-  title={Clinical RAG System for MIMIC-IV Data Analysis},
-  author={[Ekenedirichukwu Iheanacho]},
-  year={2025},
-  url={[https://github.com/DevNick21/Clinical_RAG_chat_bot]}
-}
-```
-
-## ⚠️ Medical Disclaimer
-
-This system is for educational and research purposes only. It should not be used for medical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
-
-## 📄 License
-
-[MIT]
-
----
-
-**🏥 Ready to explore clinical data with AI? Start with the Quick Start guide above!**
+Many computational scientists are used to the IEEE referencing style with numbers, i.e. `[42]`.  But there is a reason why `plannat` is superior.  Your examiners (and supervisors) will be well aquainted with the research area and will know which are the main papers you should have read (and cited).  If you use the numbered referencing, the examiner has to keep cross-referencing the *References* section.  This is not the case when using the name of the author and year directly in the citation.  Moreover, it is easier for the examiner to realize when you are mis-citing an author.  Modern typsetting is moving in this direction.
