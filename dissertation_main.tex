@@ -31,7 +31,7 @@
 %% Do not add your packages to the template, but rather add them here.
 
 \usepackage{blindtext} %% for some dummy text, remove in your writeup
-\usepackage{coffee4}    %% for some fun
+% \usepackage{coffee4}    %% removed - no longer available
 
 %% ***************** (Your) Packages (End) *******************
 
@@ -62,7 +62,7 @@
 
 % You should have an images directory in every chapX subdir
 % NOTE:  Trailing / for subdirs is required.
-\graphicspath{{./images/}{./chap1/images/}}   % Paths where to look for images, if defined "images" must always be there as it holds the images in-use by the template.
+\graphicspath{{./images/}{./chap1_intro/images/}{./chap2_lit_review/images/}{./chap3_methodology/images/}{./chap4_results/images/}{./chap5_conclusions/images/}}   % Updated paths for renamed chapters
 
 \makeindex
 
@@ -94,22 +94,24 @@
 %% Note: always use \input as you cannot nest \includes (amongst other things)
 \pagestyle{mmupage}
 \mainmatter 
-    \input{chap1/introduction_main} 
-    \input{chap2/background_and_lit_overview_main}
-    \input{chap3/materials_and_methods_main}
-    \input{chap4/results_and_discussion_main}
-    \input{chap5/evaluation_main}
-    \input{chap6/conclusions_main}
+    \input{chap1_intro/introduction_main} 
+    \input{chap2_lit_review/background_and_lit_overview_main}
+    \input{chap3_methodology/materials_and_methods_main}
+    \input{chap4_results/results_and_discussion_main}
+    \input{chap5_conclusions/conclusions_main}
+    % chap6_unused folder preserved for potential future content
     \appendix
-        \input{appA/appendix_a_main}     % these are just test names as I didn't know what you'd want
-        \input{appB/appendix_b_main}    
-        \input{appC/appendix_c_main} 
+        \input{appA_code/appendix_a_main}
+        \input{appB_dataset/appendix_b_main}    
+        \input{appC_evaluation/appendix_c_main}
+        \input{appD_ui_screenshots/appendix_d_main}
+        \input{appE_setup_guide/appendix_e_main} 
 
 {\backmatter
     % Bibliography
     \if@openright\cleardoublepage\else\clearpage\fi
     \bibliographystyle{mmu-plainnat} %% MMU specific plainnat style
-    {\footnotesize\bibliography{chap1/introduction_biblio,chap2/background_and_lit_overview_biblio}}
+    {\footnotesize\bibliography{chap1_intro/introduction_biblio,chap2_lit_review/background_and_lit_overview_biblio,chap3_methodology/materials_and_methods_biblio,chap4_results/results_and_discussion_biblio,chap5_conclusions/conclusions_biblio}}
 	\printindex
 }
 
