@@ -14,6 +14,7 @@ import seaborn as sns
 import plotly.graph_objects as go
 from dataclasses import dataclass, asdict
 from RAG_chat_pipeline.config.config import model_names, llms
+from langchain.schema import Document
 
 
 @dataclass
@@ -132,7 +133,53 @@ class EvaluationResultsManager:
         ).isoformat()
 
         with open(self.results_file, 'w') as f:
-            json.dump(self.results_data, f, indent=2)
+            json.dump(self.results_data, f, indent=2,
+                      default=self._serialize_documents)
+
+    def _serialize_documents(self, obj):
+        """Custom JSON serializer for Document objects and other non-serializable types"""
+        if isinstance(obj, Document):
+            return {
+                "page_content": obj.page_content,
+                "metadata": obj.metadata,
+                "_type": "Document"  # Mark as Document for potential deserialization
+            }
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        else:
+            raise TypeError(
+                f"Object of type {type(obj)} is not JSON serializable")
+
+    def _serialize_evaluation_result(self, result):
+        """Serialize evaluation result to handle Document objects and other non-serializable types"""
+        if isinstance(result, dict):
+            serialized = {}
+            for key, value in result.items():
+                serialized[key] = self._serialize_evaluation_result(value)
+            return serialized
+        elif isinstance(result, list):
+            return [self._serialize_evaluation_result(item) for item in result]
+        elif isinstance(result, Document):
+            return {
+                "page_content": result.page_content,
+                "metadata": result.metadata,
+                "_type": "Document"
+            }
+        elif isinstance(result, (np.ndarray, np.integer, np.floating)):
+            # Handle numpy types
+            if isinstance(result, np.ndarray):
+                return result.tolist()
+            elif isinstance(result, np.integer):
+                return int(result)
+            elif isinstance(result, np.floating):
+                return float(result)
+        else:
+            # Return as-is for basic types (str, int, float, bool, None)
+            return result
 
     def add_evaluation_result(self,
                               embedding_model_nickname: str,
@@ -158,6 +205,10 @@ class EvaluationResultsManager:
         # Extract metrics from evaluation result
         metrics = self._extract_metrics_from_result(evaluation_result, notes)
 
+        # Serialize evaluation result to handle Document objects
+        serialized_result = self._serialize_evaluation_result(
+            evaluation_result)
+
         # Store the experiment
         self.results_data["experiments"][experiment_id] = {
             "config": {
@@ -168,7 +219,7 @@ class EvaluationResultsManager:
                 "vectorstore": model_names[embedding_model_nickname][2]
             },
             "metrics": asdict(metrics),
-            "raw_results": evaluation_result,
+            "raw_results": serialized_result,
             "experiment_date": datetime.now().isoformat()
         }
 

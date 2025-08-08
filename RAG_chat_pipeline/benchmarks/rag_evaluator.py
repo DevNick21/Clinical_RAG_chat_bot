@@ -11,10 +11,13 @@ from typing import Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
-from RAG_chat_pipeline.helper.data_loader import get_sample_data
+from RAG_chat_pipeline.utils.data_provider import get_sample_data
 from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot
 from .gold_questions import generate_gold_questions_from_data
 from .retrieval_metrics import RetrievalMetricsEvaluator, format_retrieval_metrics_summary
+from .visualization import EvaluationVisualizer
+from .reporting import EvaluationReporter
+from .dashboard import EvaluationDashboard
 from RAG_chat_pipeline.config.config import *
 
 
@@ -26,7 +29,7 @@ class ClinicalRAGEvaluator:
         self.patient_data = get_sample_data()
         self.results = []
 
-        # Initialize retrieval metrics evaluator (will be populated when questions are available)
+        # Initialize retrieval metrics evaluator (will be set up when questions are available)
         self.retrieval_metrics = None
 
         # Results storage for comprehensive reporting
@@ -114,12 +117,23 @@ class ClinicalRAGEvaluator:
                 overall_score, gold_question["category"])
             passed = grade_value >= 0
 
-            # Add retrieval metrics if available
+            # Add retrieval metrics using existing RetrievalMetricsEvaluator
             retrieval_metrics = {}
-            if self.retrieval_metrics and question_id:
-                retrieval_metrics = self.retrieval_metrics.evaluate_retrieval_for_question(
-                    question_id, source_docs
-                )
+            if self.retrieval_metrics:
+                try:
+                    retrieval_metrics = self.retrieval_metrics.evaluate_retrieval_for_question(
+                        question_id or f"q_{len(self.results)}",
+                        source_docs
+                    )
+                except Exception as e:
+                    print(
+                        f"⚠️ Warning: Failed to evaluate retrieval metrics: {e}")
+                    retrieval_metrics = {
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1": 0.0,
+                        "error": str(e)
+                    }
 
             result.update({
                 "response": response.get("answer", ""),
@@ -886,422 +900,32 @@ class ClinicalRAGEvaluator:
         return {"summary": {"tested": len(test_questions)}, "results": results}
 
     def generate_comprehensive_report(self, results: Dict, output_dir: str = "evaluation_reports") -> Dict[str, str]:
-        """Generate comprehensive evaluation report with visualizations and CSV exports"""
-
-        # Create output directory
+        """Generate comprehensive evaluation report using modular components"""
         output_path = Path(output_dir)
-        output_path.mkdir(exist_ok=True)
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_files = {}
 
-        # 1. Export detailed results to CSV
-        csv_file = output_path / f"detailed_results_{timestamp}.csv"
-        df_results = pd.DataFrame(self.detailed_results)
-        df_results.to_csv(csv_file, index=False)
-        report_files["detailed_csv"] = str(csv_file)
+        # Initialize modular components
+        reporter = EvaluationReporter(output_path)
+        visualizer = EvaluationVisualizer(output_path)
+        dashboard_generator = EvaluationDashboard(output_path)
 
-        # 2. Create summary statistics CSV
-        summary_file = output_path / f"summary_stats_{timestamp}.csv"
-        summary_df = self._create_summary_dataframe(results)
-        summary_df.to_csv(summary_file, index=False)
-        report_files["summary_csv"] = str(summary_file)
+        # Generate reports and visualizations
+        report_files = reporter.export_comprehensive_csv(results, timestamp)
+        viz_files = visualizer.generate_all_visualizations(results, timestamp)
 
-        # 3. Generate visualizations
-        viz_files = self._generate_visualizations(
-            results, output_path, timestamp)
-        report_files.update(viz_files)
+        # Create dashboard
+        dashboard_file = dashboard_generator.create_performance_dashboard(
+            results, report_files, viz_files, timestamp)
 
-        # 4. Create performance comparison table
-        perf_file = output_path / f"performance_comparison_{timestamp}.csv"
-        perf_df = self._create_performance_comparison(results)
-        perf_df.to_csv(perf_file, index=False)
-        report_files["performance_csv"] = str(perf_file)
-
-        # 5. Generate category-wise analysis
-        category_file = output_path / f"category_analysis_{timestamp}.csv"
-        category_df = self._create_category_analysis(results)
-        category_df.to_csv(category_file, index=False)
-        report_files["category_csv"] = str(category_file)
+        all_files = {**report_files, **viz_files, "dashboard": dashboard_file}
 
         print(f"\n📊 Comprehensive report generated in: {output_path}")
         print("Generated files:")
-        for file_type, file_path in report_files.items():
-            print(f"  - {file_type}: {file_path}")
+        for file_type, file_path in all_files.items():
+            if file_path:
+                print(f"  - {file_type}: {Path(file_path).name}")
 
-        return report_files
-
-    def _create_summary_dataframe(self, results: Dict) -> pd.DataFrame:
-        """Create summary statistics DataFrame"""
-        summary = results.get("summary", {})
-        category_breakdown = summary.get("category_breakdown", {})
-
-        summary_data = []
-
-        # Overall statistics
-        summary_data.append({
-            "Metric": "Overall Pass Rate",
-            "Value": f"{summary.get('pass_rate', 0):.2%}",
-            "Score": f"{summary.get('average_score', 0):.3f}"
-        })
-
-        summary_data.append({
-            "Metric": "Total Questions",
-            "Value": summary.get('total_questions', 0),
-            "Score": "-"
-        })
-
-        # Category-wise statistics
-        for category, stats in category_breakdown.items():
-            summary_data.append({
-                "Metric": f"{category.title()} Pass Rate",
-                "Value": f"{stats.get('pass_rate', 0):.2%}",
-                "Score": f"{stats.get('average_score', 0):.3f}"
-            })
-
-        return pd.DataFrame(summary_data)
-
-    def _create_performance_comparison(self, results: Dict) -> pd.DataFrame:
-        """Create performance comparison DataFrame"""
-        detailed_results = results.get("detailed_results", [])
-
-        performance_data = []
-        for result in detailed_results:
-            performance_data.append({
-                "Question_ID": result.get("question_id", ""),
-                "Category": result.get("category", ""),
-                "Overall_Score": result.get("overall_score", 0),
-                "Factual_Score": result.get("factual_accuracy_score", 0),
-                "Behavior_Score": result.get("behavior_score", 0),
-                "Performance_Score": result.get("performance_score", 0),
-                "Context_Relevance": result.get("context_relevance_score", 0),
-                "Completeness": result.get("completeness_score", 0),
-                "Semantic_Similarity": result.get("semantic_similarity_score", 0),
-                "Pass_Grade": result.get("pass_grade", "fail"),
-                "Search_Time": result.get("search_time", 0),
-                "Documents_Found": result.get("documents_found", 0),
-                "Documents_Filtered": result.get("documents_filtered", False)
-            })
-
-        return pd.DataFrame(performance_data)
-
-    def _create_category_analysis(self, results: Dict) -> pd.DataFrame:
-        """Create category-wise analysis DataFrame"""
-        category_results = results.get("category_results", {})
-
-        analysis_data = []
-        for category, cat_results in category_results.items():
-            scores = [r.get("overall_score", 0) for r in cat_results]
-            search_times = [r.get("search_time", 0) for r in cat_results]
-            doc_counts = [r.get("documents_found", 0) for r in cat_results]
-
-            analysis_data.append({
-                "Category": category,
-                "Question_Count": len(cat_results),
-                "Pass_Rate": f"{sum(1 for r in cat_results if r.get('passed', False)) / len(cat_results):.2%}",
-                "Avg_Score": f"{np.mean(scores):.3f}",
-                "Score_StdDev": f"{np.std(scores):.3f}",
-                "Min_Score": f"{np.min(scores):.3f}",
-                "Max_Score": f"{np.max(scores):.3f}",
-                "Avg_Search_Time": f"{np.mean(search_times):.2f}s",
-                "Avg_Documents": f"{np.mean(doc_counts):.1f}",
-                "Grade_Distribution": self._get_grade_distribution(cat_results)
-            })
-
-        return pd.DataFrame(analysis_data)
-
-    def _get_grade_distribution(self, results: List[Dict]) -> str:
-        """Get grade distribution for a category"""
-        grades = [r.get("pass_grade", "fail") for r in results]
-        grade_counts = pd.Series(grades).value_counts().to_dict()
-
-        distribution = []
-        for grade in ["excellent", "pass", "borderline", "fail"]:
-            count = grade_counts.get(grade, 0)
-            if count > 0:
-                distribution.append(f"{grade}: {count}")
-
-        return ", ".join(distribution)
-
-    def _generate_visualizations(self, results: Dict, output_path: Path, timestamp: str) -> Dict[str, str]:
-        """Generate various visualizations"""
-        viz_files = {}
-
-        # Set style
-        plt.style.use('default')
-        sns.set_palette("husl")
-
-        # 1. Score Distribution Heatmap (Enhanced)
-        fig, ax = plt.subplots(figsize=(12, 8))
-        category_results = results.get("category_results", {})
-
-        # Create score matrix for heatmap
-        score_matrix = []
-        categories = []
-        metrics = ["Overall", "Factual", "Behavior",
-                   "Performance", "Context", "Completeness", "Semantic"]
-
-        for category, cat_results in category_results.items():
-            categories.append(category)
-            row = [
-                np.mean([r.get("overall_score", 0) for r in cat_results]),
-                np.mean([r.get("factual_accuracy_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("behavior_score", 0) for r in cat_results]),
-                np.mean([r.get("performance_score", 0) for r in cat_results]),
-                np.mean([r.get("context_relevance_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("completeness_score", 0) for r in cat_results]),
-                np.mean([r.get("semantic_similarity_score", 0)
-                        for r in cat_results])
-            ]
-            score_matrix.append(row)
-
-        sns.heatmap(score_matrix,
-                    xticklabels=metrics,
-                    yticklabels=categories,
-                    annot=True,
-                    cmap="RdYlGn",
-                    vmin=0,
-                    vmax=1,
-                    fmt='.3f')
-
-        plt.title("RAG Evaluation Score Heatmap by Category and Metric")
-        plt.tight_layout()
-
-        heatmap_file = output_path / f"score_heatmap_{timestamp}.png"
-        plt.savefig(heatmap_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["heatmap"] = str(heatmap_file)
-
-        # 2. Grade Distribution Bar Chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        all_grades = [r.get("pass_grade", "fail")
-                      for r in results.get("detailed_results", [])]
-        grade_counts = pd.Series(all_grades).value_counts()
-
-        colors = {"excellent": "green", "pass": "lightgreen",
-                  "borderline": "orange", "fail": "red"}
-        grade_counts.plot(kind='bar',
-                          color=[colors.get(x, 'gray')
-                                 for x in grade_counts.index],
-                          ax=ax)
-
-        plt.title("Distribution of Pass Grades")
-        plt.ylabel("Count")
-        plt.xlabel("Grade")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        grades_file = output_path / f"grade_distribution_{timestamp}.png"
-        plt.savefig(grades_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["grades"] = str(grades_file)
-
-        # 3. Search Time vs Score Scatter Plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        detailed_results = results.get("detailed_results", [])
-
-        scores = [r.get("overall_score", 0) for r in detailed_results]
-        search_times = [r.get("search_time", 0) for r in detailed_results]
-        categories = [r.get("category", "") for r in detailed_results]
-
-        scatter = ax.scatter(search_times, scores, c=range(len(categories)),
-                             alpha=0.6, cmap='tab10')
-
-        ax.set_xlabel("Search Time (seconds)")
-        ax.set_ylabel("Overall Score")
-        ax.set_title("Search Time vs Overall Score")
-
-        # Add trend line
-        z = np.polyfit(search_times, scores, 1)
-        p = np.poly1d(z)
-        ax.plot(search_times, p(search_times), "r--", alpha=0.8)
-
-        plt.tight_layout()
-
-        scatter_file = output_path / f"time_vs_score_{timestamp}.png"
-        plt.savefig(scatter_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["scatter"] = str(scatter_file)
-
-        # 4. Document Count Analysis
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-        # Documents found distribution
-        doc_counts = [r.get("documents_found", 0) for r in detailed_results]
-        ax1.hist(doc_counts, bins=20, alpha=0.7,
-                 color='skyblue', edgecolor='black')
-        ax1.set_xlabel("Documents Found")
-        ax1.set_ylabel("Frequency")
-        ax1.set_title("Distribution of Documents Found")
-
-        # Documents found vs Score
-        ax2.scatter(doc_counts, scores, alpha=0.6, color='coral')
-        ax2.set_xlabel("Documents Found")
-        ax2.set_ylabel("Overall Score")
-        ax2.set_title("Documents Found vs Overall Score")
-
-        # Add trend line
-        if len(doc_counts) > 1:
-            z = np.polyfit(doc_counts, scores, 1)
-            p = np.poly1d(z)
-            ax2.plot(doc_counts, p(doc_counts), "r--", alpha=0.8)
-
-        plt.tight_layout()
-
-        docs_file = output_path / f"document_analysis_{timestamp}.png"
-        plt.savefig(docs_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["documents"] = str(docs_file)
-
-        return viz_files
-
-    def create_performance_dashboard(self, results: Dict, output_dir: str = "evaluation_reports") -> str:
-        """Create an HTML dashboard with all evaluation metrics"""
-
-        output_path = Path(output_dir)
-        output_path.mkdir(exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dashboard_file = output_path / \
-            f"performance_dashboard_{timestamp}.html"
-
-        # Generate comprehensive report files
-        report_files = self.generate_comprehensive_report(results, output_dir)
-
-        # Create HTML dashboard
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>RAG Evaluation Dashboard - {timestamp}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
-                .container {{ max-width: 1200px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
-                .header {{ text-align: center; margin-bottom: 30px; }}
-                .metric-card {{ background-color: #f8f9fa; padding: 15px; margin: 10px; border-radius: 8px; border-left: 4px solid #007bff; }}
-                .metric-value {{ font-size: 2em; font-weight: bold; color: #007bff; }}
-                .metric-label {{ font-size: 0.9em; color: #666; }}
-                .charts-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin: 20px 0; }}
-                .chart-container {{ text-align: center; background-color: #f8f9fa; padding: 15px; border-radius: 8px; }}
-                .chart-container img {{ max-width: 100%; height: auto; border-radius: 5px; }}
-                .files-section {{ margin-top: 30px; }}
-                .file-link {{ display: inline-block; margin: 5px; padding: 8px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; }}
-                .file-link:hover {{ background-color: #0056b3; }}
-                .grade-colors {{ display: flex; justify-content: center; gap: 20px; margin: 20px 0; }}
-                .grade-item {{ text-align: center; }}
-                .grade-color {{ width: 20px; height: 20px; border-radius: 50%; margin: 0 auto 5px; }}
-                .excellent {{ background-color: green; }}
-                .pass {{ background-color: lightgreen; }}
-                .borderline {{ background-color: orange; }}
-                .fail {{ background-color: red; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>🔍 Clinical RAG Evaluation Dashboard</h1>
-                    <p>Generated on: {datetime.now().strftime("%B %d, %Y at %H:%M:%S")}</p>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
-                    <div class="metric-card">
-                        <div class="metric-value">{results.get("summary", {}).get("pass_rate", 0):.1%}</div>
-                        <div class="metric-label">Overall Pass Rate</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{results.get("summary", {}).get("average_score", 0):.3f}</div>
-                        <div class="metric-label">Average Score</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{results.get("summary", {}).get("total_questions", 0)}</div>
-                        <div class="metric-label">Total Questions</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-value">{len(results.get("category_results", {}))}</div>
-                        <div class="metric-label">Categories Tested</div>
-                    </div>
-                </div>
-                
-                <div class="grade-colors">
-                    <div class="grade-item">
-                        <div class="grade-color excellent"></div>
-                        <div>Excellent (≥0.8)</div>
-                    </div>
-                    <div class="grade-item">
-                        <div class="grade-color pass"></div>
-                        <div>Pass (≥0.6)</div>
-                    </div>
-                    <div class="grade-item">
-                        <div class="grade-color borderline"></div>
-                        <div>Borderline (≥0.4)</div>
-                    </div>
-                    <div class="grade-item">
-                        <div class="grade-color fail"></div>
-                        <div>Fail (<0.4)</div>
-                    </div>
-                </div>
-                
-                <div class="charts-grid">"""
-
-        # Add chart images if they exist
-        chart_types = ["heatmap", "grades", "scatter", "documents"]
-        chart_titles = [
-            "Score Heatmap by Category and Metric",
-            "Grade Distribution",
-            "Search Time vs Overall Score",
-            "Document Count Analysis"
-        ]
-
-        for chart_type, title in zip(chart_types, chart_titles):
-            if chart_type in report_files:
-                chart_path = Path(report_files[chart_type]).name
-                html_content += f"""
-                    <div class="chart-container">
-                        <h3>{title}</h3>
-                        <img src="{chart_path}" alt="{title}">
-                    </div>"""
-
-        html_content += """
-                </div>
-                
-                <div class="files-section">
-                    <h3>📋 Generated Report Files</h3>
-                    <p>Click the links below to download detailed analysis files:</p>"""
-
-        # Add download links
-        file_descriptions = {
-            "detailed_csv": "📊 Detailed Results (CSV)",
-            "summary_csv": "📈 Summary Statistics (CSV)",
-            "performance_csv": "⚡ Performance Comparison (CSV)",
-            "category_csv": "📂 Category Analysis (CSV)"
-        }
-
-        for file_type, description in file_descriptions.items():
-            if file_type in report_files:
-                file_name = Path(report_files[file_type]).name
-                html_content += f"""
-                    <a href="{file_name}" class="file-link" download>{description}</a>"""
-
-        html_content += """
-                </div>
-                
-                <div style="margin-top: 30px; text-align: center; color: #666; font-size: 0.9em;">
-                    <p>Generated by Clinical RAG Evaluation System</p>
-                </div>
-            </div>
-        </body>
-        </html>"""
-
-        # Write HTML file
-        with open(dashboard_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        print(f"\n🌐 Performance dashboard created: {dashboard_file}")
-        return str(dashboard_file)
+        return all_files
 
     def compare_evaluations(self, evaluation_results: List[Dict], labels: List[str],
                             output_dir: str = "evaluation_reports") -> str:
@@ -1390,323 +1014,8 @@ class ClinicalRAGEvaluator:
 
         return str(comparison_file)
 
-    def generate_comprehensive_report(self, results: Dict, output_dir: str = "evaluation_reports") -> Dict[str, str]:
-        """Generate comprehensive evaluation report with visualizations and CSV exports"""
 
-        # Create output directory
-        output_path = Path(output_dir)
-        output_path.mkdir(exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_files = {}
-
-        # 1. Export detailed results to CSV
-        csv_file = output_path / f"detailed_results_{timestamp}.csv"
-        df_results = pd.DataFrame(self.detailed_results)
-        df_results.to_csv(csv_file, index=False)
-        report_files["detailed_csv"] = str(csv_file)
-
-        # 2. Create summary statistics CSV
-        summary_file = output_path / f"summary_stats_{timestamp}.csv"
-        summary_df = self._create_summary_dataframe(results)
-        summary_df.to_csv(summary_file, index=False)
-        report_files["summary_csv"] = str(summary_file)
-
-        # 3. Generate visualizations
-        viz_files = self._generate_visualizations(
-            results, output_path, timestamp)
-        report_files.update(viz_files)
-
-        # 4. Create performance comparison table
-        perf_file = output_path / f"performance_comparison_{timestamp}.csv"
-        perf_df = self._create_performance_comparison(results)
-        perf_df.to_csv(perf_file, index=False)
-        report_files["performance_csv"] = str(perf_file)
-
-        # 5. Generate category-wise analysis
-        category_file = output_path / f"category_analysis_{timestamp}.csv"
-        category_df = self._create_category_analysis(results)
-        category_df.to_csv(category_file, index=False)
-        report_files["category_csv"] = str(category_file)
-
-        print(f"\n📊 Comprehensive report generated in: {output_path}")
-        print("Generated files:")
-        for file_type, file_path in report_files.items():
-            print(f"  - {file_type}: {file_path}")
-
-        return report_files
-
-    def _create_summary_dataframe(self, results: Dict) -> pd.DataFrame:
-        """Create summary statistics DataFrame"""
-        summary = results.get("summary", {})
-        category_breakdown = summary.get("category_breakdown", {})
-
-        summary_data = []
-
-        # Overall statistics
-        summary_data.append({
-            "Metric": "Overall Pass Rate",
-            "Value": f"{summary.get('pass_rate', 0):.2%}",
-            "Score": f"{summary.get('average_score', 0):.3f}"
-        })
-
-        summary_data.append({
-            "Metric": "Total Questions",
-            "Value": summary.get('total_questions', 0),
-            "Score": "-"
-        })
-
-        # Category-wise statistics
-        for category, stats in category_breakdown.items():
-            summary_data.append({
-                "Metric": f"{category.title()} Pass Rate",
-                "Value": f"{stats.get('pass_rate', 0):.2%}",
-                "Score": f"{stats.get('average_score', 0):.3f}"
-            })
-
-        return pd.DataFrame(summary_data)
-
-    def _create_performance_comparison(self, results: Dict) -> pd.DataFrame:
-        """Create performance comparison DataFrame"""
-        detailed_results = results.get("detailed_results", [])
-
-        performance_data = []
-        for result in detailed_results:
-            performance_data.append({
-                "Question_ID": result.get("question_id", ""),
-                "Category": result.get("category", ""),
-                "Overall_Score": result.get("overall_score", 0),
-                "Factual_Score": result.get("factual_accuracy_score", 0),
-                "Behavior_Score": result.get("behavior_score", 0),
-                "Performance_Score": result.get("performance_score", 0),
-                "Context_Relevance": result.get("context_relevance_score", 0),
-                "Completeness": result.get("completeness_score", 0),
-                "Semantic_Similarity": result.get("semantic_similarity_score", 0),
-                "Pass_Grade": result.get("pass_grade", "fail"),
-                "Search_Time": result.get("search_time", 0),
-                "Documents_Found": result.get("documents_found", 0),
-                "Documents_Filtered": result.get("documents_filtered", False)
-            })
-
-        return pd.DataFrame(performance_data)
-
-    def _create_category_analysis(self, results: Dict) -> pd.DataFrame:
-        """Create category-wise analysis DataFrame"""
-        category_results = results.get("category_results", {})
-
-        analysis_data = []
-        for category, cat_results in category_results.items():
-            scores = [r.get("overall_score", 0) for r in cat_results]
-            search_times = [r.get("search_time", 0) for r in cat_results]
-            doc_counts = [r.get("documents_found", 0) for r in cat_results]
-
-            analysis_data.append({
-                "Category": category,
-                "Question_Count": len(cat_results),
-                "Pass_Rate": f"{sum(1 for r in cat_results if r.get('passed', False)) / len(cat_results):.2%}",
-                "Avg_Score": f"{np.mean(scores):.3f}",
-                "Score_StdDev": f"{np.std(scores):.3f}",
-                "Min_Score": f"{np.min(scores):.3f}",
-                "Max_Score": f"{np.max(scores):.3f}",
-                "Avg_Search_Time": f"{np.mean(search_times):.2f}s",
-                "Avg_Documents": f"{np.mean(doc_counts):.1f}",
-                "Grade_Distribution": self._get_grade_distribution(cat_results)
-            })
-
-        return pd.DataFrame(analysis_data)
-
-    def _get_grade_distribution(self, results: List[Dict]) -> str:
-        """Get grade distribution for a category"""
-        grades = [r.get("pass_grade", "fail") for r in results]
-        grade_counts = pd.Series(grades).value_counts().to_dict()
-
-        distribution = []
-        for grade in ["excellent", "pass", "borderline", "fail"]:
-            count = grade_counts.get(grade, 0)
-            if count > 0:
-                distribution.append(f"{grade}: {count}")
-
-        return ", ".join(distribution)
-
-    def _generate_visualizations(self, results: Dict, output_path: Path, timestamp: str) -> Dict[str, str]:
-        """Generate various visualizations"""
-        viz_files = {}
-
-        # Set style
-        plt.style.use('default')
-        sns.set_palette("husl")
-
-        # 1. Score Distribution Heatmap (Enhanced)
-        fig, ax = plt.subplots(figsize=(12, 8))
-        category_results = results.get("category_results", {})
-
-        # Create score matrix for heatmap
-        score_matrix = []
-        categories = []
-        metrics = ["Overall", "Factual", "Behavior",
-                   "Performance", "Context", "Completeness", "Semantic"]
-
-        for category, cat_results in category_results.items():
-            categories.append(category)
-            row = [
-                np.mean([r.get("overall_score", 0) for r in cat_results]),
-                np.mean([r.get("factual_accuracy_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("behavior_score", 0) for r in cat_results]),
-                np.mean([r.get("performance_score", 0) for r in cat_results]),
-                np.mean([r.get("context_relevance_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("completeness_score", 0) for r in cat_results]),
-                np.mean([r.get("semantic_similarity_score", 0)
-                        for r in cat_results])
-            ]
-            score_matrix.append(row)
-
-        sns.heatmap(score_matrix,
-                    xticklabels=metrics,
-                    yticklabels=categories,
-                    annot=True,
-                    cmap="RdYlGn",
-                    vmin=0,
-                    vmax=1,
-                    fmt='.3f')
-
-        plt.title("RAG Evaluation Score Heatmap by Category and Metric")
-        plt.tight_layout()
-
-        heatmap_file = output_path / f"score_heatmap_{timestamp}.png"
-        plt.savefig(heatmap_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["heatmap"] = str(heatmap_file)
-
-        # 2. Grade Distribution Bar Chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        all_grades = [r.get("pass_grade", "fail")
-                      for r in results.get("detailed_results", [])]
-        grade_counts = pd.Series(all_grades).value_counts()
-
-        colors = {"excellent": "green", "pass": "lightgreen",
-                  "borderline": "orange", "fail": "red"}
-        grade_counts.plot(kind='bar',
-                          color=[colors.get(x, 'gray')
-                                 for x in grade_counts.index],
-                          ax=ax)
-
-        plt.title("Distribution of Pass Grades")
-        plt.ylabel("Count")
-        plt.xlabel("Grade")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        grades_file = output_path / f"grade_distribution_{timestamp}.png"
-        plt.savefig(grades_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["grades"] = str(grades_file)
-
-        # 3. Search Time vs Score Scatter Plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        detailed_results = results.get("detailed_results", [])
-
-        scores = [r.get("overall_score", 0) for r in detailed_results]
-        search_times = [r.get("search_time", 0) for r in detailed_results]
-        categories = [r.get("category", "") for r in detailed_results]
-
-        scatter = ax.scatter(search_times, scores, c=range(len(categories)),
-                             alpha=0.6, cmap='tab10')
-
-        ax.set_xlabel("Search Time (seconds)")
-        ax.set_ylabel("Overall Score")
-        ax.set_title("Search Time vs Overall Score")
-
-        # Add trend line
-        if len(search_times) > 1:
-            z = np.polyfit(search_times, scores, 1)
-            p = np.poly1d(z)
-            ax.plot(search_times, p(search_times), "r--", alpha=0.8)
-
-        plt.tight_layout()
-
-        scatter_file = output_path / f"time_vs_score_{timestamp}.png"
-        plt.savefig(scatter_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        viz_files["scatter"] = str(scatter_file)
-
-        return viz_files
-
-    def create_performance_dashboard(self, results: Dict, output_dir: str = "evaluation_reports") -> str:
-        """Create an HTML dashboard with all evaluation metrics"""
-
-        output_path = Path(output_dir)
-        output_path.mkdir(exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dashboard_file = output_path / \
-            f"performance_dashboard_{timestamp}.html"
-
-        # Generate comprehensive report files
-        report_files = self.generate_comprehensive_report(results, output_dir)
-
-        # Create HTML dashboard
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>RAG Evaluation Dashboard - {timestamp}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                .header {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
-                .metric-card {{ display: inline-block; margin: 10px; padding: 15px; 
-                               border: 1px solid #ddd; border-radius: 5px; min-width: 200px; }}
-                .chart-container {{ margin: 20px 0; text-align: center; }}
-                .chart-container img {{ max-width: 100%; border: 1px solid #ddd; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>RAG System Evaluation Dashboard</h1>
-                <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            </div>
-            
-            <h2>Summary Metrics</h2>
-            <div class="metric-card">
-                <h3>Overall Performance</h3>
-                <p>Pass Rate: {results.get('summary', {}).get('pass_rate', 0):.1%}</p>
-                <p>Average Score: {results.get('summary', {}).get('average_score', 0):.3f}</p>
-            </div>
-            
-            <h2>Visualizations</h2>
-            <div class="chart-container">
-                <h3>Score Heatmap</h3>
-                <img src="{Path(report_files.get('heatmap', '')).name}" alt="Score Heatmap">
-            </div>
-            
-            <div class="chart-container">
-                <h3>Grade Distribution</h3>
-                <img src="{Path(report_files.get('grades', '')).name}" alt="Grade Distribution">
-            </div>
-            
-            <div class="chart-container">
-                <h3>Search Time vs Score Analysis</h3>
-                <img src="{Path(report_files.get('scatter', '')).name}" alt="Time vs Score">
-            </div>
-            
-            <h2>Detailed Reports</h2>
-            <ul>
-                <li><a href="{Path(report_files.get('detailed_csv', '')).name}">Detailed Results (CSV)</a></li>
-                <li><a href="{Path(report_files.get('summary_csv', '')).name}">Summary Statistics (CSV)</a></li>
-                <li><a href="{Path(report_files.get('performance_csv', '')).name}">Performance Comparison (CSV)</a></li>
-                <li><a href="{Path(report_files.get('category_csv', '')).name}">Category Analysis (CSV)</a></li>
-            </ul>
-        </body>
-        </html>
-        """
-
-        with open(dashboard_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        print(f"📊 Performance dashboard created: {dashboard_file}")
-        return str(dashboard_file)
-
+# Duplicate methods removed - functionality moved to modular components
 
 def main():
     """Main function for running evaluations"""

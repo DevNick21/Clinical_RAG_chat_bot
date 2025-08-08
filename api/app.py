@@ -93,7 +93,7 @@ def get_models():
 def get_sample_suggestions():
     """Return sample query suggestions with real data"""
     try:
-        from RAG_chat_pipeline.helper.data_loader import get_sample_data
+        from RAG_chat_pipeline.utils.data_provider import get_sample_data
         import random
 
         sample_data = get_sample_data()

@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 try:
-    from RAG_chat_pipeline.helper.data_loader import get_sample_data
+    from RAG_chat_pipeline.utils.data_provider import get_sample_data
 except ImportError:
     print("Warning: Could not import data_loader")
     get_sample_data = None

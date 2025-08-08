@@ -143,3 +143,153 @@ class DataProvider:
         Return a string indicating the type of data being used.
         """
         return "synthetic" if self.using_synthetic else "real"
+
+    def load_test_data(self):
+        """Load exported data for testing - equivalent to data_loader.load_test_data()"""
+        if self.using_synthetic:
+            # For synthetic data, return basic structures
+            try:
+                admissions_df = self.load_admissions()
+
+                # Create mock link_tables structure
+                link_tables = {
+                    'diagnoses_icd': self.load_diagnoses(),
+                    'procedures_icd': self.load_procedures(),
+                    'labevents': self.load_lab_events(),
+                    'prescriptions': self.load_medications()
+                }
+
+                # Create mock grouped structure (basic grouping by hadm_id)
+                grouped = {}
+                for key, df in link_tables.items():
+                    if 'hadm_id' in df.columns:
+                        grouped[key] = df.groupby('hadm_id')
+
+                return admissions_df, link_tables, grouped
+
+            except FileNotFoundError as e:
+                print(f"❌ Synthetic data files not found: {e}")
+                return None, None, None
+        else:
+            # Use real MIMIC data exports
+            export_dir = self.real_data_path / "exports"
+            try:
+                # Load admissions_df
+                with open(export_dir / "admissions_df.pkl", "rb") as f:
+                    admissions_df = pickle.load(f)
+
+                # Load link_tables
+                with open(export_dir / "link_tables.pkl", "rb") as f:
+                    link_tables = pickle.load(f)
+
+                # Load grouped tables
+                with open(export_dir / "grouped_tables.pkl", "rb") as f:
+                    grouped = pickle.load(f)
+
+                return admissions_df, link_tables, grouped
+
+            except FileNotFoundError as e:
+                print(f"❌ MIMIC data export files not found: {e}")
+                print("Please run the data processing notebook to export data first")
+                return None, None, None
+
+    def get_sample_data(self):
+        """Get sample data for quick testing - equivalent to data_loader.get_sample_data()"""
+        admissions_df, link_tables, grouped = self.load_test_data()
+
+        if admissions_df is None:
+            return None
+
+        # Get sample admission IDs
+        sample_hadm_ids = admissions_df['hadm_id'].head(10).tolist()
+
+        # Get common diagnoses (handle both synthetic and real data column names)
+        try:
+            if 'long_title' in link_tables["diagnoses_icd"].columns:
+                common_diagnoses = link_tables["diagnoses_icd"]['long_title'].value_counts(
+                ).head(5).index.tolist()
+            else:
+                # Fallback for synthetic data
+                diag_col = link_tables["diagnoses_icd"].columns[1] if len(
+                    link_tables["diagnoses_icd"].columns) > 1 else link_tables["diagnoses_icd"].columns[0]
+                common_diagnoses = link_tables["diagnoses_icd"][diag_col].value_counts().head(
+                    5).index.tolist()
+        except (KeyError, IndexError):
+            common_diagnoses = []
+
+        # Get common lab tests
+        try:
+            if 'label' in link_tables["labevents"].columns:
+                common_labs = link_tables["labevents"]['label'].value_counts().head(
+                    5).index.tolist()
+            else:
+                # Fallback for synthetic data
+                lab_col = link_tables["labevents"].columns[1] if len(
+                    link_tables["labevents"].columns) > 1 else link_tables["labevents"].columns[0]
+                common_labs = link_tables["labevents"][lab_col].value_counts().head(
+                    5).index.tolist()
+        except (KeyError, IndexError):
+            common_labs = []
+
+        # Get common medications
+        try:
+            if 'drug' in link_tables["prescriptions"].columns:
+                common_meds = link_tables["prescriptions"]['drug'].value_counts().head(
+                    5).index.tolist()
+            else:
+                # Fallback for synthetic data
+                med_col = link_tables["prescriptions"].columns[1] if len(
+                    link_tables["prescriptions"].columns) > 1 else link_tables["prescriptions"].columns[0]
+                common_meds = link_tables["prescriptions"][med_col].value_counts().head(
+                    5).index.tolist()
+        except (KeyError, IndexError):
+            common_meds = []
+
+        return {
+            "admissions_df": admissions_df,
+            "link_tables": link_tables,
+            "grouped": grouped,
+            "hadm_ids": sample_hadm_ids,
+            "diagnoses": common_diagnoses,
+            "labs": common_labs,
+            "meds": common_meds
+        }
+
+
+# Global instance for backward compatibility
+_default_provider = None
+
+
+def get_default_provider():
+    """Get or create the default data provider instance"""
+    global _default_provider
+    if _default_provider is None:
+        _default_provider = DataProvider()
+    return _default_provider
+
+
+# Convenience functions for backward compatibility with data_loader.py
+def load_test_data():
+    """Load exported data for testing - backward compatibility function"""
+    return get_default_provider().load_test_data()
+
+
+def get_sample_data():
+    """Get sample data for quick testing - backward compatibility function"""
+    return get_default_provider().get_sample_data()
+
+
+if __name__ == "__main__":
+    # Test the provider
+    provider = DataProvider()
+    print(f"Using {provider.get_data_source_type()} data")
+
+    sample_data = provider.get_sample_data()
+    if sample_data:
+        print("\nSample data loaded successfully!")
+        print(f"Sample admission IDs: {sample_data['hadm_ids'][:3]}")
+        print(f"Common diagnoses: {sample_data['diagnoses'][:2]}")
+        print(f"Common labs: {sample_data['labs'][:2]}")
+        print(f"Common medications: {sample_data['meds'][:2]}")
+    else:
+        print("Failed to load sample data")
