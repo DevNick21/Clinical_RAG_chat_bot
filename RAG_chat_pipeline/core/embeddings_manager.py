@@ -1,5 +1,9 @@
 """Embedding model and vectorstore management"""
 import pickle
+
+# Import compatibility fix before sentence-transformers
+from RAG_chat_pipeline.utils import huggingface_compat  # Auto-patches on import
+
 from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS

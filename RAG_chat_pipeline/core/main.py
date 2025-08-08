@@ -41,7 +41,7 @@ if __name__ == "__main__":
             if not question:
                 continue
 
-            response = chatbot.ask_with_chat_history(
+            response = chatbot.ask_question(
                 question,
                 chat_history=chat_history,
                 k=5

@@ -10,7 +10,7 @@ from typing import Dict
 from RAG_chat_pipeline.config.config import model_names, llms
 from RAG_chat_pipeline.benchmarks.evaluation_results_manager import EvaluationResultsManager
 from RAG_chat_pipeline.benchmarks.rag_evaluator import ClinicalRAGEvaluator
-from RAG_chat_pipeline.benchmarks.chat_history_evaluator import ChatHistoryEvaluator
+# from RAG_chat_pipeline.benchmarks.chat_history_evaluator import ChatHistoryEvaluator  # TODO: Create this module if needed
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 from RAG_chat_pipeline.benchmarks.gold_questions import generate_gold_questions_from_data
 
@@ -64,8 +64,11 @@ class ModelEvaluationRunner:
 
             # Choose evaluator based on mode
             if use_chat_history:
-                evaluator = ChatHistoryEvaluator(chatbot)
-                print("Using ChatHistoryEvaluator for conversational evaluation")
+                # TODO: Implement ChatHistoryEvaluator when conversational evaluation is needed
+                print(
+                    "Warning: ChatHistoryEvaluator not implemented, falling back to ClinicalRAGEvaluator")
+                evaluator = ClinicalRAGEvaluator(chatbot)
+                print("Using ClinicalRAGEvaluator for single-turn evaluation (fallback)")
             else:
                 evaluator = ClinicalRAGEvaluator(chatbot)
                 print("Using ClinicalRAGEvaluator for single-turn evaluation")

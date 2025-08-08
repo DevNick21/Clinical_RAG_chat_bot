@@ -1,16 +1,18 @@
 """Main clinical RAG chatbot"""
 import sys
 import re
+import time
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import OllamaLLM as Ollama
 from langchain_community.vectorstores import FAISS
+from langchain.schema import Document
 from typing import List
+from sklearn.metrics.pairwise import cosine_similarity
 from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY, SECTION_KEYWORDS
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
-import time
 
 # Common medical term fragments for hallucination detection
 MEDICAL_KEYWORDS = [
@@ -24,144 +26,211 @@ MEDICAL_KEYWORDS = [
 ]
 
 
+class ClinicalLogger:
+    """Centralized logging utility for consistent messaging"""
+    @staticmethod
+    def info(msg): print(f"ℹ️ {msg}")
+
+    @staticmethod
+    def warning(msg): print(f"⚠️ {msg}")
+
+    @staticmethod
+    def error(msg): print(f"❌ {msg}")
+
+    @staticmethod
+    def success(msg): print(f"✅ {msg}")
+
+    @staticmethod
+    def debug(msg): print(f"🔍 {msg}")
+
+
+class ErrorHandler:
+    """Centralized error handling utility"""
+    @staticmethod
+    def safe_operation(func, *args, fallback=None, error_msg="Operation failed"):
+        try:
+            return func(*args)
+        except Exception as e:
+            ClinicalLogger.warning(f"{error_msg}: {e}")
+            return fallback
+
+
 class ClinicalRAGBot:
     def __init__(self, vectorstore: FAISS, clinical_emb, chunked_docs: List):
         self.vectorstore = vectorstore
         self.clinical_emb = clinical_emb
         self.chunked_docs = chunked_docs
 
-        # Initialize LLM
-        self.llm = Ollama(model=LLM_MODEL)
+        # Initialize LLM with proper local configuration
+        self.llm = Ollama(
+            model=LLM_MODEL,
+            temperature=0.1,  # Slight randomness for better responses
+            repeat_penalty=1.1  # Standard repeat penalty
+        )
 
-        # Create metadata indices for faster lookups
+        # Performance optimization: Create metadata indices for faster lookups
+        ClinicalLogger.info("Initializing performance optimizations...")
         self._build_metadata_indices()
 
         # Setup prompts
         self.condense_q_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Given the chat history and follow-up question, rephrase the follow-up question as a standalone medical question.
+            ("system", """Rephrase the follow-up question as a standalone medical question using ONLY the context from chat history.
 
-CRITICAL INSTRUCTIONS:
-1. ONLY add context that was EXPLICITLY mentioned in the chat history
-2. DO NOT introduce new medical terminology, tests, conditions, or ICD codes
-3. DO NOT add specific disease names, medication names, or test names unless they were mentioned
-4. ALWAYS maintain these elements from the chat history:
-   - Admission IDs (hadm_id): "admission 12345"
-   - Section references: diagnoses, procedures, labs, microbiology, prescriptions
-   - Temporal references: dates, times, sequences
+RULES:
+1. Preserve admission IDs (hadm_id), patient IDs (subject_id), and section references
+2. Only add context explicitly mentioned in chat history
+3. Do NOT add new medical terms, conditions, or test names
+4. Keep the question concise and focused
 
-Example:
-History: "What medications were prescribed for admission 25282710?"
-Follow-up: "What are the diagnoses for this patient?"
-Good: "What diagnoses are recorded for admission 25282710?"
-BAD: "What diagnoses like pneumonia, heart failure, and diabetes are recorded for admission 25282710?"
+Examples:
+Chat: "What medications were prescribed for admission 25282710?"
+Follow-up: "What are the diagnoses?"
+Output: "What diagnoses are recorded for admission 25282710?"
 
-FORBIDDEN: Adding specific medical conditions (pneumonia, diabetes, K5080, etc.), 
-test names (CBC, MRI, etc.), or medications (insulin, aspirin, etc.) that weren't explicitly mentioned.
+Chat: "Show labs for patient 12345"  
+Follow-up: "Any abnormal values?"
+Output: "What abnormal lab values are there for patient 12345?"
 
-Keep the rephrased question focused, concise, and free of hallucinated medical terms."""),
+If no relevant context exists, return the original question unchanged."""),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}")
         ])
 
-        self.clinical_qa_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a clinical AI assistant analyzing structured medical records from the MIMIC database.
+        # Create base clinical prompt template - SIMPLIFIED FOR SPEED
+        self.base_clinical_qa_prompt = """Analyze the MIMIC-IV medical records and provide a concise, accurate response.
 
-DOCUMENT STRUCTURE - Each document contains one of these sections:
-• header: admission info (admit/discharge times, type, expire flag)
-• diagnoses: ICD diagnosis codes with descriptions
-• procedures: ICD procedure codes with descriptions
-• labs: laboratory tests (values, times, categories, flags)
-• microbiology: culture tests (specimen types, dates, comments)
-• prescriptions: medications (dosages, administration times, order status)
+{context_instruction}
 
-PATIENT CONTEXT:
-- Each document has hadm_id (admission ID) and subject_id (patient ID)
-- Multiple admissions may exist for the same patient (subject_id)
-- When relevant, reference patient history across admissions
-- Always cite specific admission IDs when providing information
+Based on the provided documents, answer the question directly and include:
+- Specific medical details (codes, values, dates)
+- Source: admission ID and section type
 
-RESPONSE GUIDELINES:
-1. **ACCURACY IS CRITICAL**: ONLY provide information that is explicitly in the provided documents
-2. **Direct answers**: Start with the specific answer to the question
-3. **Cite sources**: Reference admission IDs and sections when available
-4. **Handle missing data**: If no relevant data found, state CLEARLY: "No records found for [patient/admission] [ID]" - NEVER make up information
-5. **Patient context**: If multiple admissions exist for same patient, mention when relevant
-6. **Cross-admission insights**: When appropriate, note patterns across patient's admissions
-7. **Use section structure**: Reference the specific section types above
-8. **Include details**: For labs/meds, include values, times, and flags when relevant
-9. **ICD codes**: When discussing diagnoses/procedures, include ICD codes if available
-10. **NEVER HALLUCINATE**: If a patient ID or admission ID is not found in the documents, clearly state this fact
+Use only information from the documents. End with: "ℹ️ Data from MIMIC-IV database for research/education only."
 
-RESPONSE FORMAT:
-- Lead with direct answer
-- Include relevant details from the documents
-- Cite admission ID and section
-- Note patient context when relevant (e.g., "This patient has 3 admissions in the database")
-- End with disclaimer
+Context: {context}"""
 
-IMPORTANT: Always end your response with:
-"⚠️ MEDICAL DISCLAIMER: This information is for educational purposes only and should not be used for medical diagnosis or treatment decisions. Always consult with qualified healthcare professionals for medical advice."
+        # Create chains - these will be updated dynamically
+        self.question_answer_chain = None
 
-Context: {context}"""),
+    def _create_clinical_prompt(self, hadm_id=None, subject_id=None):
+        """Create dynamic clinical prompt with admission/patient context"""
+        if hadm_id:
+            context_instruction = f"""You are analyzing documents specifically for admission ID {hadm_id}. The provided documents are filtered for this admission, so they ARE relevant to the query about this admission.
+
+IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the admission ID. Never state "Source Citations: None provided" unless no documents were found. Each document contains relevant information for this admission."""
+        elif subject_id:
+            context_instruction = f"""You are analyzing documents specifically for patient/subject ID {subject_id}. The provided documents are filtered for this patient, so they ARE relevant to the query about this patient.
+
+IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the patient ID. Never state "Source Citations: None provided" unless no documents were found."""
+        else:
+            context_instruction = "You are analyzing medical documents from the MIMIC-IV database. ALWAYS include source citations for any information provided."
+
+        prompt_text = self.base_clinical_qa_prompt.format(
+            context_instruction=context_instruction,
+            context="{context}"
+        )
+
+        return ChatPromptTemplate.from_messages([
+            ("system", prompt_text),
             ("human", "{input}")
         ])
 
-        # Create chains
-        self.question_answer_chain = create_stuff_documents_chain(
-            self.llm, self.clinical_qa_prompt)
-
     def _build_metadata_indices(self):
-        """Building indices for faster metadata-based filtering"""
+        """Optimized indices building for faster metadata-based filtering"""
+        ClinicalLogger.info("Building optimized metadata indices...")
+        start_time = time.time()
+
         self.hadm_id_index = defaultdict(list)
         self.subject_id_index = defaultdict(list)
         self.section_index = defaultdict(list)
         self.hadm_section_index = defaultdict(list)
 
-        for i, doc in enumerate(self.chunked_docs):
-            hadm_id = doc.metadata.get('hadm_id')
-            subject_id = doc.metadata.get('subject_id')
-            section = doc.metadata.get('section')
+        # Process documents in batches for better memory management
+        batch_size = 1000
+        total_docs = len(self.chunked_docs)
+        processed = 0
 
-            # Robust type handling for hadm_id
-            if hadm_id is not None:
-                try:
-                    hadm_id_int = int(hadm_id)
-                    self.hadm_id_index[hadm_id_int].append(i)
+        for batch_start in range(0, total_docs, batch_size):
+            batch_end = min(batch_start + batch_size, total_docs)
+            batch = self.chunked_docs[batch_start:batch_end]
 
-                    # Handle subject_id
-                    if subject_id is not None:
-                        try:
-                            subject_id_int = int(subject_id)
-                            self.subject_id_index[subject_id_int].append(i)
-                        except (ValueError, TypeError):
-                            print(
-                                f"⚠️ Invalid subject_id in document {i}: {subject_id}")
+            for i, doc in enumerate(batch):
+                doc_idx = batch_start + i
+                hadm_id = doc.metadata.get('hadm_id')
+                subject_id = doc.metadata.get('subject_id')
+                section = doc.metadata.get('section')
 
-                    if section:
-                        section_str = str(section).lower()
-                        self.section_index[section_str].append(i)
-                        self.hadm_section_index[(
-                            hadm_id_int, section_str)].append(i)
+                # Robust type handling for hadm_id
+                if hadm_id is not None:
+                    try:
+                        hadm_id_int = int(hadm_id)
+                        self.hadm_id_index[hadm_id_int].append(doc_idx)
 
-                except (ValueError, TypeError):
-                    print(f"⚠️ Invalid hadm_id in document {i}: {hadm_id}")
-                    continue
+                        # Handle subject_id
+                        if subject_id is not None:
+                            try:
+                                subject_id_int = int(subject_id)
+                                self.subject_id_index[subject_id_int].append(
+                                    doc_idx)
+                            except (ValueError, TypeError):
+                                if processed < 10:  # Limit warning messages
+                                    ClinicalLogger.warning(
+                                        f"Invalid subject_id in document {doc_idx}: {subject_id}")
 
-            elif section:
-                section_str = str(section).lower()
-                self.section_index[section_str].append(i)
+                        if section:
+                            section_str = str(section).lower()
+                            self.section_index[section_str].append(doc_idx)
+                            self.hadm_section_index[(
+                                hadm_id_int, section_str)].append(doc_idx)
 
-    def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None):
+                    except (ValueError, TypeError):
+                        if processed < 10:  # Limit warning messages
+                            ClinicalLogger.warning(
+                                f"Invalid hadm_id in document {doc_idx}: {hadm_id}")
+                        continue
+
+                elif section:
+                    section_str = str(section).lower()
+                    self.section_index[section_str].append(doc_idx)
+
+                processed += 1
+
+            # Progress indicator for large datasets
+            if total_docs > 5000:
+                progress = (batch_end / total_docs) * 100
+                print(
+                    f"Index building progress: {progress:.1f}% ({batch_end}/{total_docs})")
+
+        build_time = time.time() - start_time
+        print(f"Metadata indices built in {build_time:.2f}s")
+        print(
+            f"Index stats: {len(self.hadm_id_index)} admissions, {len(self.subject_id_index)} subjects, {len(self.section_index)} sections")
+
+    def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
         """Centralized document filtering logic"""
         if hadm_id is not None:
             candidate_indices = self.hadm_id_index.get(hadm_id, [])
             if section is not None:
                 key = (hadm_id, section)
                 candidate_indices = self.hadm_section_index.get(key, [])
+
+            # Apply limit to prevent excessive document processing
+            if len(candidate_indices) > limit:
+                ClinicalLogger.info(
+                    f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
+                candidate_indices = candidate_indices[:limit]
+
             return [self.chunked_docs[i] for i in candidate_indices]
 
         elif subject_id is not None:
             candidate_indices = self.subject_id_index.get(subject_id, [])
+
+            # Apply limit early to reduce processing
+            if len(candidate_indices) > limit:
+                print(
+                    f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
+                candidate_indices = candidate_indices[:limit]
+
             candidate_docs = [self.chunked_docs[i] for i in candidate_indices]
             if section is not None:
                 candidate_docs = [doc for doc in candidate_docs
@@ -182,21 +251,248 @@ Context: {context}"""),
         }
 
     def _semantic_search_on_docs(self, candidate_docs, question, k):
-        """Perform semantic search on filtered documents"""
+        """Optimized semantic search using FAISS vectorstore efficiently"""
         if len(candidate_docs) <= k:
+            print(
+                f"Returning all {len(candidate_docs)} documents (less than k={k})")
             return candidate_docs
-        else:
-            try:
+
+        try:
+            # For moderate-sized candidate sets, use direct similarity calculation
+            if len(candidate_docs) <= 100:
+                # Get question embedding once
+                question_embedding = self.clinical_emb.embed_query(question)
+
+                # Calculate similarities efficiently
+                scored_docs = []
+                for doc in candidate_docs:
+                    # Use first 500 chars for consistency with vectorstore
+                    doc_text = doc.page_content[:500]
+                    doc_embedding = self.clinical_emb.embed_query(doc_text)
+
+                    similarity = cosine_similarity(
+                        [question_embedding], [doc_embedding])[0][0]
+                    scored_docs.append((similarity, doc))
+
+                # Sort and return top k
+                scored_docs.sort(key=lambda x: x[0], reverse=True)
+                top_docs = [doc for _, doc in scored_docs[:k]]
+
+                print(
+                    f"Selected top {len(top_docs)} documents by direct similarity")
+                return top_docs
+
+            else:
+                # For larger sets, create temporary FAISS index (still faster than before)
+                print(
+                    f"Creating temporary index for {len(candidate_docs)} documents")
                 faiss_temp = FAISS.from_documents(
                     candidate_docs, self.clinical_emb)
-                return faiss_temp.similarity_search(question, k=k)
-            except Exception as faiss_error:
+                top_docs = faiss_temp.similarity_search(question, k=k)
+
                 print(
-                    f"⚠️ FAISS search failed: {faiss_error}, using top {k} documents")
-                return candidate_docs[:k]
+                    f"Selected top {len(top_docs)} documents via temporary FAISS")
+                return top_docs
+
+        except Exception as similarity_error:
+            print(
+                f"⚠️ Similarity search failed: {similarity_error}, using first {k} documents")
+            return candidate_docs[:k]
+
+    def _validate_and_fix_response(self, answer, retrieved_docs, hadm_id=None):
+        """Post-process response to fix common citation and format issues"""
+        # Fix missing disclaimer
+        if "Data from MIMIC-IV database for research/education only" not in answer:
+            answer += "\n\nℹ️ Data from MIMIC-IV database for research/education only."
+
+        # Fix incorrect citation claims when documents were found
+        if "Source Citations: None provided" in answer and len(retrieved_docs) > 0:
+            if hadm_id:
+                fix_text = f"Source Citations: From {len(retrieved_docs)} documents for admission {hadm_id}"
+            else:
+                fix_text = f"Source Citations: From {len(retrieved_docs)} retrieved documents"
+            answer = answer.replace(
+                "Source Citations: None provided", fix_text)
+        elif "**Source Citations**: None provided" in answer and len(retrieved_docs) > 0:
+            if hadm_id:
+                fix_text = f"**Source Citations**: From {len(retrieved_docs)} documents for admission {hadm_id}"
+            else:
+                fix_text = f"**Source Citations**: From {len(retrieved_docs)} retrieved documents"
+            answer = answer.replace(
+                "**Source Citations**: None provided", fix_text)
+
+        return answer
+
+    def _extract_clinical_content(self, docs, query_type="general"):
+        """Extract and structure relevant clinical content from documents using intelligent prioritization"""
+        extracted_content = []
+
+        for doc in docs:
+            content = doc.page_content
+            metadata = doc.metadata
+            section = metadata.get('section', '').lower()
+            hadm_id = metadata.get('hadm_id', 'Unknown')
+
+            # Smart content extraction based on section and content analysis
+            if section == 'diagnoses':
+                # Prioritize structured diagnosis data but be flexible
+                structured_content = self._extract_diagnosis_content(
+                    content, hadm_id)
+
+            elif section == 'prescriptions':
+                # Extract medication information flexibly
+                structured_content = self._extract_medication_content(
+                    content, hadm_id)
+
+            elif section in ['labs', 'labevents']:
+                # Extract lab results with flexibility
+                structured_content = self._extract_lab_content(
+                    content, hadm_id)
+
+            else:
+                # Generic section handling with smart truncation
+                structured_content = self._extract_generic_content(
+                    content, hadm_id, section)
+
+            extracted_content.append(structured_content)
+
+        return "\n\n".join(extracted_content)
+
+    def _extract_diagnosis_content(self, content, hadm_id):
+        """Extract diagnosis content with fallback approaches"""
+        # Look for common diagnosis indicators (more flexible than rigid regex)
+        diagnosis_indicators = ['icd', 'diagnosis',
+                                'diagnoses', 'condition', 'disorder']
+
+        lines = content.split('\n')
+        relevant_lines = []
+
+        for line in lines:
+            line_lower = line.lower().strip()
+            if not line_lower:
+                continue
+
+            # Check if line contains diagnosis-related content
+            if any(indicator in line_lower for indicator in diagnosis_indicators):
+                relevant_lines.append(line.strip())
+            # Potential ICD codes
+            elif re.search(r'\b[A-Z]?\d{2,5}(?:\.\d+)?\b', line):
+                relevant_lines.append(line.strip())
+            elif len(relevant_lines) < 3 and len(line.strip()) > 10:  # First few substantial lines
+                relevant_lines.append(line.strip())
+
+        if relevant_lines:
+            # Take most relevant lines, prioritizing those with medical terms
+            priority_lines = []
+            other_lines = []
+
+            for line in relevant_lines[:12]:  # Limit to avoid overwhelming LLM
+                if any(keyword in line.lower() for keyword in ['diagnosis', 'icd', 'condition']):
+                    priority_lines.append(line)
+                else:
+                    other_lines.append(line)
+
+            final_lines = priority_lines + \
+                other_lines[:max(8-len(priority_lines), 0)]
+            structured_content = f"ADMISSION {hadm_id} DIAGNOSES:\n" + \
+                "\n".join(final_lines)
+        else:
+            # Fallback to intelligent truncation
+            structured_content = f"ADMISSION {hadm_id} DIAGNOSES:\n{content[:600]}"
+
+        return structured_content
+
+    def _extract_medication_content(self, content, hadm_id):
+        """Extract medication content with fallback approaches"""
+        medication_indicators = ['medication', 'drug',
+                                 'prescription', 'dose', 'mg', 'tablet', 'capsule']
+
+        lines = content.split('\n')
+        relevant_lines = []
+
+        for line in lines:
+            line_lower = line.lower().strip()
+            if not line_lower:
+                continue
+
+            # Check for medication-related content
+            if any(indicator in line_lower for indicator in medication_indicators):
+                relevant_lines.append(line.strip())
+            elif re.search(r'\d+\s*(mg|g|ml|units?)', line_lower):  # Dosage patterns
+                relevant_lines.append(line.strip())
+            elif len(relevant_lines) < 3 and len(line.strip()) > 10:
+                relevant_lines.append(line.strip())
+
+        if relevant_lines:
+            structured_content = f"ADMISSION {hadm_id} MEDICATIONS:\n" + \
+                "\n".join(relevant_lines[:10])
+        else:
+            structured_content = f"ADMISSION {hadm_id} MEDICATIONS:\n{content[:600]}"
+
+        return structured_content
+
+    def _extract_lab_content(self, content, hadm_id):
+        """Extract lab content with fallback approaches"""
+        lab_indicators = ['lab', 'test', 'result',
+                          'value', 'normal', 'abnormal', 'high', 'low']
+
+        lines = content.split('\n')
+        relevant_lines = []
+
+        for line in lines:
+            line_lower = line.lower().strip()
+            if not line_lower:
+                continue
+
+            # Check for lab-related content
+            if any(indicator in line_lower for indicator in lab_indicators):
+                relevant_lines.append(line.strip())
+            # Numeric values with units
+            elif re.search(r'\d+\.?\d*\s*[a-zA-Z/%]*', line):
+                relevant_lines.append(line.strip())
+            elif len(relevant_lines) < 3 and len(line.strip()) > 10:
+                relevant_lines.append(line.strip())
+
+        if relevant_lines:
+            structured_content = f"ADMISSION {hadm_id} LAB RESULTS:\n" + \
+                "\n".join(relevant_lines[:12])
+        else:
+            structured_content = f"ADMISSION {hadm_id} LAB RESULTS:\n{content[:600]}"
+
+        return structured_content
+
+    def _extract_generic_content(self, content, hadm_id, section):
+        """Extract generic content with intelligent truncation"""
+        # For unknown sections, use smart truncation that preserves structure
+        lines = content.split('\n')
+        important_lines = []
+
+        for line in lines[:20]:  # Look at first 20 lines
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+
+            # Prioritize lines that look like headers or important info
+            if (line_stripped.isupper() or
+                line_stripped.endswith(':') or
+                any(char.isdigit() for char in line_stripped) or
+                    len(line_stripped) > 15):
+                important_lines.append(line_stripped)
+
+            if len(important_lines) >= 8:
+                break
+
+        if important_lines:
+            structured_content = f"ADMISSION {hadm_id} {section.upper()}:\n" + "\n".join(
+                important_lines)
+        else:
+            # Ultimate fallback
+            structured_content = f"ADMISSION {hadm_id} {section.upper()}:\n{content[:600]}"
+
+        return structured_content
 
     def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
-        """Simplified clinical search function"""
+        """Clinical search function"""
         start_time = time.time()
 
         if original_question and original_question != question:
@@ -208,9 +504,12 @@ Context: {context}"""),
             chat_history = []
 
         try:
-            # Get filtered documents
+            # Performance optimization: limit k to reasonable values
+            k = min(k, 5)  # Focus on most relevant documents
+
+            # Get filtered documents with performance limits
             candidate_docs = self._filter_candidate_documents(
-                hadm_id, subject_id, section)
+                hadm_id, subject_id, section, limit=20)  # Smaller candidate pool
 
             if candidate_docs is not None:
                 # Filtered search
@@ -223,13 +522,21 @@ Context: {context}"""),
                 print(
                     f"Filtering documents by {'admission' if hadm_id else 'subject'} ID...")
                 print(f"Filtered to {len(candidate_docs)} documents")
-                retrieved_docs = self._semantic_search_on_docs(
-                    candidate_docs, question, k)
+
+                # Early termination if we have very few documents
+                if len(candidate_docs) <= k:
+                    retrieved_docs = candidate_docs
+                    print(
+                        f"Using all {len(retrieved_docs)} available documents")
+                else:
+                    retrieved_docs = self._semantic_search_on_docs(
+                        candidate_docs, question, k)
             else:
-                # Global semantic search
-                print("Performing semantic search across all records...")
+                # Global semantic search with tighter limits
+                print("Performing optimized semantic search across all records...")
+                k_global = min(k, 20)  # Even tighter limit for global search
                 retrieved_docs = self.vectorstore.similarity_search(
-                    question, k=k)
+                    question, k=k_global)
                 print(f"Retrieved {len(retrieved_docs)} documents")
 
                 # Post-filter by section if specified
@@ -240,11 +547,38 @@ Context: {context}"""),
                     print(
                         f"Section filtering: {original_count} → {len(retrieved_docs)} documents")
 
-            # Generate answer with error handling
+            # Performance check: warn if too many documents
+            if len(retrieved_docs) > 5:
+                print(
+                    f"⚠️ Processing {len(retrieved_docs)} documents - reducing to top 3")
+                retrieved_docs = retrieved_docs[:3]
+
+            # INTELLIGENT CONTENT EXTRACTION: Extract structured clinical data
+            if len(retrieved_docs) > 0:
+                print(
+                    f"Extracting clinical content from {len(retrieved_docs)} documents...")
+                extracted_content = self._extract_clinical_content(
+                    retrieved_docs)
+
+                # Create a single document with structured content
+                structured_doc = Document(
+                    page_content=extracted_content,
+                    metadata={"combined": True,
+                              "doc_count": len(retrieved_docs)}
+                )
+                retrieved_docs = [structured_doc]
+
+            # Generate answer with simplified approach
             print("Generating clinical response...")
             try:
+                # Create dynamic prompt with admission/patient context
+                clinical_prompt = self._create_clinical_prompt(
+                    hadm_id, subject_id)
+                dynamic_qa_chain = create_stuff_documents_chain(
+                    self.llm, clinical_prompt)
+
                 answer = safe_llm_invoke(
-                    self.question_answer_chain,
+                    dynamic_qa_chain,
                     {
                         "input": question,
                         "context": retrieved_docs,
@@ -257,6 +591,10 @@ Context: {context}"""),
                 print(f"⚠️ LLM response generation failed: {llm_error}")
                 answer = f"I found relevant medical records but encountered an error generating the response. Please try rephrasing your question. Error: {str(llm_error)}"
 
+            # Post-process response to fix common issues
+            answer = self._validate_and_fix_response(
+                answer, retrieved_docs, hadm_id)
+
             # Prepare result with comprehensive metadata
             search_time = time.time() - start_time
             result = {
@@ -265,7 +603,8 @@ Context: {context}"""),
                 "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
                 "search_time": search_time,
                 "documents_found": len(retrieved_docs),
-                "search_method": "filtered" if hadm_id is not None or subject_id is not None else "global_semantic"
+                "search_method": "filtered" if hadm_id is not None or subject_id is not None else "global_semantic",
+                "performance_optimized": True
             }
 
             print(f"Search completed in {search_time:.3f}s")
@@ -301,25 +640,15 @@ Context: {context}"""),
         return question, hadm_id, subject_id, section, k, extracted_entities
 
     def _process_chat_context(self, chat_history, question, hadm_id=None, subject_id=None, section=None):
-        """Centralized chat history processing with comprehensive debugging"""
+        """Centralized chat history processing with minimal debugging"""
         if not chat_history:
-            print("ℹ️ No chat history to process")
+            ClinicalLogger.debug("No chat history to process")
             return question, hadm_id, subject_id, section, {}
 
         try:
-            # Debug: Log chat history length and content
-            print(f"ℹ️ Processing chat history: {len(chat_history)} messages")
-            print(
-                f"ℹ️ Last 2 messages: {chat_history[-2:] if len(chat_history) >= 2 else chat_history}")
-            print(f"ℹ️ Original question: '{question}'")
-            print(
-                f"ℹ️ Initial parameters - hadm_id: {hadm_id}, section: {section}")
-
             # Extract context from chat history
             chat_context = extract_context_from_chat_history(
                 chat_history, question)
-
-            print(f"ℹ️ Extracted chat context: {chat_context}")
 
             # Use chat context if parameters not explicitly provided
             old_hadm_id, old_subject_id, old_section = hadm_id, subject_id, section
@@ -327,177 +656,134 @@ Context: {context}"""),
             subject_id = subject_id or chat_context.get("subject_id")
             section = section or chat_context.get("section")
 
-            # Debug: Log parameter updates from chat context
+            # Log parameter updates from chat context
             if hadm_id != old_hadm_id or subject_id != old_subject_id or section != old_section:
-                print(
-                    f"ℹ️ Updated parameters from chat history - hadm_id: {hadm_id}, section: {section}")
+                ClinicalLogger.info(
+                    f"Updated parameters from chat history - hadm_id: {hadm_id}, section: {section}")
 
             # Store original question for validation
             original_question = question
 
-            # IMPROVED: More strict rephrasing condition
-            # 1. Only rephrase if this is a follow-up question that needs context
-            # 2. Don't rephrase if the question already contains specific context
-            has_admission_context = "admission" in question.lower() and (
-                hadm_id is not None and str(hadm_id) in question
-            )
-            has_section_context = section and any(
-                kw in question.lower() for kw in SECTION_KEYWORDS.get(section, [])
-            )
-
-            # Check if question is likely a follow-up (short and without context)
-            is_likely_followup = len(
-                question.split()) < 10 and not has_admission_context
-
-            needs_rephrasing = (
-                len(chat_history) > 0 and
-                is_likely_followup and
-                not (has_admission_context or has_section_context)
-            )
-
-            # Debug: Log rephrasing decision
-            print(
-                f"ℹ️ Rephrasing decision - needs_rephrasing: {needs_rephrasing}")
-            print(f"  - has_admission_context: {has_admission_context}")
-            print(f"  - has_section_context: {has_section_context}")
-            print(f"  - is_likely_followup: {is_likely_followup}")
+            # Check if rephrasing is needed
+            needs_rephrasing = self._should_rephrase_question(
+                question, chat_history, hadm_id, section)
 
             if needs_rephrasing:
-                print(f"🔄 Rephrasing question using chat history...")
-                # Rephrase question using chat history
-                rephrased = safe_llm_invoke(
-                    self.llm,
-                    self.condense_q_prompt.format_messages(
-                        chat_history=chat_history, input=question),
-                    fallback_message=question,
-                    context="Question rephrasing"
-                )
-
-                print(f"ℹ️ Raw rephrased result: '{rephrased}'")
-
-                # Clean up the rephrased question
-                if isinstance(rephrased, str) and len(rephrased.strip()) > 5:
-                    # IMPROVED: More comprehensive prefix removal
-                    rephrased = re.sub(
-                        r'^(The standalone medical question is:?\s*|Standalone question:?\s*|Rephrased question:?\s*|The question is:?\s*)',
-                        '',
-                        rephrased,
-                        flags=re.IGNORECASE
-                    )
-                    rephrased = rephrased.strip('" \t\n\'')
-
-                    print(f"ℹ️ Cleaned rephrased question: '{rephrased}'")
-
-                    # Quick hallucination check - look for common problematic patterns
-                    hallucination_patterns = [
-                        r'\b[A-Z]\d{4,5}\b',  # ICD-like codes (K5080, etc.)
-                        r'\bcode\s*[A-Z]?\d+',  # "code K5080"
-                        # Common medical terms
-                        r'\b(pneumonia|diabetes|hypertension|sepsis|myocardial|stroke)\b'
-                    ]
-
-                    has_hallucination = any(re.search(pattern, rephrased, re.IGNORECASE)
-                                            for pattern in hallucination_patterns)
-
-                    if has_hallucination:
-                        print(
-                            f"🚨 HALLUCINATION DETECTED in rephrased question: '{rephrased}'")
-                        print(
-                            f"🚨 Forcing template-based rephrasing to prevent hallucination")
-                        # Force template-based approach
-                        if hadm_id:
-                            question = f"For admission {hadm_id}, {original_question}"
-                        else:
-                            question = original_question
-                        print(
-                            f"✓ Using safe template-based question: '{question}'")
-                    else:
-                        # IMPROVED: Better validation to prevent hallucinations
-                        # 1. Check length ratio
-                        # 2. Check for medical terms not in original question
-                        # 3. Check for admission ID preservation
-                        length_ratio = len(rephrased) / \
-                            max(1, len(original_question))
-
-                    # Extract medical terminology that might be hallucinations
-                    original_tokens = set(original_question.lower().split())
-                    rephrased_tokens = set(rephrased.lower().split())
-                    new_tokens = rephrased_tokens - original_tokens
-
-                    # Extract tokens from chat history to allow legitimate context
-                    chat_tokens = set()
-                    for role, msg in chat_history[-4:]:  # Last 4 messages
-                        if isinstance(msg, str):
-                            chat_tokens.update(msg.lower().split())
-
-                    # Check for potentially added medical terms (not in original OR chat history)
-                    suspicious_tokens = new_tokens - chat_tokens
-                    medical_terms_added = [token for token in suspicious_tokens if any(
-                        med_term in token for med_term in MEDICAL_KEYWORDS) or len(token) > 8]
-
-                    # Check if rephrased has the admission ID
-                    has_admission_id = hadm_id and str(hadm_id) in rephrased
-
-                    # Debug: Log validation metrics
-                    print(f"ℹ️ Validation - length ratio: {length_ratio:.2f}")
-                    # Limit output
-                    print(
-                        f"ℹ️ Validation - new tokens: {list(new_tokens)[:10]}...")
-                    print(
-                        f"ℹ️ Validation - chat tokens sample: {list(chat_tokens)[:10]}...")
-                    print(
-                        f"ℹ️ Validation - suspicious medical terms: {medical_terms_added}")
-                    print(
-                        f"ℹ️ Validation - has admission ID: {has_admission_id}")
-
-                    # Decide if the rephrasing is valid or needs simplification
-                    use_simple = (
-                        length_ratio > 3.0 or  # Much too longer
-                        # Any suspicious medical terms
-                        len(medical_terms_added) > 1 or
-                        # Too many new words overall
-                        len(suspicious_tokens) > 8
-                    )
-
-                    if use_simple:
-                        # Simpler and more predictable rephrasing using templates
-                        if hadm_id and section:
-                            question = f"For admission {hadm_id}, what {section} information is available? {original_question}"
-                        elif hadm_id:
-                            # Create better contextual rephrasing based on question type
-                            if any(word in original_question.lower() for word in ['diagnose', 'diagnosis', 'condition']):
-                                question = f"What diagnoses are recorded for admission {hadm_id}?"
-                            elif any(word in original_question.lower() for word in ['medication', 'drug', 'prescription', 'med']):
-                                question = f"What medications were prescribed for admission {hadm_id}?"
-                            elif any(word in original_question.lower() for word in ['lab', 'test', 'result']):
-                                question = f"What lab results are available for admission {hadm_id}?"
-                            elif any(word in original_question.lower() for word in ['procedure', 'surgery', 'operation']):
-                                question = f"What procedures were performed for admission {hadm_id}?"
-                            elif any(word in original_question.lower() for word in ['microbiology', 'culture', 'organism']):
-                                question = f"What microbiology results are available for admission {hadm_id}?"
-                            else:
-                                question = f"For admission {hadm_id}, {original_question}"
-                        else:
-                            question = original_question
-                        print(
-                            f"⚠️ Rephrased question failed validation, using template-based version: '{question}'")
-                    else:
-                        question = rephrased
-                        print(
-                            f"✓ Using validated rephrased question: '{question}'")
-                else:
-                    print(f"⚠️ Invalid rephrased result, keeping original question")
-            else:
-                print(
-                    f"ℹ️ No rephrasing needed - question already has sufficient context")
+                ClinicalLogger.info(
+                    "Rephrasing question using chat history...")
+                question = self._rephrase_question_safely(
+                    question, chat_history, hadm_id, original_question)
 
             return question, hadm_id, subject_id, section, chat_context
         except Exception as e:
-            print(f"❌ Chat context processing failed: {e}")
-            # Print stack trace for debugging
-            import traceback
-            print(traceback.format_exc())
+            ClinicalLogger.error(f"Chat context processing failed: {e}")
             return question, hadm_id, subject_id, section, {}
+
+    def _should_rephrase_question(self, question, chat_history, hadm_id, section):
+        """Determine if question needs rephrasing"""
+        has_admission_context = "admission" in question.lower() and (
+            hadm_id is not None and str(hadm_id) in question
+        )
+        has_section_context = section and any(
+            kw in question.lower() for kw in SECTION_KEYWORDS.get(section, [])
+        )
+        is_likely_followup = len(
+            question.split()) < 8 and not has_admission_context
+
+        return (
+            len(chat_history) > 0 and
+            is_likely_followup and
+            not (has_admission_context or has_section_context) and
+            len(question.split()) < 6
+        )
+
+    def _rephrase_question_safely(self, question, chat_history, hadm_id, original_question):
+        """Safely rephrase question with validation"""
+        try:
+            rephrased = safe_llm_invoke(
+                self.llm,
+                self.condense_q_prompt.format_messages(
+                    chat_history=chat_history, input=question),
+                fallback_message=question,
+                context="Question rephrasing"
+            )
+
+            if not isinstance(rephrased, str) or len(rephrased.strip()) <= 5:
+                return question
+
+            # Clean up the rephrased question
+            rephrased = re.sub(
+                r'^(The standalone medical question is:?\s*|Standalone question:?\s*|Rephrased question:?\s*|The question is:?\s*)',
+                '', rephrased, flags=re.IGNORECASE
+            ).strip('" \t\n\'')
+
+            # Check for hallucinations
+            if self._has_hallucination(rephrased):
+                ClinicalLogger.warning(
+                    "Hallucination detected, using template-based approach")
+                return self._create_template_question(hadm_id, original_question)
+
+            # Validate rephrasing quality
+            if self._is_rephrasing_valid(rephrased, original_question, chat_history):
+                return rephrased
+            else:
+                return self._create_template_question(hadm_id, original_question)
+
+        except Exception as e:
+            ClinicalLogger.warning(f"Rephrasing failed: {e}")
+            return question
+
+    def _has_hallucination(self, text):
+        """Check for common hallucination patterns"""
+        patterns = [
+            r'\b[A-Z]\d{4,5}\b',  # ICD-like codes
+            r'\bcode\s*[A-Z]?\d+',  # "code K5080"
+            r'\b(pneumonia|diabetes|hypertension|sepsis|myocardial|stroke)\b'
+        ]
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+
+    def _is_rephrasing_valid(self, rephrased, original, chat_history):
+        """Validate rephrasing quality"""
+        length_ratio = len(rephrased) / max(1, len(original))
+        if length_ratio > 3.0:
+            return False
+
+        # Check for suspicious medical terms
+        original_tokens = set(original.lower().split())
+        rephrased_tokens = set(rephrased.lower().split())
+        new_tokens = rephrased_tokens - original_tokens
+
+        # Get chat tokens for context
+        chat_tokens = set()
+        for role, msg in chat_history[-4:]:
+            if isinstance(msg, str):
+                chat_tokens.update(msg.lower().split())
+
+        suspicious_tokens = new_tokens - chat_tokens
+        medical_terms_added = [token for token in suspicious_tokens
+                               if any(med_term in token for med_term in MEDICAL_KEYWORDS) or len(token) > 8]
+
+        return len(medical_terms_added) <= 1 and len(suspicious_tokens) <= 8
+
+    def _create_template_question(self, hadm_id, original_question):
+        """Create safe template-based question"""
+        if not hadm_id:
+            return original_question
+
+        # Create contextual rephrasing based on question type
+        question_lower = original_question.lower()
+        if any(word in question_lower for word in ['diagnose', 'diagnosis', 'condition']):
+            return f"What diagnoses are recorded for admission {hadm_id}?"
+        elif any(word in question_lower for word in ['medication', 'drug', 'prescription', 'med']):
+            return f"What medications were prescribed for admission {hadm_id}?"
+        elif any(word in question_lower for word in ['lab', 'test', 'result']):
+            return f"What lab results are available for admission {hadm_id}?"
+        elif any(word in question_lower for word in ['procedure', 'surgery', 'operation']):
+            return f"What procedures were performed for admission {hadm_id}?"
+        elif any(word in question_lower for word in ['microbiology', 'culture', 'organism']):
+            return f"What microbiology results are available for admission {hadm_id}?"
+        else:
+            return f"For admission {hadm_id}, {original_question}"
 
     def _validate_question(self, question):
         """Validate and sanitize user input"""
@@ -567,8 +853,13 @@ Context: {context}"""),
                     doc for doc in retrieved_docs if doc.metadata.get('section') == section]
 
             if retrieved_docs:
+                # Create dynamic prompt for fallback too
+                clinical_prompt = self._create_clinical_prompt(hadm_id, None)
+                fallback_qa_chain = create_stuff_documents_chain(
+                    self.llm, clinical_prompt)
+
                 answer = safe_llm_invoke(
-                    self.question_answer_chain,
+                    fallback_qa_chain,
                     {"input": question, "context": retrieved_docs, "chat_history": []},
                     fallback_message="I found some relevant information, but cannot provide a detailed analysis due to technical limitations.",
                     context="Fallback search"
@@ -595,7 +886,7 @@ Context: {context}"""),
         }
 
     def ask_question(self, question, chat_history=None, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
-        """Unified question method - handles both single and conversational queries"""
+        """Unified question method - handles both single and conversational queries with performance optimization"""
         is_conversational = chat_history is not None
 
         # Detect call context
@@ -611,7 +902,11 @@ Context: {context}"""),
             print(
                 f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
 
+        # Performance optimization: validate k early and set reasonable limits
+        k = min(k, 3)  # Focus on top 3 most relevant documents
+
         try:
+            performance_start = time.time()
             original_hadm_id, original_subject_id, original_section = hadm_id, subject_id, section
             chat_history = chat_history or []
 
@@ -619,14 +914,19 @@ Context: {context}"""),
             question, hadm_id, subject_id, section, k, extracted_entities = self._extract_and_validate_params(
                 question, hadm_id, subject_id, section, k)
 
+            # Performance check: Skip expensive chat processing for simple questions
+            processing_time = time.time() - performance_start
+
             # Process chat context if conversational
             original_question = question
-            if is_conversational and chat_history:
+            if is_conversational and chat_history and processing_time < 1.0:  # Skip if already slow
                 search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
                     chat_history, question, hadm_id, subject_id, section)
             else:
                 search_question = question
                 chat_context = {}
+                if processing_time >= 1.0:
+                    print("Skipping chat processing due to performance constraints")
 
             # Perform search
             result = self.clinical_search(
@@ -639,129 +939,83 @@ Context: {context}"""),
                 if len(chat_history) > MAX_CHAT_HISTORY:
                     chat_history = chat_history[-MAX_CHAT_HISTORY:]
 
+            total_time = time.time() - performance_start
             result.update({
                 "mode": "conversational" if is_conversational else "single_question",
                 "chat_history": chat_history if is_conversational else None,
                 "extracted_entities": extracted_entities,
                 "chat_context": chat_context if is_conversational else {},
                 "manual_override": {"hadm_id": original_hadm_id, "subject_id": original_subject_id, "section": original_section} if is_conversational else None,
-                "parameters": {"hadm_id": hadm_id, "subject_id": subject_id, "section": section, "k": k} if not is_conversational else None
+                "parameters": {"hadm_id": hadm_id, "subject_id": subject_id, "section": section, "k": k} if not is_conversational else None,
+                "total_processing_time": total_time,
+                "performance_optimized": True
             })
+
+            if total_time > 30:  # Warn about slow queries
+                print(
+                    f"⚠️ Slow query detected: {total_time:.2f}s - consider reducing document scope")
+
             return result
 
         except Exception as e:
             return self._handle_search_fallback(question, hadm_id, section, k, str(e))
 
-    def ask_single_question(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, search_strategy="auto"):
-        """Backward compatibility wrapper for single questions"""
-        return self.ask_question(question, None, hadm_id, subject_id, section, k)
-
-    def ask_with_chat_history(self, question, chat_history=None, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
-        """Backward compatibility wrapper for conversational mode"""
-        return self.ask_question(question, chat_history, hadm_id, subject_id, section, k)
+    # Removed redundant methods - use ask_question() directly
 
     def chat(self, message, chat_history=None):
         """Main chat interface for API - handles chat history format conversion"""
-        # Check the source of the call to ensure proper usage
+        # Identify the context of the call
         caller_info = sys._getframe(1)
         caller_filename = caller_info.f_code.co_filename
-        caller_function = caller_info.f_code.co_name
 
-        # Identify the context of the call
-        is_api_call = "app.py" in caller_filename  # Called from Flask API
-        is_cli_call = "main.py" in caller_filename  # Called from CLI
+        is_api_call = "app.py" in caller_filename
+        is_cli_call = "main.py" in caller_filename
         is_evaluation = "rag_evaluator.py" in caller_filename or "evaluator" in caller_filename
 
-        # Log appropriate usage information
+        # Log context appropriately
         if is_api_call:
-            print("📱 Processing API request...")
+            ClinicalLogger.debug("Processing API request...")
         elif is_cli_call:
-            print("💻 Processing CLI request...")
+            ClinicalLogger.debug("Processing CLI request...")
         elif is_evaluation:
-            print("🧪 Running in evaluation mode...")
-        else:
-            print(
-                "⚠️ Warning: chat() method called outside of API, CLI or evaluation context")
-            print(
-                f"Called from: {caller_filename} in function {caller_function}")
+            ClinicalLogger.debug("Running in evaluation mode...")
 
-        # Debug: Log incoming parameters
-        print(f"🔍 Chat method inputs:")
-        print(f"  - Message: '{message}'")
-        print(f"  - Chat history type: {type(chat_history)}")
-        print(
-            f"  - Chat history length: {len(chat_history) if chat_history else 0}")
-        if chat_history:
-            print(
-                f"  - Chat history sample: {chat_history[:2] if len(chat_history) >= 2 else chat_history}")
-
-        # Convert chat history format if needed
+        # Convert and validate chat history
         processed_chat_history = self._process_api_chat_history(chat_history)
 
-        # Debug: Log processed chat history
-        print(f"🔍 Processed chat history:")
-        print(f"  - Type: {type(processed_chat_history)}")
-        print(f"  - Length: {len(processed_chat_history)}")
-        if processed_chat_history:
-            print(
-                f"  - Sample: {processed_chat_history[:2] if len(processed_chat_history) >= 2 else processed_chat_history}")
-
-        # Truncate chat history if too long
+        # Truncate if too long
         if processed_chat_history and len(processed_chat_history) > MAX_CHAT_HISTORY:
             processed_chat_history = processed_chat_history[-MAX_CHAT_HISTORY:]
-            print(f"⚠️ Chat history truncated to {MAX_CHAT_HISTORY} messages")
+            ClinicalLogger.warning(
+                f"Chat history truncated to {MAX_CHAT_HISTORY} messages")
 
-        # For non-evaluation contexts, verify message is likely from user input
-        if not is_evaluation:
-            if not message or not isinstance(message, str) or len(message.strip()) < 2:
-                print("⚠️ Warning: Empty or invalid message received")
-                return "I couldn't understand your message. Please provide a valid question."
+        # Basic input validation
+        if not is_evaluation and (not message or not isinstance(message, str) or len(message.strip()) < 2):
+            ClinicalLogger.warning("Empty or invalid message received")
+            return "I couldn't understand your message. Please provide a valid question."
 
-            # Basic check for hardcoded test messages in non-evaluation contexts
-            test_patterns = ["test", "hello", "demo", "example"]
-            if not is_evaluation and len(message.split()) == 1 and message.lower() in test_patterns:
-                print("⚠️ Possible test message detected in production context")
-
-        # Call the main ask_question method
+        # Call main processing method
         response = self.ask_question(message, processed_chat_history)
-
-        # Return in the format expected by the API
         return response.get('answer', 'No answer generated')
 
     def _process_api_chat_history(self, chat_history):
         """Convert API chat history format to internal format"""
         if not chat_history:
-            print("ℹ️ No chat history to process in _process_api_chat_history")
             return []
 
-        print(f"ℹ️ Processing API chat history: {len(chat_history)} items")
         processed = []
-        for i, msg in enumerate(chat_history):
-            print(
-                f"ℹ️ Processing message {i}: type={type(msg)}, content={msg}")
-
+        for msg in chat_history:
             if isinstance(msg, dict):
-                # Handle API format: {"role": "user", "content": "message"}
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if content.strip():
                     processed.append((role, content))
-                    print(
-                        f"  ✓ Added dict format: ({role}, '{content[:50]}...')")
-                else:
-                    print(f"  ⚠️ Skipped empty dict content")
             elif isinstance(msg, (list, tuple)) and len(msg) >= 2:
-                # Handle tuple format: (role, message)
                 role, content = msg[0], msg[1]
                 if content.strip():
                     processed.append((role, content))
-                    print(
-                        f"  ✓ Added tuple format: ({role}, '{content[:50]}...')")
-                else:
-                    print(f"  ⚠️ Skipped empty tuple content")
             else:
-                print(
-                    f"  ❌ Warning: Unexpected chat history format: {type(msg)}")
+                ClinicalLogger.warning(
+                    f"Unexpected chat history format: {type(msg)}")
 
-        print(f"ℹ️ Final processed chat history: {len(processed)} messages")
         return processed
