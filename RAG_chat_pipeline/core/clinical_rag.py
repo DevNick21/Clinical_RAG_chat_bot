@@ -9,10 +9,57 @@ from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
-from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY, SECTION_KEYWORDS
+from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY, SECTION_KEYWORDS, ENABLE_REPHRASING, ENABLE_ENTITY_EXTRACTION, LOG_LEVEL
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
+from functools import lru_cache
+
+# Robust import for logger with fallback
+try:
+    from RAG_chat_pipeline.utils.logger import ClinicalLogger  # type: ignore
+except Exception:  # pragma: no cover
+    class ClinicalLogger:
+        """Centralized logging utility with verbosity control (fallback)"""
+        LEVELS = {"quiet": 0, "error": 1, "warning": 2, "info": 3, "debug": 4}
+        level = "info"
+
+        @classmethod
+        def set_level(cls, level: str):
+            if level in cls.LEVELS:
+                cls.level = level
+
+        @classmethod
+        def _enabled(cls, lvl: str) -> bool:
+            return cls.LEVELS.get(cls.level, 3) >= cls.LEVELS.get(lvl, 3)
+
+        @staticmethod
+        def info(msg):
+            if ClinicalLogger._enabled("info"):
+                print(f"ℹ️ {msg}")
+
+        @staticmethod
+        def warning(msg):
+            if ClinicalLogger._enabled("warning"):
+                print(f"⚠️ {msg}")
+
+        @staticmethod
+        def error(msg):
+            if ClinicalLogger._enabled("error"):
+                print(f"❌ {msg}")
+
+        @staticmethod
+        def success(msg):
+            if ClinicalLogger._enabled("info"):
+                print(f"✅ {msg}")
+
+        @staticmethod
+        def debug(msg):
+            if ClinicalLogger._enabled("debug"):
+                print(f"🔍 {msg}")
+
+# Initialize logger level from config
+ClinicalLogger.set_level(LOG_LEVEL)
 
 # Common medical term fragments for hallucination detection
 MEDICAL_KEYWORDS = [
@@ -26,36 +73,81 @@ MEDICAL_KEYWORDS = [
 ]
 
 
-class ClinicalLogger:
-    """Centralized logging utility for consistent messaging"""
-    @staticmethod
-    def info(msg): print(f"ℹ️ {msg}")
-
-    @staticmethod
-    def warning(msg): print(f"⚠️ {msg}")
-
-    @staticmethod
-    def error(msg): print(f"❌ {msg}")
-
-    @staticmethod
-    def success(msg): print(f"✅ {msg}")
-
-    @staticmethod
-    def debug(msg): print(f"🔍 {msg}")
-
-
 class ErrorHandler:
     """Centralized error handling utility"""
     @staticmethod
-    def safe_operation(func, *args, fallback=None, error_msg="Operation failed"):
+    def safe_operation(func, *args, fallback=None, error_msg="Operation failed", **kwargs):
         try:
-            return func(*args)
+            return func(*args, **kwargs)
         except Exception as e:
-            ClinicalLogger.warning(f"{error_msg}: {e}")
+            ClinicalLogger.warning(f"{error_msg}: {type(e).__name__}: {e}")
             return fallback
 
 
+class _EmbCache:
+    """Lightweight embedding cache"""
+
+    def __init__(self, embedder, max_items: int = 512):
+        self.embedder = embedder
+        self.max_items = max_items
+        self._cache = {}
+        self._order = []
+
+    def get(self, text: str):
+        key = text
+        if key in self._cache:
+            # move to end (LRU)
+            try:
+                self._order.remove(key)
+            except ValueError:
+                pass
+            self._order.append(key)
+            return self._cache[key]
+        # compute and store
+        vec = self.embedder.embed_query(text)
+        self._cache[key] = vec
+        self._order.append(key)
+        if len(self._order) > self.max_items:
+            oldest = self._order.pop(0)
+            self._cache.pop(oldest, None)
+        return vec
+
+
 class ClinicalRAGBot:
+    # Simple, config-like rules for section-aware extraction
+    SECTION_RULES = {
+        "diagnoses": {
+            "title": "ADMISSION {hadm_id} DIAGNOSES:",
+            "keywords": ["icd", "diagnosis", "diagnoses", "condition", "disorder"],
+            "regexes": [r"\b[A-Z]?\d{2,5}(?:\.\d+)?\b"],
+            "max_lines": 12,
+        },
+        "prescriptions": {
+            "title": "ADMISSION {hadm_id} MEDICATIONS:",
+            "keywords": ["medication", "drug", "prescription", "dose", "mg", "tablet", "capsule"],
+            "regexes": [r"\d+\s*(mg|g|ml|units?)"],
+            "max_lines": 10,
+        },
+        "labs": {
+            "title": "ADMISSION {hadm_id} LAB RESULTS:",
+            "keywords": ["lab", "test", "result", "value", "normal", "abnormal", "high", "low"],
+            "regexes": [r"\d+\.?\d*\s*[a-zA-Z/%]*"],
+            "max_lines": 12,
+        },
+        "labevents": {  # alias
+            "title": "ADMISSION {hadm_id} LAB RESULTS:",
+            "keywords": ["lab", "test", "result", "value", "normal", "abnormal", "high", "low"],
+            "regexes": [r"\d+\.?\d*\s*[a-zA-Z/%]*"],
+            "max_lines": 12,
+        },
+        "default": {
+            "title": "ADMISSION {hadm_id} {section}:",
+            "keywords": [],
+            "regexes": [],
+            "max_lines": 8,
+        },
+    }
+
     def __init__(self, vectorstore: FAISS, clinical_emb, chunked_docs: List):
         self.vectorstore = vectorstore
         self.clinical_emb = clinical_emb
@@ -67,6 +159,9 @@ class ClinicalRAGBot:
             temperature=0.1,  # Slight randomness for better responses
             repeat_penalty=1.1  # Standard repeat penalty
         )
+
+        # Embedding cache
+        self._emb_cache = _EmbCache(self.clinical_emb, max_items=512)
 
         # Performance optimization: Create metadata indices for faster lookups
         ClinicalLogger.info("Initializing performance optimizations...")
@@ -198,12 +293,12 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Progress indicator for large datasets
             if total_docs > 5000:
                 progress = (batch_end / total_docs) * 100
-                print(
+                ClinicalLogger.debug(
                     f"Index building progress: {progress:.1f}% ({batch_end}/{total_docs})")
 
         build_time = time.time() - start_time
-        print(f"Metadata indices built in {build_time:.2f}s")
-        print(
+        ClinicalLogger.info(f"Metadata indices built in {build_time:.2f}s")
+        ClinicalLogger.info(
             f"Index stats: {len(self.hadm_id_index)} admissions, {len(self.subject_id_index)} subjects, {len(self.section_index)} sections")
 
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
@@ -227,7 +322,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             # Apply limit early to reduce processing
             if len(candidate_indices) > limit:
-                print(
+                ClinicalLogger.info(
                     f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
                 candidate_indices = candidate_indices[:limit]
 
@@ -253,22 +348,22 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
     def _semantic_search_on_docs(self, candidate_docs, question, k):
         """Optimized semantic search using FAISS vectorstore efficiently"""
         if len(candidate_docs) <= k:
-            print(
+            ClinicalLogger.debug(
                 f"Returning all {len(candidate_docs)} documents (less than k={k})")
             return candidate_docs
 
         try:
             # For moderate-sized candidate sets, use direct similarity calculation
             if len(candidate_docs) <= 100:
-                # Get question embedding once
-                question_embedding = self.clinical_emb.embed_query(question)
+                # Get question embedding once (cached)
+                question_embedding = self._emb_cache.get(question)
 
                 # Calculate similarities efficiently
                 scored_docs = []
                 for doc in candidate_docs:
                     # Use first 500 chars for consistency with vectorstore
                     doc_text = doc.page_content[:500]
-                    doc_embedding = self.clinical_emb.embed_query(doc_text)
+                    doc_embedding = self._emb_cache.get(doc_text)
 
                     similarity = cosine_similarity(
                         [question_embedding], [doc_embedding])[0][0]
@@ -278,25 +373,25 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 scored_docs.sort(key=lambda x: x[0], reverse=True)
                 top_docs = [doc for _, doc in scored_docs[:k]]
 
-                print(
+                ClinicalLogger.debug(
                     f"Selected top {len(top_docs)} documents by direct similarity")
                 return top_docs
 
             else:
                 # For larger sets, create temporary FAISS index (still faster than before)
-                print(
+                ClinicalLogger.info(
                     f"Creating temporary index for {len(candidate_docs)} documents")
                 faiss_temp = FAISS.from_documents(
                     candidate_docs, self.clinical_emb)
                 top_docs = faiss_temp.similarity_search(question, k=k)
 
-                print(
+                ClinicalLogger.debug(
                     f"Selected top {len(top_docs)} documents via temporary FAISS")
                 return top_docs
 
         except Exception as similarity_error:
-            print(
-                f"⚠️ Similarity search failed: {similarity_error}, using first {k} documents")
+            ClinicalLogger.warning(
+                f"Similarity search failed: {similarity_error}, using first {k} documents")
             return candidate_docs[:k]
 
     def _validate_and_fix_response(self, answer, retrieved_docs, hadm_id=None):
@@ -323,181 +418,58 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
         return answer
 
-    def _extract_clinical_content(self, docs, query_type="general"):
-        """Extract and structure relevant clinical content from documents using intelligent prioritization"""
-        extracted_content = []
+    def _extract_structured_content(self, section: str, content: str, hadm_id):
+        """Unified, rules-based content extraction for any section"""
+        section_key = (section or "").lower() or "default"
+        rules = self.SECTION_RULES.get(
+            section_key, self.SECTION_RULES["default"])
 
+        lines = [ln.strip() for ln in content.split('\n') if ln.strip()]
+        scored = []
+        for ln in lines:
+            ln_lower = ln.lower()
+            # Highest priority: keyword hit
+            if any(kw in ln_lower for kw in rules["keywords"]):
+                scored.append((2, ln))
+            # Next: regex pattern hit
+            elif any(re.search(rx, ln) for rx in rules["regexes"]):
+                scored.append((1, ln))
+            # Fallback: take a few substantial lines
+            elif len(ln) > 10 and len(scored) < 3:
+                scored.append((0, ln))
+
+        # Sort by priority and keep top-N
+        scored.sort(key=lambda x: (-x[0]))
+        max_lines = rules.get("max_lines", 10)
+        selected = [ln for _, ln in scored[:max_lines]]
+
+        title = rules["title"].format(
+            hadm_id=hadm_id, section=(section or "UNKNOWN").upper())
+        if selected:
+            return f"{title}\n" + "\n".join(selected)
+        else:
+            return f"{title}\n" + content[:600]
+
+    def _extract_clinical_content(self, docs, query_type="general"):
+        """Extract and structure relevant clinical content from documents using unified rules"""
+        extracted_content = []
         for doc in docs:
             content = doc.page_content
             metadata = doc.metadata
-            section = metadata.get('section', '').lower()
+            section = metadata.get('section', '')
             hadm_id = metadata.get('hadm_id', 'Unknown')
-
-            # Smart content extraction based on section and content analysis
-            if section == 'diagnoses':
-                # Prioritize structured diagnosis data but be flexible
-                structured_content = self._extract_diagnosis_content(
-                    content, hadm_id)
-
-            elif section == 'prescriptions':
-                # Extract medication information flexibly
-                structured_content = self._extract_medication_content(
-                    content, hadm_id)
-
-            elif section in ['labs', 'labevents']:
-                # Extract lab results with flexibility
-                structured_content = self._extract_lab_content(
-                    content, hadm_id)
-
-            else:
-                # Generic section handling with smart truncation
-                structured_content = self._extract_generic_content(
-                    content, hadm_id, section)
-
+            structured_content = self._extract_structured_content(
+                section, content, hadm_id)
             extracted_content.append(structured_content)
-
         return "\n\n".join(extracted_content)
-
-    def _extract_diagnosis_content(self, content, hadm_id):
-        """Extract diagnosis content with fallback approaches"""
-        # Look for common diagnosis indicators (more flexible than rigid regex)
-        diagnosis_indicators = ['icd', 'diagnosis',
-                                'diagnoses', 'condition', 'disorder']
-
-        lines = content.split('\n')
-        relevant_lines = []
-
-        for line in lines:
-            line_lower = line.lower().strip()
-            if not line_lower:
-                continue
-
-            # Check if line contains diagnosis-related content
-            if any(indicator in line_lower for indicator in diagnosis_indicators):
-                relevant_lines.append(line.strip())
-            # Potential ICD codes
-            elif re.search(r'\b[A-Z]?\d{2,5}(?:\.\d+)?\b', line):
-                relevant_lines.append(line.strip())
-            elif len(relevant_lines) < 3 and len(line.strip()) > 10:  # First few substantial lines
-                relevant_lines.append(line.strip())
-
-        if relevant_lines:
-            # Take most relevant lines, prioritizing those with medical terms
-            priority_lines = []
-            other_lines = []
-
-            for line in relevant_lines[:12]:  # Limit to avoid overwhelming LLM
-                if any(keyword in line.lower() for keyword in ['diagnosis', 'icd', 'condition']):
-                    priority_lines.append(line)
-                else:
-                    other_lines.append(line)
-
-            final_lines = priority_lines + \
-                other_lines[:max(8-len(priority_lines), 0)]
-            structured_content = f"ADMISSION {hadm_id} DIAGNOSES:\n" + \
-                "\n".join(final_lines)
-        else:
-            # Fallback to intelligent truncation
-            structured_content = f"ADMISSION {hadm_id} DIAGNOSES:\n{content[:600]}"
-
-        return structured_content
-
-    def _extract_medication_content(self, content, hadm_id):
-        """Extract medication content with fallback approaches"""
-        medication_indicators = ['medication', 'drug',
-                                 'prescription', 'dose', 'mg', 'tablet', 'capsule']
-
-        lines = content.split('\n')
-        relevant_lines = []
-
-        for line in lines:
-            line_lower = line.lower().strip()
-            if not line_lower:
-                continue
-
-            # Check for medication-related content
-            if any(indicator in line_lower for indicator in medication_indicators):
-                relevant_lines.append(line.strip())
-            elif re.search(r'\d+\s*(mg|g|ml|units?)', line_lower):  # Dosage patterns
-                relevant_lines.append(line.strip())
-            elif len(relevant_lines) < 3 and len(line.strip()) > 10:
-                relevant_lines.append(line.strip())
-
-        if relevant_lines:
-            structured_content = f"ADMISSION {hadm_id} MEDICATIONS:\n" + \
-                "\n".join(relevant_lines[:10])
-        else:
-            structured_content = f"ADMISSION {hadm_id} MEDICATIONS:\n{content[:600]}"
-
-        return structured_content
-
-    def _extract_lab_content(self, content, hadm_id):
-        """Extract lab content with fallback approaches"""
-        lab_indicators = ['lab', 'test', 'result',
-                          'value', 'normal', 'abnormal', 'high', 'low']
-
-        lines = content.split('\n')
-        relevant_lines = []
-
-        for line in lines:
-            line_lower = line.lower().strip()
-            if not line_lower:
-                continue
-
-            # Check for lab-related content
-            if any(indicator in line_lower for indicator in lab_indicators):
-                relevant_lines.append(line.strip())
-            # Numeric values with units
-            elif re.search(r'\d+\.?\d*\s*[a-zA-Z/%]*', line):
-                relevant_lines.append(line.strip())
-            elif len(relevant_lines) < 3 and len(line.strip()) > 10:
-                relevant_lines.append(line.strip())
-
-        if relevant_lines:
-            structured_content = f"ADMISSION {hadm_id} LAB RESULTS:\n" + \
-                "\n".join(relevant_lines[:12])
-        else:
-            structured_content = f"ADMISSION {hadm_id} LAB RESULTS:\n{content[:600]}"
-
-        return structured_content
-
-    def _extract_generic_content(self, content, hadm_id, section):
-        """Extract generic content with intelligent truncation"""
-        # For unknown sections, use smart truncation that preserves structure
-        lines = content.split('\n')
-        important_lines = []
-
-        for line in lines[:20]:  # Look at first 20 lines
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
-
-            # Prioritize lines that look like headers or important info
-            if (line_stripped.isupper() or
-                line_stripped.endswith(':') or
-                any(char.isdigit() for char in line_stripped) or
-                    len(line_stripped) > 15):
-                important_lines.append(line_stripped)
-
-            if len(important_lines) >= 8:
-                break
-
-        if important_lines:
-            structured_content = f"ADMISSION {hadm_id} {section.upper()}:\n" + "\n".join(
-                important_lines)
-        else:
-            # Ultimate fallback
-            structured_content = f"ADMISSION {hadm_id} {section.upper()}:\n{content[:600]}"
-
-        return structured_content
 
     def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
         """Clinical search function"""
         start_time = time.time()
 
         if original_question and original_question != question:
-            print(f"Original query: '{original_question}'")
-        print(
+            ClinicalLogger.debug(f"Original query: '{original_question}'")
+        ClinicalLogger.info(
             f"Query: '{question}' | hadm_id: {hadm_id} | subject_id: {subject_id} | section: {section}")
 
         if chat_history is None:
@@ -519,43 +491,49 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     entity_id = hadm_id or subject_id
                     return self._no_documents_result(entity_type, entity_id, section, start_time)
 
-                print(
+                ClinicalLogger.info(
                     f"Filtering documents by {'admission' if hadm_id else 'subject'} ID...")
-                print(f"Filtered to {len(candidate_docs)} documents")
+                ClinicalLogger.debug(
+                    f"Filtered to {len(candidate_docs)} documents")
 
                 # Early termination if we have very few documents
                 if len(candidate_docs) <= k:
                     retrieved_docs = candidate_docs
-                    print(
+                    ClinicalLogger.debug(
                         f"Using all {len(retrieved_docs)} available documents")
                 else:
                     retrieved_docs = self._semantic_search_on_docs(
                         candidate_docs, question, k)
             else:
                 # Global semantic search with tighter limits
-                print("Performing optimized semantic search across all records...")
+                ClinicalLogger.info(
+                    "Performing optimized semantic search across all records...")
                 k_global = min(k, 20)  # Even tighter limit for global search
                 retrieved_docs = self.vectorstore.similarity_search(
                     question, k=k_global)
-                print(f"Retrieved {len(retrieved_docs)} documents")
+                ClinicalLogger.debug(
+                    f"Retrieved {len(retrieved_docs)} documents")
 
                 # Post-filter by section if specified
                 if section is not None:
                     original_count = len(retrieved_docs)
                     retrieved_docs = [doc for doc in retrieved_docs
                                       if doc.metadata.get('section', '').lower() == section.lower()]
-                    print(
+                    ClinicalLogger.debug(
                         f"Section filtering: {original_count} → {len(retrieved_docs)} documents")
 
             # Performance check: warn if too many documents
             if len(retrieved_docs) > 5:
-                print(
-                    f"⚠️ Processing {len(retrieved_docs)} documents - reducing to top 3")
+                ClinicalLogger.warning(
+                    f"Processing {len(retrieved_docs)} documents - reducing to top 3")
                 retrieved_docs = retrieved_docs[:3]
 
             # INTELLIGENT CONTENT EXTRACTION: Extract structured clinical data
+            original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get(
+                'section')) for doc in retrieved_docs]
+            original_doc_count = len(retrieved_docs)
             if len(retrieved_docs) > 0:
-                print(
+                ClinicalLogger.debug(
                     f"Extracting clinical content from {len(retrieved_docs)} documents...")
                 extracted_content = self._extract_clinical_content(
                     retrieved_docs)
@@ -569,7 +547,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 retrieved_docs = [structured_doc]
 
             # Generate answer with simplified approach
-            print("Generating clinical response...")
+            ClinicalLogger.info("Generating clinical response...")
             try:
                 # Create dynamic prompt with admission/patient context
                 clinical_prompt = self._create_clinical_prompt(
@@ -588,30 +566,31 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     context="Clinical QA"
                 )
             except Exception as llm_error:
-                print(f"⚠️ LLM response generation failed: {llm_error}")
+                ClinicalLogger.warning(
+                    f"LLM response generation failed: {llm_error}")
                 answer = f"I found relevant medical records but encountered an error generating the response. Please try rephrasing your question. Error: {str(llm_error)}"
 
             # Post-process response to fix common issues
             answer = self._validate_and_fix_response(
                 answer, retrieved_docs, hadm_id)
 
-            # Prepare result with comprehensive metadata
+            # Prepare result with comprehensive metadata (preserve true counts/citations)
             search_time = time.time() - start_time
             result = {
                 "answer": answer,
                 "source_documents": retrieved_docs,
-                "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
+                "citations": [{"hadm_id": hadm, "section": section} for hadm, section in original_citations],
                 "search_time": search_time,
-                "documents_found": len(retrieved_docs),
+                "documents_found": original_doc_count,
                 "search_method": "filtered" if hadm_id is not None or subject_id is not None else "global_semantic",
                 "performance_optimized": True
             }
 
-            print(f"Search completed in {search_time:.3f}s")
+            ClinicalLogger.info(f"Search completed in {search_time:.3f}s")
             return result
 
         except Exception as e:
-            print(f"❌ Critical error in clinical_search: {e}")
+            ClinicalLogger.error(f"Critical error in clinical_search: {e}")
             return self._handle_search_fallback(question, hadm_id, section, k, f"Critical search error: {str(e)}")
 
     def _extract_and_validate_params(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
@@ -623,7 +602,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
         # Extract entities if needed
         extracted_entities = None
-        if hadm_id is None and subject_id is None and section is None:
+        if ENABLE_ENTITY_EXTRACTION and hadm_id is None and subject_id is None and section is None:
             try:
                 extracted_entities = extract_entities(
                     question, use_llm_fallback=True, llm=self.llm)
@@ -632,10 +611,10 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     subject_id = extracted_entities.get(
                         "subject_id") or subject_id
                     section = extracted_entities.get("section") or section
-                    print(
+                    ClinicalLogger.info(
                         f"Auto-extracted - hadm_id: {hadm_id}, subject_id: {subject_id}, section: {section}")
             except Exception as e:
-                print(f"⚠️ Entity extraction failed: {e}")
+                ClinicalLogger.warning(f"Entity extraction failed: {e}")
 
         return question, hadm_id, subject_id, section, k, extracted_entities
 
@@ -665,7 +644,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             original_question = question
 
             # Check if rephrasing is needed
-            needs_rephrasing = self._should_rephrase_question(
+            needs_rephrasing = ENABLE_REPHRASING and self._should_rephrase_question(
                 question, chat_history, hadm_id, section)
 
             if needs_rephrasing:
@@ -842,7 +821,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
     def _handle_search_fallback(self, question, hadm_id=None, section=None, k=DEFAULT_K, error_msg=""):
         """Graceful fallback for failed searches"""
-        print(f"⚠️ Search fallback triggered: {error_msg}")
+        ClinicalLogger.warning(f"Search fallback triggered: {error_msg}")
 
         try:
             # Try basic semantic search as fallback
@@ -873,7 +852,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     "fallback_reason": error_msg
                 }
         except Exception as fallback_error:
-            print(f"❌ Fallback search also failed: {fallback_error}")
+            ClinicalLogger.error(
+                f"Fallback search also failed: {fallback_error}")
 
         # Ultimate fallback
         return {
@@ -897,9 +877,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         # Log differently based on context
         if is_from_chat:
             source = "API/CLI" if is_conversational else "Direct Query"
-            print(f"=== {source} CONVERSATIONAL MODE ===")
+            ClinicalLogger.info(f"=== {source} CONVERSATIONAL MODE ===")
         else:
-            print(
+            ClinicalLogger.info(
                 f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
 
         # Performance optimization: validate k early and set reasonable limits
@@ -926,7 +906,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 search_question = question
                 chat_context = {}
                 if processing_time >= 1.0:
-                    print("Skipping chat processing due to performance constraints")
+                    ClinicalLogger.info(
+                        "Skipping chat processing due to performance constraints")
 
             # Perform search
             result = self.clinical_search(
@@ -935,7 +916,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Update chat history if conversational
             if is_conversational:
                 chat_history.extend(
-                    [("human", question), ("assistant", result["answer"])])
+                    [("human", question), ("assistant", result["answer"])]
+                )
                 if len(chat_history) > MAX_CHAT_HISTORY:
                     chat_history = chat_history[-MAX_CHAT_HISTORY:]
 
@@ -952,8 +934,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             })
 
             if total_time > 30:  # Warn about slow queries
-                print(
-                    f"⚠️ Slow query detected: {total_time:.2f}s - consider reducing document scope")
+                ClinicalLogger.warning(
+                    f"Slow query detected: {total_time:.2f}s - consider reducing document scope")
 
             return result
 

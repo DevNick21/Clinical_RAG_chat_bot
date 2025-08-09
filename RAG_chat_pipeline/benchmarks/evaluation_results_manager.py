@@ -36,18 +36,9 @@ class EvaluationMetrics:
     pass_rate: float
     average_score: float
 
-    # Detailed scoring breakdown
+    # Medical accuracy focus - only factual accuracy matters
     avg_factual_accuracy: float
-    avg_behavior_score: float
-    avg_performance_score: float
-
-    # Category-specific metrics
-    header_pass_rate: float = 0.0
-    header_avg_score: float = 0.0
-    diagnoses_pass_rate: float = 0.0
-    diagnoses_avg_score: float = 0.0
-    procedures_pass_rate: float = 0.0
-    procedures_avg_score: float = 0.0
+    avg_performance_score: float = 0.0
     labs_pass_rate: float = 0.0
     labs_avg_score: float = 0.0
     microbiology_pass_rate: float = 0.0
@@ -244,12 +235,10 @@ class EvaluationResultsManager:
         else:  # Full/short evaluation format
             detailed_results = result.get("detailed_results", [])
 
-        # Calculate average component scores
+        # Calculate average component scores (medical accuracy focus)
         if detailed_results:
             factual_scores = [r.get("factual_accuracy_score", 0)
                               for r in detailed_results]
-            behavior_scores = [r.get("behavior_score", 0)
-                               for r in detailed_results]
             performance_scores = [r.get("performance_score", 0)
                                   for r in detailed_results]
             search_times = [r.get("search_time", 0) for r in detailed_results]
@@ -265,13 +254,12 @@ class EvaluationResultsManager:
                             for r in detailed_results) / total_questions if total_questions else 0
 
             avg_factual = np.mean(factual_scores) if factual_scores else 0
-            avg_behavior = np.mean(behavior_scores) if behavior_scores else 0
             avg_performance = np.mean(
                 performance_scores) if performance_scores else 0
             avg_search_time = np.mean(search_times) if search_times else 0
             avg_docs_found = np.mean(docs_found) if docs_found else 0
         else:
-            avg_factual = avg_behavior = avg_performance = 0
+            avg_factual = avg_performance = 0
             avg_search_time = avg_docs_found = 0
             total_questions = 0
             passed_count = 0
@@ -307,29 +295,12 @@ class EvaluationResultsManager:
             average_score=avg_score if detailed_results else summary.get(
                 "average_score", 0.0),
             avg_factual_accuracy=avg_factual,
-            avg_behavior_score=avg_behavior,
             avg_performance_score=avg_performance,
             avg_search_time=avg_search_time,
             avg_documents_found=avg_docs_found,
             evaluation_date=datetime.now().isoformat(),
             notes=notes
         )
-
-        # Add category-specific metrics
-        metrics.header_pass_rate, metrics.header_avg_score = get_category_metrics(
-            "header")
-        metrics.diagnoses_pass_rate, metrics.diagnoses_avg_score = get_category_metrics(
-            "diagnoses")
-        metrics.procedures_pass_rate, metrics.procedures_avg_score = get_category_metrics(
-            "procedures")
-        metrics.labs_pass_rate, metrics.labs_avg_score = get_category_metrics(
-            "labs")
-        metrics.microbiology_pass_rate, metrics.microbiology_avg_score = get_category_metrics(
-            "microbiology")
-        metrics.prescriptions_pass_rate, metrics.prescriptions_avg_score = get_category_metrics(
-            "prescriptions")
-        metrics.comprehensive_pass_rate, metrics.comprehensive_avg_score = get_category_metrics(
-            "comprehensive")
 
         return metrics
 
@@ -372,11 +343,10 @@ class EvaluationResultsManager:
         if df.empty:
             return df
 
-        # Create pivot table for easy comparison
+        # Create pivot table for easy comparison (medical QA focus)
         comparison_cols = [
             "embedding_model", "llm_model", "pass_rate", "average_score",
-            "avg_factual_accuracy", "avg_behavior_score", "avg_performance_score",
-            "avg_search_time"
+            "avg_factual_accuracy", "avg_search_time"
         ]
 
         comparison_df = df[comparison_cols].copy()
@@ -388,17 +358,13 @@ class EvaluationResultsManager:
             lambda x: f"{x:.3f}")
         comparison_df["avg_factual_accuracy"] = comparison_df["avg_factual_accuracy"].apply(
             lambda x: f"{x:.3f}")
-        comparison_df["avg_behavior_score"] = comparison_df["avg_behavior_score"].apply(
-            lambda x: f"{x:.3f}")
-        comparison_df["avg_performance_score"] = comparison_df["avg_performance_score"].apply(
-            lambda x: f"{x:.3f}")
         comparison_df["avg_search_time"] = comparison_df["avg_search_time"].apply(
             lambda x: f"{x:.2f}s")
 
-        # Rename columns for display
+        # Rename columns for display (medical focus)
         comparison_df.columns = [
             "Embedding Model", "LLM Model", "Pass Rate", "Avg Score",
-            "Factual Acc.", "Behavior", "Performance", "Search Time"
+            "Medical Accuracy", "Avg Search Time"
         ]
 
         if save_html:
@@ -559,10 +525,10 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 }
             },
             "detailed_results": [
-                {"factual_accuracy_score": 0.8, "behavior_score": 0.9, "performance_score": 0.95,
-                 "search_time": 1.2, "documents_found": 5, "overall_score": 0.83, "passed": True},
-                {"factual_accuracy_score": 0.7, "behavior_score": 0.8, "performance_score": 0.9,
-                 "search_time": 2.1, "documents_found": 4, "overall_score": 0.75, "passed": True}
+                {"factual_accuracy_score": 0.8, "context_relevance_score": 0.75, "semantic_similarity_score": 0.7,
+                 "search_time": 1.2, "documents_found": 5, "overall_score": 0.78, "passed": True},
+                {"factual_accuracy_score": 0.7, "context_relevance_score": 0.8, "semantic_similarity_score": 0.65,
+                 "search_time": 2.1, "documents_found": 4, "overall_score": 0.72, "passed": True}
             ]
         }
 

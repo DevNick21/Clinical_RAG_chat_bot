@@ -1,21 +1,27 @@
 """
-Reporting module for Clinical RAG evaluation results
-Handles report generation, data export, and summary statistics
+Unified Reporting module for Clinical RAG evaluation results
+Handles report generation, data export, summary statistics, and essential visualization
 """
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any
 
 
 class EvaluationReporter:
-    """Handles all reporting and data export functionality"""
+    """Unified class for all reporting, visualization, and data export functionality"""
 
     def __init__(self, output_dir: Path = None):
         self.output_dir = output_dir or Path("evaluation_reports")
         self.output_dir.mkdir(exist_ok=True, parents=True)
+
+        # Set consistent style for plots
+        plt.style.use('default')
+        sns.set_palette("husl")
 
     def create_summary_dataframe(self, results: Dict) -> pd.DataFrame:
         """Create summary statistics DataFrame"""
@@ -58,11 +64,9 @@ class EvaluationReporter:
                 "Category": result.get("category", ""),
                 "Overall_Score": result.get("overall_score", 0),
                 "Factual_Score": result.get("factual_accuracy_score", 0),
-                "Behavior_Score": result.get("behavior_score", 0),
-                "Performance_Score": result.get("performance_score", 0),
                 "Context_Relevance": result.get("context_relevance_score", 0),
-                "Completeness": result.get("completeness_score", 0),
                 "Semantic_Similarity": result.get("semantic_similarity_score", 0),
+                "Performance_Score": result.get("performance_score", 0),
                 "Pass_Grade": result.get("pass_grade", "fail"),
                 "Search_Time": result.get("search_time", 0),
                 "Documents_Found": result.get("documents_found", 0),
@@ -194,11 +198,10 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         if df.empty:
             return df
 
-        # Create pivot table for easy comparison
+        # Create pivot table for easy comparison (medical QA focus)
         comparison_cols = [
             "embedding_model", "llm_model", "pass_rate", "average_score",
-            "avg_factual_accuracy", "avg_behavior_score", "avg_performance_score",
-            "avg_search_time"
+            "avg_factual_accuracy", "avg_search_time"
         ]
 
         comparison_df = df[comparison_cols].copy()
@@ -210,17 +213,58 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             lambda x: f"{x:.3f}")
         comparison_df["avg_factual_accuracy"] = comparison_df["avg_factual_accuracy"].apply(
             lambda x: f"{x:.3f}")
-        comparison_df["avg_behavior_score"] = comparison_df["avg_behavior_score"].apply(
-            lambda x: f"{x:.3f}")
-        comparison_df["avg_performance_score"] = comparison_df["avg_performance_score"].apply(
-            lambda x: f"{x:.3f}")
         comparison_df["avg_search_time"] = comparison_df["avg_search_time"].apply(
             lambda x: f"{x:.2f}s")
 
-        # Rename columns for display
+        # Rename columns for display (medical focus)
         comparison_df.columns = [
             "Embedding Model", "LLM Model", "Pass Rate", "Avg Score",
-            "Factual Acc.", "Behavior", "Performance", "Search Time"
+            "Medical Accuracy", "Search Time"
         ]
 
         return comparison_df
+
+    def create_simple_score_chart(self, results: Dict, timestamp: str = None) -> str:
+        """Create a simple score comparison chart"""
+        if not timestamp:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        try:
+            category_results = results.get("category_results", {})
+            if not category_results:
+                return None
+
+            # Create simple bar chart
+            categories = []
+            scores = []
+
+            for category, cat_results in category_results.items():
+                categories.append(category.title())
+                scores.append(
+                    np.mean([r.get("overall_score", 0) for r in cat_results]))
+
+            plt.figure(figsize=(10, 6))
+            bars = plt.bar(categories, scores, color='skyblue', alpha=0.7)
+            plt.title('Average Scores by Category',
+                      fontsize=16, fontweight='bold')
+            plt.xlabel('Category')
+            plt.ylabel('Average Score')
+            plt.ylim(0, 1)
+            plt.xticks(rotation=45)
+
+            # Add score labels on bars
+            for bar, score in zip(bars, scores):
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                         f'{score:.3f}', ha='center', va='bottom')
+
+            plt.tight_layout()
+
+            chart_file = self.output_dir / f"score_chart_{timestamp}.png"
+            plt.savefig(chart_file, dpi=300, bbox_inches='tight')
+            plt.close()
+
+            return str(chart_file)
+
+        except Exception as e:
+            print(f"Warning: Chart generation failed: {e}")
+            return None

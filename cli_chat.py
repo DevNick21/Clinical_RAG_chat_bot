@@ -4,15 +4,17 @@ CLI Chat Interface for Clinical RAG System
 Provides interactive chat functionality with history support
 """
 
+from RAG_chat_pipeline import ClinicalLogger
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 import sys
 import json
 from pathlib import Path
 from datetime import datetime
 
-# Add project root to Python path
+# Add project root to Python path BEFORE project imports
 project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 
 class CLIChatInterface:
@@ -25,13 +27,15 @@ class CLIChatInterface:
 
     def initialize_rag(self):
         """Initialize the RAG system"""
-        print("🚀 Initializing Clinical RAG System...")
+        ClinicalLogger.info("Initializing Clinical RAG System...")
         try:
             self.chatbot = initialize_clinical_rag()
-            print("✅ Clinical RAG System initialized successfully")
+            ClinicalLogger.success(
+                "Clinical RAG System initialized successfully")
             return True
         except Exception as e:
-            print(f"❌ Error initializing Clinical RAG System: {e}")
+            ClinicalLogger.error(
+                f"Error initializing Clinical RAG System: {e}")
             return False
 
     def start_chat_session(self, save_session: bool = True):
@@ -44,17 +48,18 @@ class CLIChatInterface:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.session_file = f"chat_session_{timestamp}.json"
 
-        print("\n" + "="*60)
-        print("🏥 Clinical RAG Chat Interface")
-        print("="*60)
-        print("Commands:")
-        print("  /help     - Show this help message")
-        print("  /clear    - Clear chat history")
-        print("  /history  - Show chat history")
-        print("  /save     - Save session to file")
-        print("  /exit     - Exit chat")
-        print("="*60)
-        print("Start chatting! Ask questions about patient data.\n")
+        ClinicalLogger.info("\n" + "="*60)
+        ClinicalLogger.info("🏥 Clinical RAG Chat Interface")
+        ClinicalLogger.info("="*60)
+        ClinicalLogger.info("Commands:")
+        ClinicalLogger.info("  /help     - Show this help message")
+        ClinicalLogger.info("  /clear    - Clear chat history")
+        ClinicalLogger.info("  /history  - Show chat history")
+        ClinicalLogger.info("  /save     - Save session to file")
+        ClinicalLogger.info("  /exit     - Exit chat")
+        ClinicalLogger.info("="*60)
+        ClinicalLogger.info(
+            "Start chatting! Ask questions about patient data.\n")
 
         while True:
             try:
@@ -78,7 +83,8 @@ class CLIChatInterface:
                     elif user_input == '/save':
                         self._save_session()
                     else:
-                        print("Unknown command. Type /help for available commands.")
+                        ClinicalLogger.warning(
+                            "Unknown command. Type /help for available commands.")
                     continue
 
                 # Process chat message
@@ -100,61 +106,64 @@ class CLIChatInterface:
                         self._save_session(silent=True)
 
                 except Exception as e:
-                    print(f"Error: {e}")
+                    ClinicalLogger.error(f"Error: {e}")
 
             except KeyboardInterrupt:
-                print("\n\nChat interrupted by user.")
+                ClinicalLogger.info("\n\nChat interrupted by user.")
                 self._handle_exit()
                 break
             except EOFError:
-                print("\n\nChat ended.")
+                ClinicalLogger.info("\n\nChat ended.")
                 self._handle_exit()
                 break
 
     def _show_help(self):
         """Show help message"""
-        print("\n📋 Available Commands:")
-        print("  /help     - Show this help message")
-        print("  /clear    - Clear chat history")
-        print("  /history  - Show chat history")
-        print("  /save     - Save session to file")
-        print("  /exit     - Exit chat")
-        print("\n💡 Chat Tips:")
-        print("  - Ask about specific admission IDs (e.g., 'What diagnoses does admission 12345 have?')")
-        print("  - Request specific medical data types (diagnoses, procedures, labs, medications)")
-        print("  - Use follow-up questions for more details")
-        print("  - The system maintains conversation context")
+        ClinicalLogger.info("\n📋 Available Commands:")
+        ClinicalLogger.info("  /help     - Show this help message")
+        ClinicalLogger.info("  /clear    - Clear chat history")
+        ClinicalLogger.info("  /history  - Show chat history")
+        ClinicalLogger.info("  /save     - Save session to file")
+        ClinicalLogger.info("  /exit     - Exit chat")
+        ClinicalLogger.info("\n💡 Chat Tips:")
+        ClinicalLogger.info(
+            "  - Ask about specific admission IDs (e.g., 'What diagnoses does admission 12345 have?')")
+        ClinicalLogger.info(
+            "  - Request specific medical data types (diagnoses, procedures, labs, medications)")
+        ClinicalLogger.info("  - Use follow-up questions for more details")
+        ClinicalLogger.info("  - The system maintains conversation context")
 
     def _clear_history(self):
         """Clear chat history"""
         self.chat_history = []
-        print("🗑️ Chat history cleared.")
+        ClinicalLogger.info("🗑️ Chat history cleared.")
 
     def _show_history(self):
         """Show chat history"""
         if not self.chat_history:
-            print("No chat history yet.")
+            ClinicalLogger.info("No chat history yet.")
             return
 
-        print(f"\n📜 Chat History ({len(self.chat_history)//2} exchanges):")
-        print("-" * 40)
+        ClinicalLogger.info(
+            f"\n📜 Chat History ({len(self.chat_history)//2} exchanges):")
+        ClinicalLogger.info("-" * 40)
 
         for i in range(0, len(self.chat_history), 2):
             if i + 1 < len(self.chat_history):
                 user_msg = self.chat_history[i][1]
                 assistant_msg = self.chat_history[i + 1][1]
 
-                print(
+                ClinicalLogger.info(
                     f"You: {user_msg[:100]}{'...' if len(user_msg) > 100 else ''}")
-                print(
+                ClinicalLogger.info(
                     f"Assistant: {assistant_msg[:100]}{'...' if len(assistant_msg) > 100 else ''}")
-                print("-" * 40)
+                ClinicalLogger.info("-" * 40)
 
     def _save_session(self, silent: bool = False):
         """Save chat session to file"""
         if not self.session_file or not self.chat_history:
             if not silent:
-                print("No session to save or no chat history.")
+                ClinicalLogger.info("No session to save or no chat history.")
             return
 
         session_data = {
@@ -170,10 +179,11 @@ class CLIChatInterface:
                 json.dump(session_data, f, indent=2, ensure_ascii=False)
 
             if not silent:
-                print(f"💾 Session saved to: {self.session_file}")
+                ClinicalLogger.success(
+                    f"Session saved to: {self.session_file}")
         except Exception as e:
             if not silent:
-                print(f"Error saving session: {e}")
+                ClinicalLogger.error(f"Error saving session: {e}")
 
     def _handle_exit(self):
         """Handle chat exit"""
@@ -182,7 +192,8 @@ class CLIChatInterface:
             if save in ['y', 'yes']:
                 self._save_session()
 
-        print("👋 Thank you for using Clinical RAG Chat Interface!")
+        ClinicalLogger.info(
+            "👋 Thank you for using Clinical RAG Chat Interface!")
 
     def load_session(self, session_file: str):
         """Load a previous chat session"""
@@ -194,33 +205,33 @@ class CLIChatInterface:
             self.session_file = session_file
 
             exchange_count = len(self.chat_history) // 2
-            print(
+            ClinicalLogger.info(
                 f"📂 Loaded session with {exchange_count} exchanges from: {session_file}")
             return True
 
         except Exception as e:
-            print(f"Error loading session: {e}")
+            ClinicalLogger.error(f"Error loading session: {e}")
             return False
 
 
 def main():
     """Main CLI interface"""
     if len(sys.argv) < 2:
-        print("""
-Clinical RAG CLI Chat Interface
+        ClinicalLogger.info("""
+ Clinical RAG CLI Chat Interface
 
-Usage:
-    python cli_chat.py <command> [options]
+ Usage:
+     python cli_chat.py <command> [options]
 
-Commands:
-    chat                    - Start interactive chat session
-    chat --no-save         - Start chat without auto-saving
-    load <session_file>    - Load and continue previous session
+ Commands:
+     chat                    - Start interactive chat session
+     chat --no-save         - Start chat without auto-saving
+     load <session_file>    - Load and continue previous session
 
-Examples:
-    python cli_chat.py chat
-    python cli_chat.py chat --no-save
-    python cli_chat.py load chat_session_20250722_143022.json
+ Examples:
+     python cli_chat.py chat
+     python cli_chat.py chat --no-save
+     python cli_chat.py load chat_session_20250722_143022.json
         """)
         return
 
@@ -233,7 +244,7 @@ Examples:
 
     elif command == "load":
         if len(sys.argv) < 3:
-            print("Usage: load <session_file>")
+            ClinicalLogger.info("Usage: load <session_file>")
             return
 
         session_file = sys.argv[2]
@@ -241,7 +252,7 @@ Examples:
             interface.start_chat_session(save_session=True)
 
     else:
-        print(f"Unknown command: {command}")
+        ClinicalLogger.warning(f"Unknown command: {command}")
 
 
 if __name__ == "__main__":
