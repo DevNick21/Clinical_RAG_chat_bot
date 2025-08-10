@@ -30,7 +30,7 @@ Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap 
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{../../RAG_chat_pipeline/results/heatmap_average_score.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/heatmap_average_score.png}
   \caption{Model comparison heatmap by average score.}
   \label{fig:heatmap_avg_score}
 \end{figure}
@@ -43,7 +43,7 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
 \begin{center}
 \begingroup
 \renewcommand\arraystretch{0.95}
-\begin{footnotesize}
+{footnotesize
 \begin{tabularx}{\textwidth}{l l P{1.6cm} P{1.6cm} P{1.8cm}}
   \toprule
   Embedding & LLM & Pass rate & Avg. score & Avg. search time (s) \\
@@ -60,8 +60,8 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
   MedQuAD & qwen & 95\% & 0.741 & 69.12 \\
   \bottomrule
 \end{tabularx}
-\end{footnotesize}
 \endgroup
+}
 \end{center}
 
 \paragraph{Observations.} The best average scores are achieved by BioBERT + phi3 and multi-qa + phi3/llama. MiniLM pairs (mini-lm + llama/deepseek) are strong with excellent pass rates; however, mini-lm + deepseek exhibits much longer search time, suggesting backend or retrieval interaction overhead. MedQuAD-based embeddings produce competitive average scores but at times with slower end-to-end latency.
@@ -185,7 +185,7 @@ To aid reproducibility, we include the full set of runs and category-wise averag
 \begingroup
 \renewcommand\arraystretch{0.95}
 \begin{footnotesize}
-\input{tables/all_runs_table}
+\input{chap4_results/tables/all_runs_table}
 \end{footnotesize}
 \endgroup
 \end{center}

@@ -3,8 +3,10 @@
 
 \chapter*{List of Abbreviations}
 \markboth{List of Abbreviations}{List of Abbreviations}
-               
-\begin{acronym}\itemsep-20pt\parsep-20pt %% if you remove these spacing params this list becomes huge!
+
+\acresetall
+\begin{acronym}[BioLORD]
+    \setlength{\itemsep}{-\parsep}
 
     % Clinical and Medical Abbreviations
     \acro{MIMIC}{Medical Information Mart for Intensive Care}
