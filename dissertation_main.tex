@@ -31,7 +31,7 @@
 %% Do not add your packages to the template, but rather add them here.
 
 \usepackage{blindtext} %% for some dummy text, remove in your writeup
-% \usepackage{coffee4}    %% removed - no longer available
+\usepackage{minted}    %% for code highlighting
 \usepackage{acronym}
 
 %% ***************** (Your) Packages (End) *******************
@@ -40,7 +40,7 @@
 %% **************** (Your) Data (Start) ******************
 
 \title{Clinical RAG Chatbot\\for MIMIC-IV Dataset\\Analysis}  % use \\ here otherwise you get a justified title
-                                                    % note capitalization of the title (only common 
+                                                    % note capitalization of the title (only common
                                                     % words in lower case)
 \tagline{AI-Powered Clinical Decision Support System}                     % tag line
 \author{Ekenedirichukwu Iheanacho}                           % your name
@@ -70,7 +70,7 @@
 %% ********* (Your) Document Settings (End) **************
 
 % DOCTOR'S (JP) ORDERS: MAKE SURE TO READ MY TWO BLOG ENTRIES WITH
-% CONTENT AND LaTeX TIPS FOR YOUR WRITE-UP.  THESE ARE BASED ON  
+% CONTENT AND LaTeX TIPS FOR YOUR WRITE-UP.  THESE ARE BASED ON
 % EXAMINER'S FEEDBACK
 %
 % URLS:
@@ -80,10 +80,10 @@
 % end the preamble and start the document
 
 \begin{document}
-\frontmatter 
+\frontmatter
     \maketitle
-    \input{frontmatter/copyright}       
-    \input{frontmatter/originality}    
+    \input{frontmatter/copyright}
+    \input{frontmatter/originality}
     \input{frontmatter/dedication}        % include a dedication.tex file
     \input{frontmatter/acknowledgements}   % include an acknowledgements.tex file
     \input{frontmatter/abstract}\if@openright\cleardoublepage\else\clearpage\fi
@@ -94,8 +94,8 @@
 
 %% Note: always use \input as you cannot nest \includes (amongst other things)
 \pagestyle{mmupage}
-\mainmatter 
-    \input{chap1_intro/introduction_main} 
+\mainmatter
+    \input{chap1_intro/introduction_main}
     \input{chap2_lit_review/background_and_lit_overview_main}
     \input{chap3_methodology/materials_and_methods_main}
     \input{chap4_results/results_and_discussion_main}
@@ -103,10 +103,10 @@
     % chap6_unused folder preserved for potential future content
     \appendix
         \input{appA_code/appendix_a_main}
-        \input{appB_dataset/appendix_b_main}    
+        \input{appB_dataset/appendix_b_main}
         \input{appC_evaluation/appendix_c_main}
         \input{appD_ui_screenshots/appendix_d_main}
-        \input{appE_setup_guide/appendix_e_main} 
+        \input{appE_setup_guide/appendix_e_main}
 
 {\backmatter
     % Bibliography

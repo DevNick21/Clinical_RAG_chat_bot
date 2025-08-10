@@ -1,8 +1,210 @@
 \chapter{Materials \& Methods}
 
-\textbf{This section should include a recipe of what you did (explain what you have done so if someone wants to reproduce the experiment, they can).  A flow chart is typically helpful.  Also, make sure to define all software that you used including version numbers and OS.  Should also include a description of statistical methods used (if any).\footnote{For more information see: \url{http://rc.rcjournal.com/content/49/10/1229.short}}}
+\section{System Overview}
+This work implements a clinical Retrieval-Augmented Generation (RAG) system that enables natural-language querying of MIMIC-IV hospital records. The system consists of: (i) a data processing layer that produces semantically coherent document chunks, (ii) multiple embedding back-ends stored in FAISS vector stores, (iii) an LLM-backed question answering component orchestrated with LangChain, and (iv) three interfaces: a Flask API, a React frontend, and a CLI. The full source is in the project root (see \texttt{RAG\_chat\_pipeline/}, \texttt{api/}, \texttt{frontend/}).
 
-\Blindtext
+\section{Data Sources and Governance}
+\subsection{Datasets}
+\begin{itemize}
+  \item Real data: MIMIC-IV sample exports are stored under \texttt{mimic\_sample\_1000/}.
+  \item Synthetic data: A generator in \texttt{synthetic\_data/} produces structurally consistent, fictional clinical records for development/demo when real data are unavailable.
+\end{itemize}
+\noindent A data provider abstraction (\texttt{RAG\_chat\_pipeline/utils/data\_provider.py}) automatically chooses real vs. synthetic sources, preferring real MIMIC-derived exports when present. No protected health information (PHI) is ingested; synthetic data are used for public demonstrations.
+
+\subsection{Ethics and Access}
+Use of MIMIC-IV requires credentialed access and adherence to PhysioNet data use agreements. Public artifacts in this project are restricted to code and synthetic data. The system is for research/education only and not for clinical decision-making.
+
+\section{Software, OS, and Runtime Environment}
+Experiments were executed on Microsoft Windows (user environment), Python 3.11, and React.js for the frontend. Key packages pinned in \texttt{requirements.txt} include: LangChain (0.3.x), FAISS CPU (1.11.0), \texttt{sentence-transformers} (4.1.0), Transformers (4.52.4), Torch (2.7.1), Flask (3.0.2), and Ollama (0.5.1) for local LLMs. The React UI targets React 18.2 and Material-UI 5.15 (\texttt{frontend/package.json}).
+
+\paragraph{Representative versions}
+\begin{itemize}
+  \item Python: 3.11.x (CPython)\footnote{Inferred from \texttt{\_\_pycache\_\_} artifacts.}
+  \item Node.js: \(\ge\) 16 (v18+ recommended)
+  \item LangChain: 0.3.25; \texttt{langchain-community}: 0.3.24
+  \item FAISS CPU: 1.11.0; sentence-transformers: 4.1.0
+  \item Torch: 2.7.1; Transformers: 4.52.4
+  \item Flask: 3.0.2; Flask-CORS: 4.0.1
+  \item Ollama: 0.5.1 (models pulled locally)
+\end{itemize}
+
+\section{System Configuration}
+Central configuration is defined in \texttt{RAG\_chat\_pipeline/config/config.py}. Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{S-PubMedBert-MS-MARCO} embeddings and \texttt{deepseek-r1:1.5b} as the LLM. Alternative combinations are supported for evaluation (e.g., \texttt{all-MiniLM-L6-v2}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Qwen3, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
+
+\section{Data Processing and Document Construction}
+\subsection{Preprocessing}
+We prepared data with notebooks in \texttt{data\_handling/} (e.g., \texttt{creating\_docs.ipynb}, \texttt{creating\_samples.ipynb}). Sampling was performed at the admission level to produce a working subset (\texttt{mimic\_sample\_1000/}) by selecting a fixed-size random sample of \texttt{hadm\_id}s and joining the primary tables (diagnoses, procedures, labs, microbiology, prescriptions) on \texttt{hadm\_id} and \texttt{subject\_id}. This preserves cross-table coherence while controlling index size and memory footprint.
+
+Key preprocessing steps:
+\begin{enumerate}
+  \item Normalize column names and types (e.g., enforce integer \texttt{hadm\_id}, \texttt{subject\_id}).
+  \item Map each row to a semantically labeled section: \texttt{header}, \texttt{diagnoses}, \texttt{procedures}, \texttt{labs}, \texttt{microbiology}, \texttt{prescriptions}.
+  \item Compose section-scoped textual records embedding key fields (codes, values/units, dates) and attach metadata.
+\end{enumerate}
+
+\subsection{Chunking}
+Documents are segmented into semantically coherent chunks optimized for clinical QA. We apply section-aware chunking before size-based splitting so that each chunk remains topically consistent (e.g., lab results grouped, diagnoses grouped). Chunk sizes of 600--900 characters with 80--150 character overlap worked well in practice for our lightweight local LLMs (balancing recall and context-window constraints). Metadata (\texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}) are preserved on every chunk to enable admission- and section-scoped retrieval.
+
+An illustrative chunking routine is shown below:
+
+\begin{minted}[fontsize=\footnotesize]{python}
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+SECTION_SEPARATORS = ["\n\n", "\n", ". ", " "]
+
+def chunk_clinical_text(text: str, chunk_size=800, chunk_overlap=120):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=SECTION_SEPARATORS,
+        is_separator_regex=False,
+    )
+    return splitter.split_text(text)
+\end{minted}
+
+The notebooks emit a list of \texttt{langchain.schema.Document} with \texttt{page\_content} and \texttt{metadata}, serialized to \texttt{mimic\_sample\_1000/chunked\_docs.pkl} (or synthetic equivalent). These chunks are the source for vector indexing.
+
+\section{Embeddings and Vector Stores}
+\subsection{Model Setup}
+The embedding manager (\texttt{RAG\_chat\_pipeline/core/embeddings\_manager.py}) loads a SentenceTransformers model by nickname from config, caching it under \texttt{models/<model-name>/}. If not present locally, it is downloaded and saved. A \texttt{HuggingFaceEmbeddings} wrapper provides the LangChain interface.
+
+\subsection{FAISS Indexing}
+For each embedding configuration, a FAISS vector store is created from the chunked documents and saved under \texttt{vector\_stores/<store-name>/}. On startup, the system attempts to load the existing store; if missing, it builds a new one and persists both the index and the chunked corpus.
+
+\section{RAG Pipeline and Inference}
+\subsection{Retriever}
+Given a query, the pipeline first attempts metadata-constrained retrieval when a \texttt{hadm\_id}, \texttt{subject\_id}, or \texttt{section} is available. Efficient in-memory indices (built at bot initialization) map identifiers and sections to candidate document IDs, reducing the search space prior to semantic ranking. Otherwise, a global FAISS similarity search is performed.
+
+At initialization, the bot builds light-weight Python indices for fast filtering (excerpt):
+\begin{minted}[fontsize=\footnotesize]{python}
+from collections import defaultdict
+
+self.hadm_id_index = defaultdict(list)
+self.subject_id_index = defaultdict(list)
+self.section_index = defaultdict(list)
+self.hadm_section_index = defaultdict(list)
+
+for i, doc in enumerate(self.chunked_docs):
+    hadm = doc.metadata.get("hadm_id")
+    sec  = str(doc.metadata.get("section", "")).lower()
+    if hadm is not None:
+        try:
+            hadm_i = int(hadm)
+            self.hadm_id_index(hadm_i).append(i)  # conceptually: map hadm -> doc ids
+            if sec:
+                self.hadm_section_index[(hadm_i, sec)].append(i)
+        except ValueError:
+            pass
+    if sec:
+        self.section_index[sec].append(i)
+\end{minted}
+
+When a \texttt{hadm\_id} or \texttt{section} is present, only the corresponding candidate set is ranked semantically; this materially reduces hallucination risk by strictly constraining evidence.
+
+\subsection{Context Construction}
+Top-$k$ (default \(k=5\), bounded for performance) documents are semantically ranked. For efficiency and to improve answer formatting, the system extracts concise, section-aware snippets (diagnoses, procedures, labs, prescriptions, microbiology, header) and composes a single structured context document passed to the LLM. Rules favor lines with section-specific keywords and patterns (e.g., ICD codes, dosages, numeric lab values/units) while limiting per-section lines to keep within context windows.
+
+\subsection{LLM Answering}
+Answers are generated using an Ollama-hosted model (default DeepSeek-R1 1.5B) through LangChain's \texttt{create\_stuff\_documents\_chain}. The prompt enforces: (i) factual grounding exclusively in retrieved context, (ii) inclusion of clinical specifics (codes, values, units, dates), and (iii) explicit source attribution. A standardized disclaimer is appended to all outputs.
+
+\subsection{Entity Extraction and Conversational Context}
+A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}; see \texttt{MAX\_CHAT\_HISTORY} in config) to control context length.
+
+\subsection{RAG Core Emphasis and Design Evolution}
+The initial blueprint used a straightforward vector index + chat engine with strict context mode:
+\begin{minted}[fontsize=\footnotesize]{python}
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.llms.ollama import Ollama
+
+docs = SimpleDirectoryReader("./parsed_emails").load_data()
+embed_model = OllamaEmbedding(model_name="nomic-embed-text")
+llm = Ollama(model="llama3.2")
+
+index = VectorStoreIndex.from_documents(docs, embed_model=embed_model)
+chat_engine = index.as_chat_engine(
+    llm=llm,
+    chat_mode="context",  # force LLM to use only retrieved context
+    verbose=True
+)
+response = chat_engine.chat(
+    "There is package mentioned for dealing with spaghetti code")
+\end{minted}
+
+We attempted a two-step pipeline (LLM judges chunk relevance, then answers), but lightweight local models had small context windows and were brittle as rankers. The reliable fix was a \textbf{custom retriever}: extract \texttt{hadm\_id}/\texttt{subject\_id}/\texttt{section} via regex/patterns, filter candidates with in-memory indices, semantically reduce content, then pass only the top snippets to the LLM. The core search is:
+\begin{minted}[fontsize=\footnotesize]{python}
+# Simplified core flow (see clinical_rag.py)
+candidate = self._filter_candidate_documents(hadm_id, subject_id, section, limit=20)
+if candidate is None:  # global search fallback
+    retrieved = self.vectorstore.similarity_search(question, k=min(k, 20))
+else:
+    retrieved = self._semantic_search_on_docs(candidate, question, k=min(k, 5))
+structured = self._extract_clinical_content(retrieved)
+prompt = self._create_clinical_prompt(hadm_id, subject_id)
+chain  = create_stuff_documents_chain(self.llm, prompt)
+answer = safe_llm_invoke(chain, {"input": question, "context": [Document(page_content=structured)]})
+\end{minted}
+This design substantially reduces hallucinations by constraining retrieval to the correct admission/section before any LLM generation.
+
+\section{Interfaces}
+\subsection{API}
+A Flask service in \texttt{api/app.py} exposes endpoints:
+\begin{itemize}
+  \item \texttt{POST /api/chat}: process a chat message and optional history.
+  \item \texttt{GET /api/models}: list available embedding models and vector stores.
+  \item Static serving: production build of the React app.
+\end{itemize}
+\subsection{Frontend}
+A React UI (\texttt{frontend/}) provides a chat interface, model introspection, and sample query suggestions sourced from the data provider.
+\subsection{CLI}
+\texttt{cli\_chat.py} offers an interactive console with session logging and history management.
+
+\section{Challenges and Mitigations}
+\textbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could elicit fabricated specifics. Mitigations:
+\begin{itemize}
+  \item Admission-/section-scoped retrieval via in-memory indices built at initialization.
+  \item Deterministic entity extraction (regex) to avoid LLM-based parameter drift.
+  \item Structured snippet extraction with section rules (favor codes, values, units; cap lines) to keep within context windows.
+  \item Post-processing to enforce disclaimers and fix citation inconsistencies.
+\end{itemize}
+We observed that replacing the two-step LLM-as-ranker approach with the custom retriever + semantic re-ranking significantly improved factual grounding on lightweight local models.
+
+\section{Evaluation Protocol}
+We provide only a brief overview here; detailed metrics and comparisons are presented in the Results chapter. The evaluator generates category-specific gold questions and computes pass/fail and summary statistics per model combination. For methodology purposes: we validate answers against available structured signals (e.g., presence of ICD patterns, dosages, units) and measure retrieval latency; full scoring weights, thresholds, and heatmaps are deferred to Results.
+
+\subsection{Gold Questions and Categories}
+Gold questions are synthesized from available records (diagnoses, procedures, labs, microbiology, prescriptions, header) with associated \texttt{hadm\_id}s when applicable. Full evaluation outcomes and category breakdowns are reported in Results.
+
+\section{Modularity and Extensibility}
+The system is modular: configuration (\texttt{config/}), core RAG components (\texttt{core/}), helpers (entity extraction, invocation), utilities (data provider, logging), API (Flask), and frontend (React) are decoupled. Models are selectable at runtime (\texttt{set\_models()}), and vector stores are tied to embedding choices, enabling ablations and easy swaps.
+
+\section{Reproducibility}
+\subsection{Environment Setup}
+\begin{enumerate}
+  \item Create a Python 3.11 environment and install the project in editable mode: \texttt{pip install -e .}
+  \item Install Node dependencies for the frontend (optional): \texttt{cd frontend \&\& npm install}.
+  \item Install and run Ollama, then pull required models (e.g., \texttt{deepseek-r1:1.5b}).
+\end{enumerate}
+
+\subsection{Data Preparation}
+\begin{itemize}
+  \item Real data: place MIMIC-IV exports under \texttt{mimic\_sample\_1000/}, then run the notebook \texttt{data\_handling/creating\_docs.ipynb} to produce \texttt{chunked\_docs.pkl} and per-model FAISS stores.
+  \item Synthetic data: run the generator in \texttt{synthetic\_data/synthetic\_data\_generator.py}; the data provider will auto-select it when real data are absent.
+\end{itemize}
+
+\subsection{Running and Evaluation}
+\begin{itemize}
+  \item Start API: \texttt{python api/app.py}; start UI: \texttt{cd frontend; npm start}.
+  \item CLI: \texttt{python cli\_chat.py chat}.
+  \item Quick evaluation: \texttt{python -m RAG\_chat\_pipeline.benchmarks.model\_evaluation\_runner single ms-marco deepseek short}.
+  \item Full comparison: \texttt{python -m RAG\_chat\_pipeline.benchmarks.model\_evaluation\_runner all full}.
+\end{itemize}
+
+\section{Quality Assurance and Performance}
+The chatbot builds in-memory indices for fast metadata filtering and uses an embedding cache to reduce repeated computations. Retrieval sets are capped for latency control; where necessary, temporary FAISS indices are created for re-ranking. Post-processing normalizes outputs (disclaimer, citation consistency).
+
+\section{Limitations}
+We evaluate on a limited MIMIC sample or synthetic surrogate, which may not reflect full-cohort distributions. Local LLMs (1--4B parameters) balance privacy and cost but can underperform large hosted models. Results depend on embedding choice, chunking strategy, and prompt design.
 
 \section{Summary}
-\blindtext
+The methodology provides an end-to-end, reproducible pipeline from MIMIC-compatible tabular data to a conversational, evaluable clinical RAG system. All components---data preparation, embeddings/vector stores, retrieval, prompting, interfaces, and evaluation---are parameterized in code to support ablation and model comparison studies.\par
