@@ -2,33 +2,7 @@
 Benchmarking and evaluation components
 """
 
-# Import retrieval metrics first (no dependencies)
-from .retrieval_metrics import RetrievalMetricsEvaluator, format_retrieval_metrics_summary
+# Minimal package initializer; explicit imports should be used by consumers.
+# This avoids accidental circular imports and broken re-exports.
 
-# Define available modules for lazy importing to avoid circular import issues
-__all__ = [
-    "ClinicalRAGEvaluator",
-    "ModelEvaluationRunner",
-    "EvaluationResultsManager",
-    "generate_gold_questions_from_data",
-    "RetrievalMetricsEvaluator",
-    "format_retrieval_metrics_summary"
-]
-
-
-def __getattr__(name):
-    """Lazy import to avoid circular import issues when modules are run with -m"""
-    if name == "ClinicalRAGEvaluator":
-        from .rag_evaluator import ClinicalRAGEvaluator
-        return ClinicalRAGEvaluator
-    elif name == "ModelEvaluationRunner":
-        from .model_evaluation_runner import ModelEvaluationRunner
-        return ModelEvaluationRunner
-    elif name == "EvaluationResultsManager":
-        from .evaluation_results_manager import EvaluationResultsManager
-        return EvaluationResultsManager
-    elif name == "generate_gold_questions_from_data":
-        from .gold_questions import generate_gold_questions_from_data
-        return generate_gold_questions_from_data
-    else:
-        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+# No implicit re-exports.

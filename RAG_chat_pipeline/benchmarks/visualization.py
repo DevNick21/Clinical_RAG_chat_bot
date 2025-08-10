@@ -172,7 +172,7 @@ class EvaluationVisualizer:
 
         return str(docs_file)
 
-    def create_model_comparison_heatmap(self, df: pd.DataFrame, metric: str = "pass_rate") -> str:
+    def create_model_comparison_heatmap(self, df: pd.DataFrame, metric: str = "average_score") -> str:
         """Create interactive heatmap for model comparison"""
         if df.empty:
             return ""
@@ -189,7 +189,7 @@ class EvaluationVisualizer:
             y=heatmap_data.index,
             colorscale='RdYlGn',
             text=heatmap_data.values,
-            texttemplate="%{text:.3f}" if metric != 'pass_rate' else "%{text:.1%}",
+            texttemplate="%{text:.1%}" if metric == 'average_score' else "%{text:.3f}",
             textfont={"size": 10},
             hoverongaps=False
         ))

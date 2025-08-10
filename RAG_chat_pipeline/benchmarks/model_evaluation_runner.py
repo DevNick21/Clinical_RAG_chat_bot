@@ -228,7 +228,7 @@ class ModelEvaluationRunner:
             self.results_manager.create_comparison_table()
             self.results_manager.generate_summary_report()
             print("\n📈 Generating performance heatmap...")
-            self.results_manager.create_heatmap("pass_rate")
+            self.results_manager.create_heatmap("average_score")
 
     def _combination_exists(self, embedding_model: str, llm_model: str, evaluation_type: str = None, use_chat_history: bool = False) -> bool:
         """Check if a model combination already has results"""
