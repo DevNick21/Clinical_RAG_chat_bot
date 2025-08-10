@@ -4,8 +4,7 @@ Connects React frontend to the RAG_chat_pipeline backend
 """
 
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
-from RAG_chat_pipeline.config.config import model_names, vector_stores, LOG_LEVEL
-from RAG_chat_pipeline import ClinicalLogger
+from RAG_chat_pipeline.config.config import model_names, vector_stores
 import sys
 import os
 from pathlib import Path
@@ -13,27 +12,25 @@ import json
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# Ensure project root is on sys.path BEFORE importing project modules
-project_root = Path(__file__).resolve().parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# Add project root to path BEFORE importing any project modules
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-# Project imports
+# NOW import RAG system components (after path is set)
+
+# Import RAG system components
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='../frontend/build')
 CORS(app)  # Enable CORS for all routes
 
-# Configure logger level early
-ClinicalLogger.set_level(LOG_LEVEL)
-
 # Initialize RAG system
-ClinicalLogger.info("Initializing Clinical RAG System...")
+print("🚀 Initializing Clinical RAG System...")
 try:
     chatbot = initialize_clinical_rag()
-    ClinicalLogger.success("Clinical RAG System initialized successfully")
+    print("✅ Clinical RAG System initialized successfully")
 except Exception as e:
-    ClinicalLogger.error(f"Error initializing Clinical RAG System: {e}")
+    print(f"❌ Error initializing Clinical RAG System: {e}")
     chatbot = None
 
 
@@ -55,12 +52,12 @@ def chat():
     chat_history = data.get('chat_history', [])
 
     # Debug: Log incoming request details
-    ClinicalLogger.debug("API Chat Request:")
-    ClinicalLogger.debug(f"  - Message: '{user_message}'")
-    ClinicalLogger.debug(
+    print(f"🔍 API Chat Request:")
+    print(f"  - Message: '{user_message}'")
+    print(
         f"  - Chat history length: {len(chat_history) if chat_history else 0}")
     if chat_history:
-        ClinicalLogger.debug(
+        print(
             f"  - Last 2 history items: {chat_history[-2:] if len(chat_history) >= 2 else chat_history}")
 
     # Process with RAG system
@@ -68,16 +65,16 @@ def chat():
         response = chatbot.chat(user_message, chat_history)
 
         # Debug: Log response details
-        ClinicalLogger.success("API Chat Response:")
-        ClinicalLogger.debug(f"  - Response length: {len(str(response))}")
-        ClinicalLogger.debug(f"  - Response preview: {str(response)[:200]}...")
+        print(f"✅ API Chat Response:")
+        print(f"  - Response length: {len(str(response))}")
+        print(f"  - Response preview: {str(response)[:200]}...")
 
         return jsonify({
             'response': response,
             'sources': chatbot.sources if hasattr(chatbot, 'sources') else []
         })
     except Exception as e:
-        ClinicalLogger.error(f"Error processing message: {e}")
+        print(f"Error processing message: {e}")
         return jsonify({
             'error': str(e)
         }), 500
@@ -139,7 +136,7 @@ def get_sample_suggestions():
         })
 
     except Exception as e:
-        ClinicalLogger.error(f"Error getting sample suggestions: {e}")
+        print(f"Error getting sample suggestions: {e}")
         # Fallback suggestions
         return jsonify({
             'suggestions': [

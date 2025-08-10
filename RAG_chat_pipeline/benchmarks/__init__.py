@@ -2,12 +2,17 @@
 Benchmarking and evaluation components
 """
 
+# Import retrieval metrics first (no dependencies)
+from .retrieval_metrics import RetrievalMetricsEvaluator, format_retrieval_metrics_summary
+
 # Define available modules for lazy importing to avoid circular import issues
 __all__ = [
     "ClinicalRAGEvaluator",
     "ModelEvaluationRunner",
     "EvaluationResultsManager",
-    "generate_gold_questions_from_data"
+    "generate_gold_questions_from_data",
+    "RetrievalMetricsEvaluator",
+    "format_retrieval_metrics_summary"
 ]
 
 

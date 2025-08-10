@@ -15,13 +15,14 @@ class DataProvider:
     real MIMIC-IV data and synthetic data based on availability.
     """
 
-    def __init__(self, real_data_path="mimic_sample_1000", synthetic_data_path="synthetic_data"):
+    def __init__(self, real_data_path="mimic_sample_1000", synthetic_data_path="synthetic_data", verbose: bool = True):
         """
         Initialize the data provider.
 
         Args:
             real_data_path: Path to the real MIMIC-IV data
             synthetic_data_path: Path to the synthetic data
+            verbose: If True, print informative messages; if False, stay quiet
         """
         # Get the project root directory
         current_file = Path(__file__).resolve()
@@ -33,15 +34,18 @@ class DataProvider:
         self.real_data_path = project_root / real_data_path
         self.synthetic_data_path = project_root / synthetic_data_path
         self.using_synthetic = False
+        self.verbose = verbose
 
         # Check what data is available
         self.data_source_path = self._determine_data_source()
 
         if self.using_synthetic:
-            print(
-                "📌 Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
+            if self.verbose:
+                print(
+                    "📌 Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
         else:
-            print("📌 Using real MIMIC-IV data.")
+            if self.verbose:
+                print("📌 Using real MIMIC-IV data.")
 
     def _determine_data_source(self):
         """
@@ -66,7 +70,8 @@ class DataProvider:
         try:
             synthetic_generator_path = self.synthetic_data_path / "synthetic_data_generator.py"
             if synthetic_generator_path.exists():
-                print("🔄 Real data not found. Generating synthetic data...")
+                if self.verbose:
+                    print("🔄 Real data not found. Generating synthetic data...")
                 import sys
                 sys.path.append(str(self.synthetic_data_path.parent))
                 from synthetic_data.synthetic_data_generator import create_synthetic_data
@@ -74,7 +79,8 @@ class DataProvider:
                 self.using_synthetic = True
                 return self.synthetic_data_path
         except Exception as e:
-            print(f"⚠️ Error generating synthetic data: {e}")
+            if self.verbose:
+                print(f"⚠️ Error generating synthetic data: {e}")
 
         # If neither exists and synthetic data can't be created, raise error
         raise FileNotFoundError(
@@ -168,7 +174,8 @@ class DataProvider:
                 return admissions_df, link_tables, grouped
 
             except FileNotFoundError as e:
-                print(f"❌ Synthetic data files not found: {e}")
+                if self.verbose:
+                    print(f"❌ Synthetic data files not found: {e}")
                 return None, None, None
         else:
             # Use real MIMIC data exports
@@ -189,8 +196,10 @@ class DataProvider:
                 return admissions_df, link_tables, grouped
 
             except FileNotFoundError as e:
-                print(f"❌ MIMIC data export files not found: {e}")
-                print("Please run the data processing notebook to export data first")
+                if self.verbose:
+                    print(f"❌ MIMIC data export files not found: {e}")
+                    print(
+                        "Please run the data processing notebook to export data first")
                 return None, None, None
 
     def get_sample_data(self):

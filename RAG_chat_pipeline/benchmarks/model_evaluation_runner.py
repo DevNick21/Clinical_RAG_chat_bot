@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict
-from RAG_chat_pipeline.config.config import model_names, llms
+from RAG_chat_pipeline.config.config import model_names, llms, QUIET
 from RAG_chat_pipeline.benchmarks.evaluation_results_manager import EvaluationResultsManager
 from RAG_chat_pipeline.benchmarks.rag_evaluator import ClinicalRAGEvaluator
 # from RAG_chat_pipeline.benchmarks.chat_history_evaluator import ChatHistoryEvaluator  # TODO: Create this module if needed
@@ -24,7 +24,8 @@ class ModelEvaluationRunner:
         results_dir = Path(__file__).parent.parent / "results"
         # Create results directory if it doesn't exist
         results_dir.mkdir(exist_ok=True)
-        self.results_manager = EvaluationResultsManager(results_dir)
+        self.results_manager = EvaluationResultsManager(
+            results_dir, quiet=QUIET)
         self.embedding_models = list(model_names.keys())
         self.llm_models = list(llms.keys())
 
@@ -49,29 +50,35 @@ class ModelEvaluationRunner:
         """
 
         eval_mode = "chat_history" if use_chat_history else "single_turn"
-        print(f"\n🚀 Running evaluation: {embedding_model} + {llm_model}")
-        print(f"📊 Evaluation type: {evaluation_type}")
-        print(f"🗣️ Evaluation mode: {eval_mode}")
-        print("=" * 60)
+        if not QUIET:
+            print(f"\n🚀 Running evaluation: {embedding_model} + {llm_model}")
+            print(f"📊 Evaluation type: {evaluation_type}")
+            print(f"🗣️ Evaluation mode: {eval_mode}")
+            print("=" * 60)
 
         try:
             # Update config to use the specified models
             self._update_config(embedding_model, llm_model)
 
             # Initialize the RAG system with new config
-            print("Initializing RAG system...")
+            if not QUIET:
+                print("Initializing RAG system...")
             chatbot = initialize_clinical_rag()
 
             # Choose evaluator based on mode
             if use_chat_history:
                 # TODO: Implement ChatHistoryEvaluator when conversational evaluation is needed
-                print(
-                    "Warning: ChatHistoryEvaluator not implemented, falling back to ClinicalRAGEvaluator")
+                if not QUIET:
+                    print(
+                        "Warning: ChatHistoryEvaluator not implemented, falling back to ClinicalRAGEvaluator")
                 evaluator = ClinicalRAGEvaluator(chatbot)
-                print("Using ClinicalRAGEvaluator for single-turn evaluation (fallback)")
+                if not QUIET:
+                    print(
+                        "Using ClinicalRAGEvaluator for single-turn evaluation (fallback)")
             else:
                 evaluator = ClinicalRAGEvaluator(chatbot)
-                print("Using ClinicalRAGEvaluator for single-turn evaluation")
+                if not QUIET:
+                    print("Using ClinicalRAGEvaluator for single-turn evaluation")
 
             # Run the appropriate evaluation
             start_time = time.time()
@@ -106,15 +113,16 @@ class ModelEvaluationRunner:
                 embedding_model, llm_model, results, full_notes, evaluation_type, use_chat_history
             )
 
-            print(f"✅ Evaluation completed: {experiment_id}")
-            print(f"⏱️  Total time: {evaluation_time:.1f}s")
+            if not QUIET:
+                print(f"✅ Evaluation completed: {experiment_id}")
+                print(f"⏱️  Total time: {evaluation_time:.1f}s")
 
             return experiment_id
 
         except Exception as e:
-            print(f"❌ Evaluation failed: {str(e)}")
-            print(f"   Models: {embedding_model} + {llm_model}")
-            return None
+            if not QUIET:
+                print(f"❌ Error during evaluation: {e}")
+            raise
 
     def _update_config(self, embedding_model: str, llm_model: str):
         """Update config files"""
@@ -125,7 +133,8 @@ class ModelEvaluationRunner:
             set_models(embedding_model, llm_model)
 
             # Print configuration summary
-            print(f"📝 Updated config: {embedding_model} + {llm_model}")
+            if not QUIET:
+                print(f"📝 Updated config: {embedding_model} + {llm_model}")
 
         except ValueError as e:
             print(f"❌ Configuration error: {e}")

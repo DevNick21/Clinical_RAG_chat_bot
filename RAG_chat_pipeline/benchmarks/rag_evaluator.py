@@ -4,7 +4,6 @@ import json
 import sys
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Dict, List, Tuple
 from datetime import datetime
@@ -15,6 +14,7 @@ from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot, ClinicalLogger
 from .gold_questions import generate_gold_questions_from_data
 from .reporting import EvaluationReporter
 from RAG_chat_pipeline.config.config import *
+from RAG_chat_pipeline.benchmarks.visualization import EvaluationVisualizer
 
 
 class ClinicalRAGEvaluator:
@@ -761,7 +761,8 @@ class ClinicalRAGEvaluator:
         return report_files
 
     def compare_evaluations(self, evaluation_results: List[Dict], labels: List[str],
-                            output_dir: str = "evaluation_reports", generate_plots: bool = False) -> str:
+                            output_dir: str = "evaluation_reports", generate_plots: bool = False,
+                            quiet: bool = False) -> str:
         """Compare multiple evaluation results side by side"""
 
         output_path = Path(output_dir)
@@ -793,66 +794,21 @@ class ClinicalRAGEvaluator:
         comparison_df.to_csv(comparison_file, index=False)
 
         if generate_plots:
-            # Generate comparison visualization
-            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(
-                2, 2, figsize=(15, 12))
+            try:
+                visualizer = EvaluationVisualizer(output_dir=output_path)
+                img_path = visualizer.create_evaluation_comparison_plot(
+                    labels, comparison_data, timestamp)
+                if img_path and not quiet:
+                    ClinicalLogger.info(
+                        f"📈 Comparison visualization saved: {img_path}")
+            except Exception as e:
+                if not quiet:
+                    ClinicalLogger.error(
+                        f"❌ Error generating comparison visualization: {e}")
 
-            # Pass rates comparison
-            pass_rates = [float(row["Pass_Rate"].strip('%')) /
-                          100 for row in comparison_data]
-            ax1.bar(labels, pass_rates, color='lightblue', alpha=0.7)
-            ax1.set_ylabel('Pass Rate')
-            ax1.set_title('Pass Rate Comparison')
-            ax1.set_ylim(0, 1)
-
-            # Grade distribution stacked bar
-            grades_data = np.array([[row["Excellent_Count"], row["Pass_Count"],
-                                     row["Borderline_Count"], row["Fail_Count"]]
-                                    for row in comparison_data])
-
-            bottom = np.zeros(len(labels))
-            colors = ['green', 'lightgreen', 'orange', 'red']
-            grade_labels = ['Excellent', 'Pass', 'Borderline', 'Fail']
-
-            for i, (color, label) in enumerate(zip(colors, grade_labels)):
-                ax2.bar(labels, grades_data[:, i], bottom=bottom,
-                        color=color, alpha=0.7, label=label)
-                bottom += grades_data[:, i]
-
-            ax2.set_ylabel('Count')
-            ax2.set_title('Grade Distribution Comparison')
-            ax2.legend()
-
-            # Average scores comparison
-            avg_scores = [float(row["Average_Score"])
-                          for row in comparison_data]
-            ax3.bar(labels, avg_scores, color='lightcoral', alpha=0.7)
-            ax3.set_ylabel('Average Score')
-            ax3.set_title('Average Score Comparison')
-            ax3.set_ylim(0, 1)
-
-            # Search time comparison
-            search_times = [float(row["Avg_Search_Time"].rstrip('s'))
-                            for row in comparison_data]
-            ax4.bar(labels, search_times, color='lightsteelblue', alpha=0.7)
-            ax4.set_ylabel('Search Time (seconds)')
-            ax4.set_title('Average Search Time Comparison')
-
-            plt.tight_layout()
-
-            comparison_viz_file = output_path / \
-                f"evaluation_comparison_{timestamp}.png"
-            plt.savefig(comparison_viz_file, dpi=300, bbox_inches='tight')
-            plt.close()
-
+        if not quiet:
             ClinicalLogger.info(
                 f"📊 Evaluation comparison saved: {comparison_file}")
-            ClinicalLogger.info(
-                f"📈 Comparison visualization saved: {comparison_viz_file}")
-        else:
-            ClinicalLogger.info(
-                f"📊 Evaluation comparison saved: {comparison_file}")
-
         return str(comparison_file)
 
 

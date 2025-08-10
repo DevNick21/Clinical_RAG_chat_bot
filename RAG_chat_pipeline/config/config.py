@@ -58,6 +58,7 @@ ENABLE_ENTITY_EXTRACTION = True  # default off for performance
 
 # Logging
 LOG_LEVEL = "info"  # options: quiet, error, warning, info, debug
+QUIET = LOG_LEVEL.lower() == "quiet"
 
 # Maximum number of chat history messages to keep
 # This is used to limit the context size for the LLM

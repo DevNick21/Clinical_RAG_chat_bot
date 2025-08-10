@@ -17,7 +17,7 @@ from pathlib import Path
 try:
     from RAG_chat_pipeline.utils.data_provider import get_sample_data
 except ImportError:
-    print("Warning: Could not import data_loader")
+    print("Warning: Could not import data_provider")
     get_sample_data = None
 
 
@@ -100,7 +100,7 @@ def generate_gold_questions_from_data(num_questions: int = 20,
          "labs", "lab values with chart/store times"),
         ("What were the lab values and flags for admission {hadm_id}?",
          "labs", "lab values, units, and abnormal flags"),
-        ("List all laboratory categories tested for admission {hadm_id}",
+        ("List all laboratory categories tested for admission {hadm_id}?",
          "labs", "lab categories and fluid types"),
         ("What priority lab tests were done for admission {hadm_id}?",
          "labs", "lab priorities and timing information"),
