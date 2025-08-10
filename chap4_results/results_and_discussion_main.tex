@@ -30,7 +30,7 @@ Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap 
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{../../RAG_chat_pipeline/results/heatmap_average_score.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/heatmap_average_score.png}
   \caption{Model comparison heatmap by average score.}
   \label{fig:heatmap_avg_score}
 \end{figure}
@@ -60,6 +60,7 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
   MedQuAD & qwen & 95\% & 0.741 & 69.12 \\
   \bottomrule
 \end{tabularx}
+\label{tab:top_configs}
 \end{footnotesize}
 \endgroup
 \end{center}
@@ -72,7 +73,6 @@ Category pass rates aggregated across runs indicate strong performance on struct
 \begin{center}
 \begingroup
 \renewcommand\arraystretch{0.95}
-\begin{footnotesize}
 \begin{tabularx}{0.6\textwidth}{l r}
   \toprule
   Category & Pass rate \\
@@ -86,6 +86,8 @@ Category pass rates aggregated across runs indicate strong performance on struct
   Comprehensive & 1.9\% \\
   \bottomrule
 \end{tabularx}
+\label{tab:category_pass}
+\end{tabularx}
 \end{footnotesize}
 \endgroup
 \end{center}
@@ -97,8 +99,6 @@ We summarize representative efficiency and safety outcomes in Table~\ref{tab:eff
 
 \begin{center}
 \begingroup
-\renewcommand\arraystretch{0.95}
-\begin{footnotesize}
 \begin{tabularx}{0.9\textwidth}{l l P{1.3cm} P{1.4cm} P{1.5cm}}
   \toprule
   Embedding & LLM & QPM & Avg. score & Hallucination \\
@@ -107,6 +107,9 @@ We summarize representative efficiency and safety outcomes in Table~\ref{tab:eff
   mini-lm & qwen & 1.100 & 0.703 & 0.30 \\
   mini-lm & llama & 1.059 & 0.751 & 0.15 \\
   MedQuAD & deepseek & 0.169 & 0.744 & 0.10 \\
+  \bottomrule
+\end{tabularx}
+\label{tab:efficiency_safety}
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
@@ -185,19 +188,19 @@ To aid reproducibility, we include the full set of runs and category-wise averag
 \begingroup
 \renewcommand\arraystretch{0.95}
 \begin{footnotesize}
-\input{tables/all_runs_table}
+\input{chap4_results/tables/all_runs_table}
 \end{footnotesize}
 \endgroup
 \end{center}
 
 \subsection{Per-Category Average Metrics}
 \begin{center}
-\begingroup
-\renewcommand\arraystretch{0.95}
-\begin{footnotesize}
 \input{tables/category_averages}
 \end{footnotesize}
-\endgroup}
+\endgroup
+\end{center}
+\end{footnotesize}
+\endgroup
 \end{center}
 
 \section{Additional Figures}
