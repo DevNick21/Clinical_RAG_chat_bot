@@ -83,3 +83,51 @@ public/dist/
 # ----- Optional: Excel / Word / proprietary formats -----
 project_files/
 test_with_sponsor/
+
+# ----- LaTeX build artifacts -----
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.idx
+*.ilg
+*.ind
+*.ist
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.synctex.gz
+*.synctex.gz(busy)
+*.toc
+*.fls
+*.fdb_latexmk
+*.xdv
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.glsdefs
+*.xdy
+*.thm
+*.dvi
+_minted*/
+*.pyg
+
+# ----- Python build/test artifacts -----
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.eggs/
+*.egg
+*.egg-info/
+
+# ----- Optional: generated report assets -----
+# Uncomment if you prefer not to track generated artifacts (ensure CI/build runs the generator script)
+# report/chap4_results/tables/*.tex
+# report/chap4_results/images/*.png
