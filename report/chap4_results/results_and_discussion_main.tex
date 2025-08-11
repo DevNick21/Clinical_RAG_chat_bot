@@ -40,10 +40,11 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
 
 \newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
-\begin{center}
-\begingroup
-\renewcommand\arraystretch{0.95}
+
+\begin{table}[h]
+\centering
 \begin{footnotesize}
+\renewcommand\arraystretch{0.95}
 \begin{tabularx}{\textwidth}{l l P{1.6cm} P{1.6cm} P{1.8cm}}
   \toprule
   Embedding & LLM & Pass rate & Avg. score & Avg. search time (s) \\
@@ -60,45 +61,20 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
   MedQuAD & qwen & 95\% & 0.741 & 69.12 \\
   \bottomrule
 \end{tabularx}
-\label{tab:top_configs}
 \end{footnotesize}
-\endgroup
-\end{center}
+\caption{Top-performing configurations by average score.}
+\label{tab:top_configs}
+\end{table}
 
 \paragraph{Observations.} The best average scores are achieved by BioBERT + phi3 and multi-qa + phi3/llama. MiniLM pairs (mini-lm + llama/deepseek) are strong with excellent pass rates; however, mini-lm + deepseek exhibits much longer search time, suggesting backend or retrieval interaction overhead. MedQuAD-based embeddings produce competitive average scores but at times with slower end-to-end latency.
-
-\section{Category-Level Performance}
-Category pass rates aggregated across runs indicate strong performance on structured items (diagnoses) but limitations on more granular data types (labs, microbiology, prescriptions, comprehensive clinical synthesis). Table~\ref{tab:category_pass} summarizes these outcomes.
-
-\begin{center}
-\begingroup
-\renewcommand\arraystretch{0.95}
-\begin{tabularx}{0.6\textwidth}{l r}
-  \toprule
-  Category & Pass rate \\
-  \midrule
-  Header & 50.0\% \\
-  Diagnoses & 100.0\% \\
-  Procedures & 50.0\% \\
-  Labs & 1.9\% \\
-  Microbiology & 1.9\% \\
-  Prescriptions & 1.9\% \\
-  Comprehensive & 1.9\% \\
-  \bottomrule
-\end{tabularx}
-\label{tab:category_pass}
-\end{tabularx}
-\end{footnotesize}
-\endgroup
-\end{center}
-
-\paragraph{Implications.} These results suggest entity recall and grounding for laboratory and microbiology details remain challenging; future work should emphasize retrieval coverage, schema-aware chunking, and domain-specific prompting for tabular/temporal facts.
 
 \section{Efficiency and Safety}
 We summarize representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
-\begin{center}
-\begingroup
+\begin{table}[h]
+\centering
+\begin{footnotesize}
+\renewcommand\arraystretch{0.95}
 \begin{tabularx}{0.9\textwidth}{l l P{1.3cm} P{1.4cm} P{1.5cm}}
   \toprule
   Embedding & LLM & QPM & Avg. score & Hallucination \\
@@ -113,8 +89,9 @@ We summarize representative efficiency and safety outcomes in Table~\ref{tab:eff
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
-\endgroup
-\end{center}
+\caption{Efficiency and safety metrics.}
+\label{tab:efficiency_safety}
+\end{table}
 
 \paragraph{Trade-offs.} The fastest pipeline (e5-base + deepseek) sacrifices some answer quality relative to the top-scoring setups. Mini-lm + llama offers an appealing balance: perfect pass rate, good average score, high throughput, and low hallucination. The safest configuration by hallucination rate (MedQuAD + deepseek) is slower; this may reflect conservative generation behavior or heavier retrieval.
 
@@ -139,11 +116,8 @@ Pass rate is the proportion of questions meeting a minimum threshold (``acceptab
 \subsection{Factual Accuracy and Performance Subscores}
 Where available, we report separate subscores (e.g., factual accuracy, performance/presentation). Factual accuracy captures grounding to retrieved evidence and correctness of clinical facts; performance captures clarity, organization, and adherence to instructions (e.g., concise rationale, citations). Separating these clarifies whether errors arise from retrieval grounding or from generation quality.
 
-\subsection{Category-Level Metrics}
-Per-category pass rates and scores (Header, Diagnoses, Procedures, Labs, Microbiology, Prescriptions, Comprehensive) test whether systems handle specific clinical information types. This granularity is critical: high performance on Diagnoses may coexist with lower fidelity in Labs or Prescriptions. The very low pass rates for Labs/Microbiology/Prescriptions highlight challenges in entity extraction and temporal/tabular reasoning common in EHR-like data.
-
 \subsection{Latency and Throughput}
-Average search time (seconds) measures end-to-end latency per question, dominated by retrieval plus model generation. Throughput (questions per minute, QPM) summarizes system capacity under load. Clinical settings often require timely responses; we therefore report both and examine speed/quality trade-offs (e.g., e5-base + deepseek is fastest but with lower average score than top-accuracy pairs).
+Average search time (seconds) measures end-to-end latency per question, dominated by retrieval plus model generation. Throughput (questions per minute, QPM) summarises system capacity under load. Clinical settings often require timely responses; we therefore report both and examine speed/quality trade-offs (e.g., e5-base + deepseek is fastest but with lower average score than top-accuracy pairs).
 
 \subsection{Retrieval Coverage}
 Average documents found provides a coarse proxy for retrieval depth and coverage. Too few documents may under-support grounding; too many may add noise and increase latency. Configurations that maintain strong scores with modest document counts indicate efficient, focused retrieval.
@@ -155,11 +129,11 @@ Hallucination rate approximates the frequency of unsupported or factually incorr
 Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down into failure modes (e.g., missing lab values, incorrect medication dosages) and success cases. These analyses inform targeted improvements (schema-aware chunking, ontology-linked retrieval, citation prompting).
 
 % A compact summary table for quick reference
-\begin{center}
-\begingroup
-\renewcommand\arraystretch{0.95}
+\begin{table}[h]
+\centering
 \begin{footnotesize}
-\begin{tabular}{l P{6.2cm} P{6.2cm}}
+\renewcommand\arraystretch{0.95}
+\begin{tabular}{l p{6.2cm} p{6.2cm}}
   \toprule
   Metric & What it measures & Why it matters in clinical RAG \\
   \midrule
@@ -167,7 +141,6 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
   Pass rate & Fraction of answers meeting an acceptability threshold & Simple reliability signal; complements average score \\
   Factual accuracy & Grounding and correctness of clinical facts & Directly tied to patient safety and evidence use \\
   Performance/presentation & Structure, clarity, instruction adherence & Affects readability, clinician trust, and efficiency \\
-  Category metrics & Quality on specific data types (labs, meds, etc.) & Reveals modality- or schema-specific gaps to fix \\
   Search time & Latency per question (s) & Practical responsiveness for clinical workflows \\
   Throughput (QPM) & Questions processed per minute & Capacity planning and cost/performance trade-offs \\
   Documents found & Retrieval depth/coverage proxy & Balances evidence sufficiency vs. noise/latency \\
@@ -176,50 +149,42 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
   \bottomrule
 \end{tabular}
 \end{footnotesize}
-\endgroup
-\end{center}
+\caption{Summary of evaluation metrics and their importance in clinical RAG.}
+\label{tab:metrics_summary}
+\end{table}
 
 % Auto-generated comprehensive tables
 \section{Comprehensive Tables}
 To aid reproducibility, we include the full set of runs and category-wise averages generated from the consolidated CSVs.
 
 \subsection{All 54 Runs (sorted by average score)}
+% Note: Replace this with actual table content when available
 \begin{center}
-\begingroup
-\renewcommand\arraystretch{0.95}
 \begin{footnotesize}
+\renewcommand\arraystretch{0.95}
 \input{chap4_results/tables/all_runs_table}
 \end{footnotesize}
-\endgroup
 \end{center}
 
-\subsection{Per-Category Average Metrics}
-\begin{center}
-\input{tables/category_averages}
-\end{footnotesize}
-\endgroup
-\end{center}
-\end{footnotesize}
-\endgroup
-\end{center}
 
 \section{Additional Figures}
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{images/time_vs_score.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/time_vs_score.png}
   \caption{Average score vs. average search time across all runs. Lower time and higher score are better.}
+  \label{fig:time_vs_score}
 \end{figure}
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{images/quality_vs_throughput.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/quality_vs_throughput.png}
   \caption{Average score vs. throughput (QPM). Useful to identify speed-quality efficient frontiers.}
+  \label{fig:quality_vs_throughput}
 \end{figure}
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{images/pass_rate_vs_score.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/pass_rate_vs_score.png}
   \caption{Pass rate vs. average score by LLM. Highlights pairs that both pass reliably and score highly.}
+  \label{fig:pass_rate_vs_score}
 \end{figure}
-
-% -----------------------------------------
