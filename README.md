@@ -16,48 +16,137 @@ This project implements a production-ready clinical RAG system that:
 ## 🏗️ System Architecture
 
 ```mermaid
-graph TD
-    A[MIMIC-IV Data] --> B[Data Processing Pipeline]
-    B --> C[Document Chunking & Embedding]
-    C --> D[FAISS Vector Database]
-    D --> E[LangChain RAG Pipeline]
-    E --> F[Clinical RAG Bot]
-    F --> G[Results & Evaluation]
-
-    H[React Frontend] --> I[Flask API Server]
-    I --> F
+graph TB
+    subgraph "Data Sources"
+        A[MIMIC-IV Data]
+        B[Synthetic Data Generator]
+    end
+    
+    subgraph "Data Abstraction Layer"
+        C[DataProvider]
+        C --> D{Data Available?}
+        D -->|Real Data| A
+        D -->|No Real Data| B
+    end
+    
+    subgraph "Data Processing Pipeline"
+        E[Data Processing & Chunking]
+        F[Multiple Embedding Models]
+        G[FAISS Vector Stores]
+        C --> E
+        E --> F
+        F --> G
+    end
+    
+    subgraph "RAG Core System"
+        H[Clinical RAG Bot]
+        I[Entity Extraction]
+        J[Conversation History]
+        G --> H
+        H --> I
+        H --> J
+    end
+    
+    subgraph "Model Management"
+        K[Embedding Models Manager]
+        L[LLM Integration via Ollama]
+        M[Configuration Management]
+        F --> K
+        H --> L
+        K --> M
+        L --> M
+    end
+    
+    subgraph "Evaluation Framework"
+        N[Single-turn Evaluator]
+        O[Conversational Evaluator] 
+        P[Model Comparison Runner]
+        Q[Results Manager]
+        R[Visualization & Reporting]
+        H --> N
+        H --> O
+        N --> P
+        O --> P
+        P --> Q
+        Q --> R
+    end
+    
+    subgraph "User Interfaces"
+        S[React Frontend]
+        T[Flask API Server]
+        U[CLI Interface]
+        S --> T
+        T --> H
+        U --> H
+    end
+    
+    subgraph "Generated Outputs"
+        V[Performance Heatmaps]
+        W[Evaluation Reports]
+        X[Model Comparisons]
+        R --> V
+        R --> W
+        R --> X
+    end
 ```
 
 ### Core Components
 
-1. **Data Processing Pipeline** (`data_handling/`)
+1. **Data Abstraction Layer** (`RAG_chat_pipeline/utils/data_provider.py`)
+   - Automatic selection between real MIMIC-IV and synthetic data
+   - Seamless switching without configuration changes
+   - Backward compatibility with existing data loading functions
+   - Handles data format differences transparently
+
+2. **Synthetic Data Generation** (`synthetic_data/`)
+   - Creates realistic fictional medical data matching MIMIC-IV structure
+   - Generates 100 patients with 150 admissions and full clinical records
+   - Supports public distribution and demo capabilities
+   - Automatically integrated when real data is unavailable
+
+3. **Data Processing Pipeline** (`data_handling/`)
    - Converts MIMIC-IV CSV data to structured documents
    - Creates semantic chunks optimized for clinical queries
    - Supports multiple vector stores with different embedding models
+   - Processes both real and synthetic data uniformly
 
-2. **Clinical RAG Bot** (`RAG_chat_pipeline/core/clinical_rag.py`)
+4. **Clinical RAG Bot** (`RAG_chat_pipeline/core/clinical_rag.py`)
    - Handles both single questions and conversational interactions
    - Supports admission-specific and global semantic search
    - Includes entity extraction for automatic parameter detection
+   - Maintains conversation history and context
 
-3. **Evaluation Framework** (`RAG_chat_pipeline/benchmarks/`)
+5. **Model Management System** (`RAG_chat_pipeline/config/` & `core/embeddings_manager.py`)
+   - Centralized configuration for 9 embedding models and 6 LLMs
+   - Dynamic model switching without system restart
+   - Automatic model downloading and caching
+   - Support for both general-purpose and medical-specific models
+
+6. **Comprehensive Evaluation Framework** (`RAG_chat_pipeline/benchmarks/`)
    - Multi-dimensional scoring: Factual Accuracy (60%), Behavior (30%), Performance (10%)
    - Category-specific validation for different medical question types
    - Automated gold question generation from real patient data
-   - Chat history evaluation for conversational scenarios
+   - Both single-turn and conversational evaluation capabilities
+   - Statistical analysis and visualization of results
 
-4. **Model Comparison System** (`RAG_chat_pipeline/benchmarks/model_evaluation_runner.py`)
-   - Systematic evaluation across multiple model combinations
+7. **Model Comparison System** (`RAG_chat_pipeline/benchmarks/model_evaluation_runner.py`)
+   - Systematic evaluation across 54 model combinations (9×6)
    - Automated results collection and analysis
-   - Performance visualization and reporting
+   - Performance visualization with heatmaps and charts
+   - Efficiency and safety metrics tracking
 
-5. **Configuration Management** (`RAG_chat_pipeline/config/`)
-   - Centralized model and system configuration
-   - Easy switching between embedding models and LLMs
+8. **Results Management & Visualization** (`RAG_chat_pipeline/benchmarks/visualization.py`)
+   - Comprehensive performance dashboards
+   - Interactive heatmaps and comparison charts
+   - Category breakdown analysis
+   - Time series and efficiency plots
+   - CSV exports for further analysis
 
-6. **Data Abstraction Layer** (`RAG_chat_pipeline/utils/data_provider.py`)
-   - Seamless switching between real MIMIC-IV and synthetic data
-   - Consistent data interface across the system
+9. **Multi-Interface Support**
+   - **React Frontend** (`frontend/`): Modern web interface with Material-UI
+   - **Flask API Server** (`api/`): RESTful API endpoints
+   - **CLI Interface** (`cli_chat.py`): Command-line interaction
+   - **Jupyter Integration**: Notebook-friendly API
 
 ## 📊 Supported Models
 
