@@ -20,7 +20,7 @@ graph TB
    %% Data creation & handling
    subgraph "Data Creation & Handling"
       A[MIMIC-IV Data]
-      B[Synthetic Data (optional)]
+      B[Synthetic Data]
       C[Processing & Chunking]
       D[Embeddings -> FAISS Stores]
       A --> C
