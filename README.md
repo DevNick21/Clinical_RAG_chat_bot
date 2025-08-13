@@ -17,77 +17,42 @@ This project implements a production-ready clinical RAG system that:
 
 ```mermaid
 graph TB
-    subgraph "Data Sources"
-        A[MIMIC-IV Data]
-        B[Synthetic Data Generator]
-    end
-    
-    subgraph "Data Abstraction Layer"
-        C[DataProvider]
-        C --> D{Data Available?}
-        D -->|Real Data| A
-        D -->|No Real Data| B
-    end
-    
-    subgraph "Data Processing Pipeline"
-        E[Data Processing & Chunking]
-        F[Multiple Embedding Models]
-        G[FAISS Vector Stores]
-        C --> E
-        E --> F
-        F --> G
-    end
-    
-    subgraph "RAG Core System"
-        H[Clinical RAG Bot]
-        I[Entity Extraction]
-        J[Conversation History]
-        G --> H
-        H --> I
-        H --> J
-    end
-    
-    subgraph "Model Management"
-        K[Embedding Models Manager]
-        L[LLM Integration via Ollama]
-        M[Configuration Management]
-        F --> K
-        H --> L
-        K --> M
-        L --> M
-    end
-    
-    subgraph "Evaluation Framework"
-        N[Single-turn Evaluator]
-        O[Conversational Evaluator] 
-        P[Model Comparison Runner]
-        Q[Results Manager]
-        R[Visualization & Reporting]
-        H --> N
-        H --> O
-        N --> P
-        O --> P
-        P --> Q
-        Q --> R
-    end
-    
-    subgraph "User Interfaces"
-        S[React Frontend]
-        T[Flask API Server]
-        U[CLI Interface]
-        S --> T
-        T --> H
-        U --> H
-    end
-    
-    subgraph "Generated Outputs"
-        V[Performance Heatmaps]
-        W[Evaluation Reports]
-        X[Model Comparisons]
-        R --> V
-        R --> W
-        R --> X
-    end
+   %% Data creation & handling
+   subgraph "Data Creation & Handling"
+      A[MIMIC-IV Data]
+      B[Synthetic Data (optional)]
+      C[Processing & Chunking]
+      D[Embeddings -> FAISS Stores]
+      A --> C
+      B --> C
+      C --> D
+   end
+
+   %% Core RAG
+   subgraph "RAG Core"
+      E[Clinical RAG Bot]
+      F[Entity Extraction]
+      G[Conversation Memory]
+      D --> E
+      E --> F
+      E --> G
+   end
+
+   %% Models
+   subgraph "Models"
+      H[Embedding Models]
+      I[LLM via Ollama]
+      D <---> H
+      E <---> I
+   end
+
+   %% Interfaces
+   subgraph "Interfaces"
+      J[React Frontend]
+      K[Flask API]
+      J --> K
+      K --> E
+   end
 ```
 
 ### Core Components
