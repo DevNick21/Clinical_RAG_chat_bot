@@ -1,65 +1,99 @@
 \chapter{Introduction}
 
-\textbf{Note that you may have multiple \texttt{{\textbackslash}include} statements here, e.g.\ one for each subsection.}{0.7}{1}{0}{3cm}{-1cm}
+\section{Motivation}
+Electronic Health Records (EHRs) contain structured tables and unstructured narratives that chronicle patient encounters across time. Clinicians and analysts routinely need targeted answers that span medications, labs, procedures, microbiology, and administrative details. Traditional keyword search or isolated SQL queries struggle to synthesize evidence across modalities and context. Retrieval-Augmented Generation (RAG) has emerged as a practical approach: it retrieves relevant documents and asks a language model to compose grounded answers with citations. This project delivers a clinical RAG system aligned with MIMIC-IV style data, designed to be modular, reproducible, and usable through both an API and a simple web interface.
 
-\section{Motivation} % why is this a non-trivial problem
-\blindtext
+\section{Aims \& Objectives}
+This project designs and implements a Retrieval-Augmented Generation (RAG) chat system for clinical settings. The aim is to develop and assess a chatbot that integrates a locally hosted Large Language Model (LLM) with external medical records (MIMIC-IV) so that responses are grounded in real patient data, improving factual accuracy and contextual relevance.
 
-\begin{table*}\centering
-\ra{1.3}
-\begin{tabular}{@{}rrrrcrrr@{}}\toprule
-& \multicolumn{3}{c}{$w = 8$} & \phantom{abc}& \multicolumn{3}{c}{$w = 16$} \\
-\cmidrule{2-4} \cmidrule{6-8} 
-& $t=0$ & $t=1$ & $t=2$ && $t=0$ & $t=1$ & $t=2$\\ \midrule
-$dir=1$\\
-$c$ & 0.0790 & 0.1692 & 0.2945 && 0.3670 & 0.7187 & 3.1815\\
-$c$ & -0.8651& 50.0476& 5.9384&& -9.0714& 297.0923& 46.2143\\
-$c$ & 124.2756& -50.9612& -14.2721&& 128.2265& -630.5455& -381.0930\\
-$dir=0$\\
-$c$ & 0.0357& 1.2473& 0.2119&& 0.3593& -0.2755& 2.1764\\
-$c$ & -17.9048& -37.1111& 8.8591&& -30.7381& -9.5952& -3.0000\\
-$c$ & 105.5518& 232.1160& -94.7351&& 100.2497& 141.2778& -259.7326\\
+\noindent Objectives:
+\begin{itemize}
+  \item Develop a RAG architecture that dynamically retrieves relevant clinical documents from the MIMIC-IV dataset during user interactions.
+  \item Enhance factual correctness and minimize hallucinations by augmenting a local LLM with retrieved medical records.
+  \item Implement multi-turn conversation capabilities that maintain context and memory across turns.
+  \item Evaluate performance via a mix of manual review, logical reasoning, and quantitative metrics.
+\end{itemize}
+
+\section{System Overview}
+The system follows four layers that mirror practical deployment needs:
+\begin{enumerate}
+  \item \textbf{Data Creation \& Handling}: Parse clinical tables, normalize fields, segment text into coherent chunks, compute embeddings, and store vectors in FAISS.
+  \item \textbf{RAG Core}: Given a question (and optionally an admission identifier), retrieve top-$k$ passages and generate grounded answers with supporting evidence and maintain conversational state.
+  \item \textbf{Models}: Host compact LLMs locally and switch between multiple embedding backbones and generators via configuration.
+  \item \textbf{Interfaces}: Provide a Flask REST API consumed by a React front-end for interactive exploration.
+\end{enumerate}
+
+\section{Data and Ethical Considerations}
+To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mirrors realistic distributions without reproducing real patients. When used with real EHR-derived datasets, all usage must follow appropriate governance and access controls. The software is intended for research and educational purposes only and is not a clinical decision support tool.
+
+\section{Project Description}
+This system improves the factual accuracy and contextual reliability of answers from a local LLM by retrieving supporting evidence from MIMIC-IV at query time. Unlike traditional chatbots that depend on online APIs, the full stack runs locally to safeguard sensitive data. The pipeline covers data preparation, embedding and indexing, retrieval-augmented answer generation, and practical access via a Flask API and React front-end.
+
+\section{Learning Outcomes}
+By completing this work, the following learning outcomes are achieved:
+\begin{itemize}
+  \item Ability to implement RAG architectures that augment LLM responses with external knowledge.
+  \item Experience integrating EHR-style datasets and knowledge bases with language models.
+  \item Improved understanding of ethical and technical considerations for handling sensitive health data.
+  \item Proficiency in evaluating LLM performance using established and project-specific metrics.
+  \item Practical skills in building FAISS vector stores, hosting compact LLMs locally (Ollama), and exposing capabilities through web APIs and UIs.
+\end{itemize}
+
+\section{Methodology}
+\subsection{Data Extraction and Preparation}
+We use the \texttt{hosp} component of MIMIC-IV covering admissions, diagnoses, laboratory results, and medication administration records. Source CSV files are ingested into a local SQLite database for efficient joins and filtering. A subset of admissions is selected, and relevant patient-level fields are aggregated and formatted into concise, readable summaries to simulate unstructured clinical notes, enabling uniform downstream chunking.
+
+\subsection{Embedding and Vector Store Construction}
+Using LangChain and lightweight offline embedding models (e.g., \texttt{all-MiniLM-L6-v2}, \texttt{e5-base-v2}, \texttt{biomedical} variants), each chunk is vectorized and stored in FAISS. We retain metadata such as \texttt{subject\_id}, \texttt{hadm\_id}, and timestamps to preserve traceability and allow admission-scoped retrieval. Chunking parameters (size, overlap) are tuned to balance recall and precision.
+
+\subsection{LLM Setup with Ollama}
+A local Ollama server hosts compact models (default: Phi3), with alternatives such as Qwen3, Llama, Gemma, DeepSeek-R1 1.5, and TinyLlama available. Running inference locally ensures privacy, predictable latency, and full control over model selection and updates.
+
+\subsection{Retrieval-Augmented Question Answering}
+A custom retriever returns top-$k$ semantically similar chunks for a user query. Retrieved evidence is injected into prompts and passed to the LLM via a RAG chain, producing concise, citation-backed answers. The system supports common clinical questions (e.g., abnormal labs, medications during an admission, summaries of recent encounters) and uses entity extraction to auto-parameterize queries (e.g., detect admission identifiers).
+
+\subsection{Evaluation and Iteration}
+We compare RAG-augmented outputs to a standalone LLM baseline. Quantitative signals include average answer score, pass rate, retrieval latency, and topic-wise breakdowns; qualitative review examines fidelity to evidence and clinical style. Iterative improvements consider richer metadata, chunking strategies, re-prompting, and model choices.
+
+\section{References}
+\begin{itemize}
+  \item Vaswani, A. et al., ``Attention Is All You Need,'' NeurIPS 2017.
+  \item Lewis, P. et al., ``Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks,'' NeurIPS 2020. \url{https://arxiv.org/abs/2005.11401}
+  \item Johnson, A. E. W. et al., ``MIMIC-IV (version 3.1),'' PhysioNet, 2023. \url{https://doi.org/10.13026/6mm1-ek67}
+\end{itemize}
+
+\section{Evaluation Plan}
+We will:
+\begin{itemize}
+  \item Establish a clinical QA set spanning admissions, labs, microbiology, procedures, and prescriptions.
+  \item Track quality metrics (average score, pass rate), latency proxies (search time), and safety indicators (hallucination/disclaimer rates where applicable).
+  \item Conduct targeted manual review to validate correctness, calibration, and citation fidelity.
+\end{itemize}
+
+\section{Activity Schedule}
+\begin{table*}[ht]
+\centering
+\begin{tabularx}{\textwidth}{l X c c c}
+	oprule
+	extbf{Task} & \textbf{Description} & \textbf{Start Date} & \textbf{End Date} & \textbf{Duration} \\
+\midrule
+Project Planning \& TOR Finalisation & Define scope, aims, and methodology. Draft Terms of Reference. & 01 Jun 2025 & 07 Jun 2025 & 7 days \\
+Literature \& Tool Review & Explore RAG, Ollama, vector stores, and evaluation methods. & 08 Jun 2025 & 15 Jun 2025 & 8 days \\
+Dataset Preparation & Explore MIMIC-IV structure; extract and preprocess clinical documents. & 16 Jun 2025 & 23 Jun 2025 & 8 days \\
+RAG Architecture Setup & Configure retrieval pipeline, local LLM, and interface plan. & 24 Jun 2025 & 30 Jun 2025 & 7 days \\
+Backend Development & Implement document store, retriever, and LLM integration (Ollama). & 01 Jul 2025 & 14 Jul 2025 & 14 days \\
+Frontend \& Chat UI & Build multi-turn chat interface with contextual memory. & 15 Jul 2025 & 22 Jul 2025 & 8 days \\
+System Testing \& Debugging & Test retrieval, response quality, and memory management. & 23 Jul 2025 & 30 Jul 2025 & 8 days \\
+Evaluation Phase & Compare RAG vs. LLM-only with metrics and user feedback. & 31 Jul 2025 & 07 Aug 2025 & 8 days \\
+Final Report Writing & Document implementation, evaluation, and improvements. & 08 Aug 2025 & 20 Aug 2025 & 13 days \\
+Review \& Submission & Final checks, proofing, and submission. & 21 Aug 2025 & 25 Aug 2025 & 5 days \\
 \bottomrule
-\end{tabular}
-\caption{A Beautiful and Complex Table}\label{tab:sometable}
+\end{tabularx}
+\caption{Project activity schedule.}
 \end{table*}
 
-A beautiful table is shown in Table~\ref{tab:sometable}, data from \citet{Ebejer2012} (when citing as part of text, otherwise \citep{Ebejer2012}).
-
-\section{Aims and Objectives} 
-\blindtext
-
-\begin{figure}[ht!] % supposedly places it here ...
-  \centering
-  \includegraphics[width=0.6\linewidth]{test_image_goku}
-  \caption[This is the short caption for List of Figures]{A test figure.  This caption is huge, but in the list of figures only the smaller version in the square brackets will appear.\index{Goku il-king}}
-  \label{fig:test1}
-\end{figure}
-
-A test figure is shown in Figure~\ref{fig:test1}.
-
-\section{Proposed Solution} 
-
-\blindtext
-\blindtext
-
-\begin{figure}[!ht]
-    \centering
-    \subbottom[Goku]{\includegraphics[width=0.3\textwidth]{test_image_goku}}\qquad
-    \subbottom[More Goku]{\includegraphics[width=0.3\textwidth]{test_image_goku}}%
-    \caption[Short Caption]{The same super saiyan. Two times.}        
-    \label{fig:test2}
-\end{figure}
-
-Two figures shown side by side are shown in Figure~\ref{fig:test2}.
-
-\subsection{Showing the Use of Acronyms}
-
-In the early nineties, \acs{GSM} was deployed in many European countries. \ac{GSM} offered international roaming for mobile subscribers. The \acs{GSM}’s use of \ac{TDMA} as its communication standard was debated at length. And every now and then there are big discussions whether \ac{CDMA} should have been chosen over \ac{TDMA}.
-
-If you want to know more about \acf{GSM}, \acf{TDMA}, \acf{CDMA} and other acronyms, just read a book about mobile communication. Just to mention it: There is another \ac{UA}, for testing.
-
+\section{Scope and Assumptions}
+We prioritize transparent, locally runnable components and retrieval-centric orchestration over large proprietary models. Dense bi-encoder retrieval with FAISS is used throughout; more advanced re-ranking or specialized clinical generators are out of scope for this iteration. Prompts favor concise, evidence-backed clinical style.
 
 \section{Document Structure}
-
-\blindtext
+The remainder of this document presents related background and prior art, the detailed system design and implementation, empirical evaluation and analyses, a discussion of implications and limitations, and concluding remarks with directions for future work.
