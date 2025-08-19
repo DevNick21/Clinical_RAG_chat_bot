@@ -3,7 +3,7 @@
 \section{Process overview}
 This chapter describes the materials, datasets, software, and methods used to design, build, and evaluate the clinical Retrieval-Augmented Generation (RAG) system. It documents data sources and governance, preprocessing and chunking procedures, embedding and indexing choices, the retrieval and LLM orchestration pipeline, interfaces for access (API, frontend, CLI), and the evaluation protocol.
 
-The main challenge in this work is connecting static hospital records with a system that can have conversations about patient care. Traditional medical information systems use keyword searches or database queries, which cannot capture the complex, context-dependent nature of medical thinking. This project creates a new way to interact with clinical data by building a pipeline that turns raw hospital records into a smart conversational system that can answer medical questions with evidence-based responses.
+The primary challenge in this work is connecting static hospital records with a system that can engage in conversations about patient care. Traditional medical information systems use keyword searches or database queries, which cannot capture the complex, context-dependent nature of medical thinking. This project creates a new way to interact with clinical data by building a pipeline that turns raw hospital records into a smart conversational system that can answer medical questions with evidence-based responses.
 
 
 The approach covers the full process from getting data to deploying the system: we start with structured hospital records and convert them step-by-step into searchable knowledge that understands meaning. This knowledge is then managed by a smart search system that understands medical context, limits searches to the right patient admissions or medical areas, and puts together focused evidence. Finally, a language model running locally combines this evidence into clear, well-cited responses while staying strictly grounded in facts to prevent medical errors.
@@ -20,7 +20,7 @@ This design follows a clear separation of responsibilities: a data creation and 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\linewidth]{chap3_methodology/images/system_archi.png}
-  \caption{System architecture. Image file: \texttt{chap3_methodology/images/system_archi.png} (label: \texttt{fig:system_architecture})}
+  \caption{System Architecture}
   \label{fig:system_architecture}
 \end{figure}
 
@@ -65,7 +65,9 @@ Experiments were executed on Microsoft Windows (user environment), Python 3.11, 
 \section{System Configuration}
 Central configuration is defined in "\texttt{RAG\_chat\_pipeline/config/config.py}".
 
-\noindent Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{S-PubMedBert-MS-MARCO} embeddings and \texttt{deepseek-r1:1.5b} as the LLM. Alternative combinations are supported for evaluation: \texttt{all-MiniLM-L6-v2}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Qwen3, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
+\noindent Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{all-MiniLM-L6-v2} embeddings and \texttt{qwen3:1.7b} as the LLM. 
+
+Alternative combinations are supported for evaluation: \texttt{S-PubMedBert-MS-MARCO}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Deepseek-r1, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
 
 % ========================
 % 3.5 Data Processing and Document Construction
@@ -79,7 +81,7 @@ We prepared data with notebooks in \texttt{data\_handling/}. Sampling was perfor
 \begin{enumerate}
   \item Normalise column names and types (e.g., enforce integer \texttt{hadm\_id}, \texttt{subject\_id})
   \item Map each row to a semantically labeled section: \texttt{header}, \texttt{diagnoses}, \texttt{procedures}, \texttt{labs}, \texttt{microbiology}, \texttt{prescriptions}
-  \item Compose section-scoped textual records embedding key fields (codes, values/units, dates) and attach metadata
+  \item Compose section-scoped textual records embedding key fields (codes, values/units, dates) and attach metadata.
 \end{enumerate}
 
 \subsection{Chunking}
@@ -102,7 +104,7 @@ def chunk_clinical_text(text: str, chunk_size=800, chunk_overlap=120):
     return splitter.split_text(text)
 \end{minted}
 
-\noindent The notebooks emit a list of \texttt{langchain.schema.Document} with \texttt{page\_content} and \texttt{metadata}, saved to \texttt{mimic\_sample\_1000/chunked\_docs.pkl} (or synthetic equivalent). These chunks are the source for vector indexing.
+\noindent The notebooks emit a list of \texttt{langchain.schema.Document} with \texttt{page\_content} and \texttt{metadata}, saved to \texttt{mimic\_sample\_1000/chunked\_docs.pkl}. These chunks are the source for vector indexing.
 
 % ========================
 % 3.6 Embeddings and Vector Stores
@@ -113,20 +115,14 @@ def chunk_clinical_text(text: str, chunk_size=800, chunk_overlap=120):
 The embedding manager (\texttt{RAG\_chat\_pipeline/core/embeddings\_manager.py}) loads a SentenceTransformers model by nickname from config, caching it under \texttt{models/<model-name>/}. If not present locally, it is downloaded and saved. A \texttt{HuggingFaceEmbeddings} wrapper provides the LangChain interface.
 
 \subsection{FAISS Indexing}
-For each embedding configuration, a FAISS vector store is created from the chunked documents and saved under \texttt{vector\_stores/<store-name>/}. On startup, the system attempts to load the existing store; if missing, it builds a new one and persists both the index and the chunked corpus.
-
+For each embedding configuration, a FAISS vector store is created from the chunked documents and saved under \texttt{vector\_stores/<store-name>/}. When the system starts, it first tries to load the existing store. If the store is not there, it creates a new one and saves both the index and the chunked corpus.
+\newpage
 % ========================
 % 3.7 RAG Pipeline and Inference
 % ========================
 \section{RAG Pipeline and Inference}
 
-\subsection{RAG Contract (inputs, outputs, guardrails)}
-  	extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
-  	extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
-  	extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
-  	extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
-
-\subsection{Retrieval steps (high level)}
+\subsection{Custom Retrieval in brief steps}
 1) Parse identifiers/section from the query and recent history (regex).\\
 2) Build a candidate set using in-memory indices if hints exist; otherwise, consider the full corpus.\\
 3) Rank candidates with FAISS vector similarity.\\
@@ -134,8 +130,8 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 5) Compact into a single structured, section-aware context (limit lines per section; prefer ICD patterns, dosages, and numeric labs).\\
 6) Generate with a prompt that enforces grounding and citations.
 
-\noindent Minimal pseudocode (illustrative):
-\begin{minted}[fontsize=\footnotesize, breaklines]{python}
+\noindent Here is a Pseudocode:
+\begin{minted}[fontsize=small, breaklines]{python}
 ids = parse_hints(query, chat_history)  # hadm_id, subject_id, section
 candidates = build_candidates(ids)  # from in-memory indices or full corpus
 ranked = faiss_rank(candidates, query)
@@ -179,7 +175,7 @@ for i, doc in enumerate(self.chunked_docs):
 Top-$k$ (default \(k=5\), bounded for performance) documents are semantically ranked. For efficiency and to improve answer formatting, the system extracts concise, section-aware snippets (diagnoses, procedures, labs, prescriptions, microbiology, header) and composes a single structured context document passed to the LLM. Rules favour lines with section-specific keywords and patterns (e.g., ICD codes, dosages, numeric lab values/units) while limiting per-section lines to keep within context windows.
 
 \subsection{LLM Answering}
-Answers are generated using an Ollama-hosted model (default DeepSeek-R1 1.5B) through LangChain's \texttt{create\_stuff\_documents\_chain}, with a prompt that enforces the guardrails below.
+Answers are generated using an Ollama-hosted model through LangChain's \texttt{create\_stuff\_documents\_chain}, with a prompt that enforces the guardrails below.
 
 \noindent \textbf{Prompt guardrails:}
 \begin{itemize}
