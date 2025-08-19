@@ -66,16 +66,18 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
 \label{tab:top_configs}
 \end{table}
 
-\paragraph{Observations.} The best average scores are achieved by BioBERT + phi3 and multi-qa + phi3/llama. MiniLM pairs (mini-lm + llama/deepseek) are strong with excellent pass rates; however, mini-lm + deepseek exhibits much longer search time, suggesting backend or retrieval interaction overhead. MedQuAD-based embeddings produce competitive average scores but at times with slower end-to-end latency.
+\paragraph{Observations.} The best average scores are achieved by BioBERT + phi3 and multi-qa + phi3/llama. MiniLM pairs (mini-lm + llama/deepseek) are strong with excellent pass rates; however, mini-lm + deepseek exhibits much longer search time, suggesting backend or retrieval interaction overhead. MedQuAD-based embeddings produce competitive average scores, but at times with slower end-to-end latency.
 
 \section{Efficiency and Safety}
-We summarize representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
+We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
 \begin{table}[h]
 \centering
+\caption{Efficiency and safety metrics.}
+\label{tab:efficiency_safety}
 \begin{footnotesize}
 \renewcommand\arraystretch{0.95}
-\begin{tabularx}{0.9\textwidth}{l l P{1.3cm} P{1.4cm} P{1.5cm}}
+\begin{tabularx}{0.9\textwidth}{l l X X X}
   \toprule
   Embedding & LLM & QPM & Avg. score & Hallucination \\
   \midrule
@@ -89,17 +91,15 @@ We summarize representative efficiency and safety outcomes in Table~\ref{tab:eff
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
-\caption{Efficiency and safety metrics.}
-\label{tab:efficiency_safety}
 \end{table}
 
-\paragraph{Trade-offs.} The fastest pipeline (e5-base + deepseek) sacrifices some answer quality relative to the top-scoring setups. Mini-lm + llama offers an appealing balance: perfect pass rate, good average score, high throughput, and low hallucination. The safest configuration by hallucination rate (MedQuAD + deepseek) is slower; this may reflect conservative generation behavior or heavier retrieval.
+\paragraph{Trade-offs.} The fastest pipeline (e5-base + deepseek) sacrifices some answer quality relative to the top-scoring setups. Mini-lm + llama offers an appealing balance: perfect pass rate, good average score, high throughput, and low hallucination. The safest configuration by hallucination rate (MedQuAD + deepseek) is slower; this may reflect conservative generation behaviour or heavier retrieval.
 
 \section{Discussion}
-Overall, average score is a more discriminative primary KPI than pass rate, revealing nuanced differences among competitive pairs. Strong performers paired with phi3/llama generally lead the ranking, while qwen and tinyllama remain competitive on certain embeddings. Category analysis indicates substantial headroom for structured clinical facts (labs, microbiology, prescriptions); targeted retrieval improvements (e.g., table-aware chunking, ontology-linked indices) and instruction-tuned prompts for evidence citation are likely to close this gap. Finally, efficiency/safety analysis underscores practical deployment choices: mini-lm + llama emerges as a well-balanced default; BioBERT + phi3 is optimal for peak accuracy; and e5-base + deepseek can serve latency-sensitive workflows when moderate quality is acceptable.
+Overall, the average score is a more discriminative primary KPI than pass rate, revealing nuanced differences among competitive pairs. Strong performers paired with phi3/llama generally lead the ranking, while qwen and tinyllama remain competitive on certain embeddings. Category analysis indicates substantial headroom for structured clinical facts (labs, microbiology, prescriptions); targeted retrieval improvements (e.g., table-aware chunking, ontology-linked indices) and instruction-tuned prompts for evidence citation are likely to close this gap. Finally, efficiency/safety analysis underscores practical deployment choices: mini-lm + llama emerges as a well-balanced default; BioBERT + phi3 is optimal for peak accuracy; and e5-base + deepseek can serve latency-sensitive workflows when moderate quality is acceptable.
 
 \section*{Artifacts}
-The following artifacts are available in the results folder for reproducibility and further analysis: heatmap PNG and interactive HTML, the consolidated CSVs (results\_dataframe.csv, per\_question\_results.csv), efficiency/safety metrics (run\_efficiency\_and\_safety.csv), and the summary report (summary\_report.md).
+The following artefacts are available in the results folder for reproducibility and further analysis: heatmap PNG and interactive HTML, the consolidated CSVs (results\_dataframe.csv, per\_question\_results.csv), efficiency/safety metrics (run\_efficiency\_and\_safety.csv), and the summary report (summary\_report.md).
 
 % -----------------------------------------
 % Evaluation methodology and metric rationale
@@ -108,19 +108,19 @@ The following artifacts are available in the results folder for reproducibility 
 This section explains each evaluation we report, why it matters for clinical RAG, and how to interpret it.
 
 \subsection{Average Score (primary KPI)}
-The average score is a normalized 0--1 rating aggregated across questions. It reflects overall answer quality by combining rubric criteria such as factual correctness, sufficiency of evidence, and clinical appropriateness. We prioritize this as the primary KPI because it is sensitive to partial improvements that pass/fail metrics may miss and aligns with qualitative judgments of clinical usefulness.
+The average score is a normalised 0--1 rating aggregated across questions. It reflects overall answer quality by combining rubric criteria such as factual correctness, sufficiency of evidence, and clinical appropriateness. We prioritise this as the primary KPI because it is sensitive to partial improvements that pass/fail metrics may miss and aligns with qualitative judgments of clinical usefulness.
 
 \subsection{Pass Rate}
 Pass rate is the proportion of questions meeting a minimum threshold (``acceptable'' grade). It is intuitive and robust, enabling quick comparisons of reliability. However, it is coarse; it does not distinguish between barely passing and very strong answers, so we pair it with the average score.
 
 \subsection{Factual Accuracy and Performance Subscores}
-Where available, we report separate subscores (e.g., factual accuracy, performance/presentation). Factual accuracy captures grounding to retrieved evidence and correctness of clinical facts; performance captures clarity, organization, and adherence to instructions (e.g., concise rationale, citations). Separating these clarifies whether errors arise from retrieval grounding or from generation quality.
+Where available, we report separate subscores (e.g., factual accuracy, performance/presentation). Factual accuracy captures grounding to retrieved evidence and correctness of clinical facts; performance captures clarity, organisation, and adherence to instructions (e.g., concise rationale, citations). Separating these clarifies whether errors arise from retrieval grounding or generation quality.
 
 \subsection{Latency and Throughput}
-Average search time (seconds) measures end-to-end latency per question, dominated by retrieval plus model generation. Throughput (questions per minute, QPM) summarises system capacity under load. Clinical settings often require timely responses; we therefore report both and examine speed/quality trade-offs (e.g., e5-base + deepseek is fastest but with lower average score than top-accuracy pairs).
+Average search time (seconds) measures end-to-end latency per question, dominated by retrieval plus model generation. Throughput (questions per minute, QPM) summarises system capacity under load. Clinical settings often require timely responses; we therefore report both and examine speed/quality trade-offs (e.g., e5-base + deepseek is fastest but with a lower average score than top-accuracy pairs).
 
 \subsection{Retrieval Coverage}
-Average documents found provides a coarse proxy for retrieval depth and coverage. Too few documents may under-support grounding; too many may add noise and increase latency. Configurations that maintain strong scores with modest document counts indicate efficient, focused retrieval.
+The average documents found provide a coarse proxy for retrieval depth and coverage. Too few documents may under-support grounding; too many may add noise and increase latency. Configurations that maintain strong scores with modest document counts indicate efficient, focused retrieval.
 
 \subsection{Safety Indicators}
 Hallucination rate approximates the frequency of unsupported or factually incorrect statements. Lower is safer. Disclaimer rate captures frequency of safety/compliance disclaimers; in clinical RAG, some disclaimers are appropriate, but overuse can reduce usefulness. We interpret these together with quality metrics to identify safe and useful operating points.
