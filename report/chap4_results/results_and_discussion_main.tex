@@ -28,7 +28,7 @@ Best-performing configurations:
 \section{Comparison Heatmap}
 Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap (average score). An interactive version is available as HTML in the results folder.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/heatmap_average_score.png}
   \caption{Model comparison heatmap by average score.}
@@ -41,7 +41,7 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
 \newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering
 \begin{footnotesize}
 \renewcommand\arraystretch{0.95}
@@ -71,7 +71,7 @@ Table~\ref{tab:top_configs} reports the top configurations by average score. We 
 \section{Efficiency and Safety}
 We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
-\begin{table}[h]
+\begin{table}[!htbp]
 \centering
 \caption{Efficiency and safety metrics.}
 \label{tab:efficiency_safety}
@@ -85,9 +85,6 @@ We summarise representative efficiency and safety outcomes in Table~\ref{tab:eff
   mini-lm & qwen & 1.100 & 0.703 & 0.30 \\
   mini-lm & llama & 1.059 & 0.751 & 0.15 \\
   MedQuAD & deepseek & 0.169 & 0.744 & 0.10 \\
-  \bottomrule
-\end{tabularx}
-\label{tab:efficiency_safety}
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
@@ -168,21 +165,21 @@ To aid reproducibility, we include the full set of runs and category-wise averag
 
 
 \section{Additional Figures}
-\begin{figure}[h]
+\begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/time_vs_score.png}
   \caption{Average score vs. average search time across all runs. Lower time and higher score are better.}
   \label{fig:time_vs_score}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/quality_vs_throughput.png}
   \caption{Average score vs. throughput (QPM). Useful to identify speed-quality efficient frontiers.}
   \label{fig:quality_vs_throughput}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/pass_rate_vs_score.png}
   \caption{Pass rate vs. average score by LLM. Highlights pairs that both pass reliably and score highly.}
