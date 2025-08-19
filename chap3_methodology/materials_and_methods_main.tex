@@ -4,7 +4,8 @@
 % 3.1 System Overview
 % ========================
 \section{System Overview}
-This work implements a clinical Retrieval-Augmented Generation (RAG) system that enables natural-language querying of MIMIC-IV hospital records. The system consists of: (i) a data processing layer that produces semantically coherent document chunks, (ii) multiple embedding back-ends stored in FAISS vector stores, (iii) an LLM-backed question answering component orchestrated with LangChain, and (iv) three interfaces: a Flask API, a React frontend, and a CLI. The full source code is located in the project root (see \texttt{RAG\_chat\_pipeline/}, \texttt{api/}, and \texttt{frontend/}).
+This work implements a clinical Retrieval-Augmented Generation (RAG) system that enables natural-language querying of MIMIC-IV hospital records.
+The system consists of: (i) a data processing layer that produces semantically coherent document chunks, (ii) multiple embedding back-ends stored in FAISS vector stores, (iii) an LLM-backed question answering component orchestrated with LangChain, and (iv) three interfaces: a Flask API, a React frontend, and a CLI. The full source code is located in the project root (see \texttt{RAG\_chat\_pipeline/}, \texttt{api/}, and \texttt{frontend/}).
 
 % ========================
 % 3.2 Data Sources and Governance
@@ -46,7 +47,7 @@ Experiments were executed on Microsoft Windows (user environment), Python 3.11, 
 \section{System Configuration}
 Central configuration is defined in "\texttt{RAG\_chat\_pipeline/config/config.py}".
 
-\noindent Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{S-PubMedBert-MS-MARCO} embeddings and \texttt{deepseek-r1:1.5b} as the LLM. Alternative combinations are supported for evaluation (e.g., \texttt{all-MiniLM-L6-v2}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Qwen3, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
+\noindent Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{S-PubMedBert-MS-MARCO} embeddings and \texttt{deepseek-r1:1.5b} as the LLM. Alternative combinations are supported for evaluation: \texttt{all-MiniLM-L6-v2}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Qwen3, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
 
 % ========================
 % 3.5 Data Processing and Document Construction
@@ -214,7 +215,7 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 \section{Evaluation Protocol}
 We provide only a brief overview here; detailed metrics and comparisons are in Results. The evaluator generates category-specific gold questions and computes pass/fail and summary statistics per model combination. We validate against structured signals (ICD patterns, dosages, units) and measure retrieval latency; full scoring details are in Results.
 
-\subsection{3.10.1 | Gold Questions and Categories}
+\subsection{Gold Questions and Categories}
 Gold questions are synthesised from available records (diagnoses, procedures, labs, etc.) with associated \texttt{hadm\_id}s when applicable. Full evaluation outcomes are reported in Results.
 
 % ========================
