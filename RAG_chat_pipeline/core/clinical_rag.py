@@ -182,7 +182,7 @@ Chat: "What medications were prescribed for admission 25282710?"
 Follow-up: "What are the diagnoses?"
 Output: "What diagnoses are recorded for admission 25282710?"
 
-Chat: "Show labs for patient 12345"  
+Chat: "Show labs for patient 12345"
 Follow-up: "Any abnormal values?"
 Output: "What abnormal lab values are there for patient 12345?"
 
