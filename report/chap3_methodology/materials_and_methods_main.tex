@@ -11,6 +11,8 @@ The approach covers the full process from getting data to deploying the system: 
 
 This complete approach allows natural language conversations with complex medical data while keeping the accuracy, transparency, and safety needed for healthcare uses. The detailed sections that follow explain each part of this pipeline, from the first data processing choices to the final testing methods used to check how well the system works.
 
+% Removed FloatBarrier to avoid forcing a layout break before the figure
+
 
 
 % ========================
@@ -19,12 +21,11 @@ This complete approach allows natural language conversations with complex medica
 \section{System Overview}
 
 This design follows a clear separation of responsibilities: a data creation and processing layer that normalises and chunks raw EHR tables into searchable documents; an embedding and vector store layer that encodes and indexes those chunks for semantic retrieval; a lightweight coordination layer that constrains retrieval by admission/section and prepares compact evidence contexts; and a model/serving layer that hosts small, locally runnable LLMs and exposes user-facing APIs and a web UI. This structure prioritises traceability, privacy, and reproducibility while keeping runtime costs and latency manageable for local experiments.
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.95\linewidth]{chap3_methodology/images/system_archi.png}
-  \caption{System architecture}
+\begin{center}
+  \includegraphics[width=0.90\linewidth]{chap3_methodology/images/system_archi.png}
+  \captionof{figure}{System architecture}
   \label{fig:system_architecture}
-\end{figure}
+\end{center}
 
 % ========================
 % 3.2 Data Sources and Governance
@@ -122,10 +123,10 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 \section{RAG Pipeline and Inference}
 
 \subsection{RAG Contract (inputs, outputs, guardrails)}
-	extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
-	extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
-	extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
-	extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
+    extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
+    extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
+    extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
+    extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
 
 \subsection{Retrieval steps (high level)}
 1) Parse identifiers/section from the query and recent history (regex).\\
@@ -257,7 +258,7 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 % 3.9 Challenges and Mitigations
 % ========================
 \section{Challenges and Mitigations}
-	extbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could produce made-up details. Mitigations:
+    extbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could produce made-up details. Mitigations:
 \begin{itemize}
   \item Admission-/section-scoped retrieval via in-memory indices
   \item Deterministic entity extraction (regex) to avoid LLM-based unexpected settings changes
