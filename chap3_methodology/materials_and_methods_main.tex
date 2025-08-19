@@ -1,9 +1,8 @@
 \chapter{Materials \& Methods}
 
-\section{Chapter Overview}
+\section{Process overview}
 This chapter describes the materials, datasets, software, and methods used to design, build, and evaluate the clinical Retrieval-Augmented Generation (RAG) system. It documents data sources and governance, preprocessing and chunking procedures, embedding and indexing choices, the retrieval and LLM orchestration pipeline, interfaces for access (API, frontend, CLI), and the evaluation protocol.
 
-\subsection{Process overview}
 The main challenge in this work is connecting static hospital records with a system that can have conversations about patient care. Traditional medical information systems use keyword searches or database queries, which cannot capture the complex, context-dependent nature of medical thinking. This project creates a new way to interact with clinical data by building a pipeline that turns raw hospital records into a smart conversational system that can answer medical questions with evidence-based responses.
 
 
@@ -11,24 +10,17 @@ The approach covers the full process from getting data to deploying the system: 
 
 This complete approach allows natural language conversations with complex medical data while keeping the accuracy, transparency, and safety needed for healthcare uses. The detailed sections that follow explain each part of this pipeline, from the first data processing choices to the final testing methods used to check how well the system works.
 
-% Removed FloatBarrier to avoid forcing a layout break before the figure
-
-
-
 % ========================
 % 3.1 System Overview
 % ========================
+\newpage
 \section{System Overview}
 
 This design follows a clear separation of responsibilities: a data creation and processing layer that normalises and chunks raw EHR tables into searchable documents; an embedding and vector store layer that encodes and indexes those chunks for semantic retrieval; a lightweight coordination layer that constrains retrieval by admission/section and prepares compact evidence contexts; and a model/serving layer that hosts small, locally runnable LLMs and exposes user-facing APIs and a web UI. This structure prioritises traceability, privacy, and reproducibility while keeping runtime costs and latency manageable for local experiments.
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\linewidth]{chap3_methodology/images/system_archi.png}
-<<<<<<< HEAD
-  \caption{System architecture. Image file: \texttt{chap3_methodology/images/system_archi.png} (label: \texttt{fig:system_architecture})}
-=======
   \caption{System architecture}
->>>>>>> 3fc1d716e5d0a4e382e6763c197397e68de6ba0e
   \label{fig:system_architecture}
 \end{figure}
 
