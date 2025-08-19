@@ -24,9 +24,9 @@ This design follows a clear separation of responsibilities: a data creation and 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\linewidth]{chap3_methodology/images/system_archi.png}
-  \caption{System architecture. Image file: \texttt{chap3_methodology/images/system_archi.png}}
+  \caption{System architecture. Image file: \texttt{chap3_methodology/images/system_archi.png} (label: \texttt{fig:system_architecture})}
   \label{fig:system_architecture}
-\end{center}
+\end{figure}
 
 
 % ========================
@@ -51,7 +51,7 @@ Use of MIMIC-IV requires credentialed access and adherence to PhysioNet data use
 \section{Software, OS, and Runtime Environment}
 Experiments were executed on Microsoft Windows (user environment), Python 3.11, and React.js for the frontend.
 
-\vspace{0.5em}
+\smallskip
 \noindent\textbf{Representative versions:}
 \begin{itemize}
   \item Python: 3.11
@@ -89,7 +89,7 @@ We prepared data with notebooks in \texttt{data\_handling/}. Sampling was perfor
 \subsection{Chunking}
 Documents are segmented into meaningful chunks optimised for clinical QA. We apply section-aware chunking before size-based splitting so that each chunk stays on the same topic (e.g., lab results grouped, diagnoses grouped). Chunk sizes of 600--900 characters with 80--150 character overlap worked well in practice for our lightweight local LLMs (balancing recall and context-window constraints). Metadata (\texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}) is preserved on every chunk to enable admission- and section-scoped retrieval.
 
-\vspace{0.5em}
+\smallskip
 \noindent An illustrative chunking routine:
 \begin{minted}[fontsize=\footnotesize, breaklines]{python}
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -125,10 +125,10 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 \section{RAG Pipeline and Inference}
 
 \subsection{RAG Contract (inputs, outputs, guardrails)}
-    extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
-    extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
-    extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
-    extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
+  	extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
+  	extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
+  	extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
+  	extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
 
 \subsection{Retrieval steps (high level)}
 1) Parse identifiers/section from the query and recent history (regex).\\
@@ -152,7 +152,7 @@ return answer
 \subsection{Retriever}
 Given a query, the pipeline first attempts metadata-constrained retrieval when a \texttt{hadm\_id}, \texttt{subject\_id}, or \texttt{section} is available. Efficient in-memory indices (built at bot initialisation) map identifiers and sections to candidate document IDs, reducing the search space before semantic ranking. Otherwise, a global FAISS similarity search is performed.
 
-\vspace{0.5em}
+\smallskip
 \noindent At initialisation, the bot builds light-weight Python indices for fast filtering:
 \begin{minted}[fontsize=\footnotesize, breaklines]{python}
 from collections import defaultdict
@@ -260,7 +260,7 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 % 3.9 Challenges and Mitigations
 % ========================
 \section{Challenges and Mitigations}
-    extbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could produce made-up details. Mitigations:
+  	extbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could produce made-up details. Mitigations:
 \begin{itemize}
   \item Admission-/section-scoped retrieval via in-memory indices
   \item Deterministic entity extraction (regex) to avoid LLM-based unexpected settings changes
