@@ -1,11 +1,33 @@
 \chapter{Materials \& Methods}
 
+\section{Chapter Overview}
+This chapter describes the materials, datasets, software, and methods used to design, build, and evaluate the clinical Retrieval-Augmented Generation (RAG) system. It documents data sources and governance, preprocessing and chunking procedures, embedding and indexing choices, the retrieval and LLM orchestration pipeline, interfaces for access (API, frontend, CLI), and the evaluation protocol.
+
+\subsection{Process overview}
+The main challenge in this work is connecting static hospital records with a system that can have conversations about patient care. Traditional medical information systems use keyword searches or database queries, which cannot capture the complex, context-dependent nature of medical thinking. This project creates a new way to interact with clinical data by building a pipeline that turns raw hospital records into a smart conversational system that can answer medical questions with evidence-based responses.
+
+The approach covers the full process from getting data to deploying the system: we start with structured hospital records and convert them step-by-step into searchable knowledge that understands meaning. This knowledge is then managed by a smart search system that understands medical context, limits searches to the right patient admissions or medical areas, and puts together focused evidence. Finally, a language model running locally combines this evidence into clear, well-cited responses while staying strictly grounded in facts to prevent medical errors.
+
+This complete approach allows natural language conversations with complex medical data while keeping the accuracy, transparency, and safety needed for healthcare uses. The detailed sections that follow explain each part of this pipeline, from the first data processing choices to the final testing methods used to check how well the system works.
+
+
+
 % ========================
 % 3.1 System Overview
 % ========================
 \section{System Overview}
 This work implements a clinical Retrieval-Augmented Generation (RAG) system that enables natural-language querying of MIMIC-IV hospital records.
-The system consists of: (i) a data processing layer that produces semantically coherent document chunks, (ii) multiple embedding back-ends stored in FAISS vector stores, (iii) an LLM-backed question answering component orchestrated with LangChain, and (iv) three interfaces: a Flask API, a React frontend, and a CLI. The full source code is located in the project root (see \texttt{RAG\_chat\_pipeline/}, \texttt{api/}, and \texttt{frontend/}).
+
+This design follows a clear separation of responsibilities: a data creation and processing layer that normalises and chunks raw EHR tables into searchable documents; an embedding and vector store layer that encodes and indexes those chunks for semantic retrieval; a lightweight coordination layer that constrains retrieval by admission/section and prepares compact evidence contexts; and a model/serving layer that hosts small, locally runnable LLMs and exposes user-facing APIs and a web UI. This structure prioritises traceability, privacy, and reproducibility while keeping runtime costs and latency manageable for local experiments.
+
+
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{chap3_methodology/images/system_archi.png}
+  \caption{System architecture}
+  \label{fig:system_architecture}
+\end{figure}
 
 % ========================
 % 3.2 Data Sources and Governance
@@ -65,7 +87,7 @@ We prepared data with notebooks in \texttt{data\_handling/}. Sampling was perfor
 \end{enumerate}
 
 \subsection{Chunking}
-Documents are segmented into semantically coherent chunks optimised for clinical QA. We apply section-aware chunking before size-based splitting so that each chunk remains topically consistent (e.g., lab results grouped, diagnoses grouped). Chunk sizes of 600--900 characters with 80--150 character overlap worked well in practice for our lightweight local LLMs (balancing recall and context-window constraints). Metadata (\texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}) is preserved on every chunk to enable admission- and section-scoped retrieval.
+Documents are segmented into meaningful chunks optimised for clinical QA. We apply section-aware chunking before size-based splitting so that each chunk stays on the same topic (e.g., lab results grouped, diagnoses grouped). Chunk sizes of 600--900 characters with 80--150 character overlap worked well in practice for our lightweight local LLMs (balancing recall and context-window constraints). Metadata (\texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}) is preserved on every chunk to enable admission- and section-scoped retrieval.
 
 \vspace{0.5em}
 \noindent An illustrative chunking routine:
@@ -84,7 +106,7 @@ def chunk_clinical_text(text: str, chunk_size=800, chunk_overlap=120):
     return splitter.split_text(text)
 \end{minted}
 
-\noindent The notebooks emit a list of \texttt{langchain.schema.Document} with \texttt{page\_content} and \texttt{metadata}, serialized to \texttt{mimic\_sample\_1000/chunked\_docs.pkl} (or synthetic equivalent). These chunks are the source for vector indexing.
+\noindent The notebooks emit a list of \texttt{langchain.schema.Document} with \texttt{page\_content} and \texttt{metadata}, saved to \texttt{mimic\_sample\_1000/chunked\_docs.pkl} (or synthetic equivalent). These chunks are the source for vector indexing.
 
 % ========================
 % 3.6 Embeddings and Vector Stores
@@ -101,6 +123,31 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 % 3.7 RAG Pipeline and Inference
 % ========================
 \section{RAG Pipeline and Inference}
+
+\subsection{RAG Contract (inputs, outputs, guardrails)}
+	extbf{Inputs:} user query; optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}; optional \texttt{chat\_history} (last N messages).\\
+	extbf{Outputs:} answer text with inline citations; list of cited document IDs/sections; small diagnostics (retrieval mode, \(k\) used).\\
+	extbf{Invariants:} ground answers strictly in retrieved content; if evidence is missing, state ``Not found in records''; always append a standard disclaimer.\\
+	extbf{Constraints:} \(k \le 5\); per-section line caps in the structured context; bounded context window and per-call timeout.
+
+\subsection{Retrieval steps (high level)}
+1) Parse identifiers/section from the query and recent history (regex).\\
+2) Build a candidate set using in-memory indices if hints exist; otherwise, consider the full corpus.\\
+3) Rank candidates with FAISS vector similarity.\\
+4) Keep top-\(k\) (default \(k=5\)).\\
+5) Compact into a single structured, section-aware context (limit lines per section; prefer ICD patterns, dosages, and numeric labs).\\
+6) Generate with a prompt that enforces grounding and citations.
+
+\noindent Minimal pseudocode (illustrative):
+\begin{minted}[fontsize=\footnotesize, breaklines]{python}
+ids = parse_hints(query, chat_history)  # hadm_id, subject_id, section
+candidates = build_candidates(ids)  # from in-memory indices or full corpus
+ranked = faiss_rank(candidates, query)
+topk = ranked[: min(k, 5)]
+context = make_structured_context(topk)  # section-aware, line-capped
+answer = llm_answer(query, context, prompt=CLINICAL_PROMPT)
+return answer
+\end{minted}
 
 \subsection{Retriever}
 Given a query, the pipeline first attempts metadata-constrained retrieval when a \texttt{hadm\_id}, \texttt{subject\_id}, or \texttt{section} is available. Efficient in-memory indices (built at bot initialisation) map identifiers and sections to candidate document IDs, reducing the search space before semantic ranking. Otherwise, a global FAISS similarity search is performed.
@@ -130,13 +177,21 @@ for i, doc in enumerate(self.chunked_docs):
         self.section_index[sec].append(i)
 \end{minted}
 
-\noindent When a \texttt{hadm\_id} or \texttt{section} is present, only the corresponding candidate set is ranked semantically; this materially reduces hallucination risk by strictly constraining evidence.
+\noindent When a \texttt{hadm\_id} or \texttt{section} is present, only the corresponding candidate set is ranked semantically.
 
 \subsection{Context Construction}
 Top-$k$ (default \(k=5\), bounded for performance) documents are semantically ranked. For efficiency and to improve answer formatting, the system extracts concise, section-aware snippets (diagnoses, procedures, labs, prescriptions, microbiology, header) and composes a single structured context document passed to the LLM. Rules favour lines with section-specific keywords and patterns (e.g., ICD codes, dosages, numeric lab values/units) while limiting per-section lines to keep within context windows.
 
 \subsection{LLM Answering}
-Answers are generated using an Ollama-hosted model (default DeepSeek-R1 1.5B) through LangChain's \texttt{create\_stuff\_documents\_chain}. The prompt enforces: (i) factual grounding exclusively in retrieved context, (ii) inclusion of clinical specifics (codes, values, units, dates), and (iii) explicit source attribution. A standardised disclaimer is appended to all outputs.
+Answers are generated using an Ollama-hosted model (default DeepSeek-R1 1.5B) through LangChain's \texttt{create\_stuff\_documents\_chain}, with a prompt that enforces the guardrails below.
+
+\noindent \textbf{Prompt guardrails:}
+\begin{itemize}
+  \item Cite sources inline and include codes/values/units/dates when present
+  \item If evidence is missing, say so; do not guess
+  \item Respect admission/section scope when provided
+  \item Always append the standard disclaimer
+\end{itemize}
 
 \subsection{Entity Extraction and Conversational Context}
 A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}; see \texttt{MAX\_CHAT\_HISTORY} in config) to control context length.
@@ -161,7 +216,7 @@ chat_engine = index.as_chat_engine(
 response = chat_engine.chat("There is package mentioned for spaghetti code")
 \end{minted}
 
-We attempted a two-step pipeline (LLM judges chunk relevance, then answers), but lightweight local models had small context windows and were brittle as rankers. The reliable fix was a \textbf{custom retriever}: extract \texttt{hadm\_id}/\texttt{subject\_id}/\texttt{section} via regex/patterns, filter candidates with in-memory indices, semantically reduce content, then pass only the top snippets to the LLM. The core search is:
+We attempted a two-step pipeline (LLM judges chunk relevance, then answers), but lightweight local models had small context windows and were unreliable as rankers. The reliable fix was a \textbf{custom retriever}: extract \texttt{hadm\_id}/\texttt{subject\_id}/\texttt{section} via regex/patterns, filter candidates with in-memory indices, reduce content by meaning, then pass only the top snippets to the LLM. The core search is:
 \begin{minted}[fontsize=\footnotesize, breaklines]{python}
 candidate = self._filter_candidate_documents(hadm_id, subject_id, section, limit=20)
 if candidate is None:
@@ -174,7 +229,7 @@ chain = create_stuff_documents_chain(self.llm, prompt)
 answer = safe_llm_invoke(chain, {"input": question, "context": [Document(page_content=structured)]})
 \end{minted}
 
-\noindent This design substantially reduces hallucinations by constraining retrieval to the correct admission/section before any LLM generation.
+% Consolidated hallucination mitigation earlier; avoid repetition here.
 
 % ========================
 % 3.8 Interfaces
@@ -189,6 +244,12 @@ A Flask service in \texttt{api/app.py} exposes endpoints:
   \item Static serving: production build of the React app
 \end{itemize}
 
+\noindent \textbf{Chat endpoint contract (summary):}
+\begin{itemize}
+  \item Request: \{\texttt{query: str}, optional \texttt{hadm\_id}, \texttt{subject\_id}, \texttt{section}, optional \texttt{history: [\{role, content\}] }\}
+  \item Response: \{\texttt{answer: str}, \texttt{citations: [\{doc\_id, section\}]}, \texttt{diagnostics: \{mode, k\}}\}
+\end{itemize}
+
 \subsection{Frontend}
 A React UI (\texttt{frontend/}) provides a chat interface, model introspection, and sample query suggestions sourced from the data provider.
 
@@ -199,15 +260,23 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 % 3.9 Challenges and Mitigations
 % ========================
 \section{Challenges and Mitigations}
-\textbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could elicit fabricated specifics. Mitigations:
+	extbf{Risk: medical hallucinations and sensitive data.} Early versions retrieved globally and over-supplied context, which could produce made-up details. Mitigations:
 \begin{itemize}
   \item Admission-/section-scoped retrieval via in-memory indices
-  \item Deterministic entity extraction (regex) to avoid LLM-based parameter drift
+  \item Deterministic entity extraction (regex) to avoid LLM-based unexpected settings changes
   \item Structured snippet extraction with section rules
   \item Post-processing to enforce disclaimers and fix citations
 \end{itemize}
 
 \noindent Replacing the two-step LLM-as-ranker approach with the custom retriever + semantic re-ranking significantly improved factual grounding on lightweight local models.
+
+\noindent \textbf{Failure modes and fallbacks:}
+\begin{itemize}
+  \item Missing hints (no IDs/section) \textrightarrow{} use global search
+  \item Empty candidate set \textrightarrow{} fall back to global k-NN
+  \item FAISS store missing at startup \textrightarrow{} rebuild once, then cache
+  \item Timeout or partial retrieval \textrightarrow{} return a safe message without guessing
+\end{itemize}
 
 % ========================
 % 3.10 Evaluation Protocol
@@ -216,13 +285,13 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 We provide only a brief overview here; detailed metrics and comparisons are in Results. The evaluator generates category-specific gold questions and computes pass/fail and summary statistics per model combination. We validate against structured signals (ICD patterns, dosages, units) and measure retrieval latency; full scoring details are in Results.
 
 \subsection{Gold Questions and Categories}
-Gold questions are synthesised from available records (diagnoses, procedures, labs, etc.) with associated \texttt{hadm\_id}s when applicable. Full evaluation outcomes are reported in Results.
+Gold questions are created from available records (diagnoses, procedures, labs, etc.) with associated \texttt{hadm\_id}s when applicable. Full evaluation outcomes are reported in Results.
 
 % ========================
 % 3.11 Modularity and Extensibility
 % ========================
 \section{Modularity and Extensibility}
-The system is modular: configuration (\texttt{config/}), core RAG components (\texttt{core/}), helpers, utilities, API, and frontend are decoupled. Models are selectable at runtime (\texttt{set\_models()}), and vector stores are tied to embeddings, enabling ablations.
+The system is modular: configuration (\texttt{config/}), core RAG components (\texttt{core/}), helpers, utilities, API, and frontend are decoupled. Models are selectable at runtime (\texttt{set\_models()}), and vector stores are tied to embeddings, enabling comparison tests.
 
 % ========================
 % 3.12 Reproducibility
@@ -257,6 +326,8 @@ The system is modular: configuration (\texttt{config/}), core RAG components (\t
 \section{Quality Assurance and Performance}
 The chatbot uses in-memory indices for fast filtering and embedding caching. Retrieval sets are capped for latency control. Post-processing normalises outputs.
 
+\noindent \textbf{Deterministic behaviour and caching:} model versions are pinned; random seeds set where applicable; embeddings cached on disk; \(k\) and per-section limits fixed; chat history bounded.
+
 % ========================
 % 3.14 Limitations
 % ========================
@@ -267,4 +338,4 @@ We evaluate on limited MIMIC/synthetic data. Local LLMs (1-4B params) balance pr
 % 3.15 Summary
 % ========================
 \section{Summary}
-The methodology provides an end-to-end, reproducible pipeline from MIMIC-compatible data to a clinical RAG system. All components are parameterised to support ablation studies.
+The methodology provides an end-to-end, reproducible pipeline from MIMIC-compatible data to a clinical RAG system. All components are parameterised to support comparison tests.
