@@ -53,14 +53,34 @@ Healthcare RAG systems face risks: hallucinations, privacy breaches, bias, and l
 
 \subsection{Future Directions}
 
-Future work includes:
-\begin{itemize}
-  \item Improved retrieval mechanisms and embeddings.
-  \item Domain-specific LLMs fine-tuned for clinical tasks.
-  \item Multimodal integration (EHR text + imaging + signals).
-  \item Real-world deployment and workflow testing.
-  \item Language diversity beyond English.
-  \item Robust handling of irrelevant or low-quality sources.
-\end{itemize}
+\subsection{Beyond RAG: Future Directions for Clinical LLMs}
+
+Looking past classical RAG, several trajectories are especially promising for clinical deployment:
+
+\paragraph{Domain-specific foundation models.}
+Open and proprietary medical LLMs fine-tuned on biomedical corpora show consistent gains over general models on exam-style and clinician-judged tasks, suggesting a path to safer, more aligned clinical assistants. Examples include Med-PaLM~2, which achieved expert-level responses on multiple medical benchmarks and was preferred by clinicians on most axes (\citep{singhal2024medpalm2}); MEDITRON-70B, which adapts LLaMA-2 via large-scale medical pretraining (\citep{chen2023meditron}); and GatorTron, trained on $>$82B tokens of de-identified clinical text to advance core clinical NLP tasks (\citep{yang2022gatortron}).
+
+\paragraph{Diagnostic dialogue and longitudinal reasoning.}
+Beyond single-turn QA, systems optimised for history-taking and iterative differential diagnosis (DDx) indicate that LLMs can support the diagnostic process itself. Google’s AMIE reports clinician-preferred diagnostic dialogues and improved DDx support in controlled studies (\citep{amie2025nature,amie2024blog}). Embedding such models into triage, clerking and MDT workflows is a natural next step.
+
+\paragraph{Multimodal clinical models (text + imaging + signals).}
+Vision–language models specialised for medicine (e.g., LLaVA-Med and Med-Flamingo) demonstrate open-ended reasoning over biomedical figures and radiology, with clinician-rated gains on medical VQA and progress on report generation (\citep{llavamed2023,moor2023medflamingo,nature2024flamingocxr}). Extending RAG to \emph{multimodal RAG}—retrieving not just passages but linked images and structured findings—can better ground answers in PACS and reporting systems.
+
+\paragraph{Graph-augmented and structure-aware retrieval.}
+New pipelines like GraphRAG construct and query knowledge graphs over private corpora, improving recall and reasoning on narrative clinical data (\citep{larson2024graphrag,graphrag2024arxiv}). In healthcare, combining ontology-backed graphs (e.g., UMLS) with free-text retrieval may mitigate retrieval blind spots and support multi-hop guideline reasoning.
+
+\paragraph{Agentic workflows and tool use.}
+Multi-agent pipelines that plan, retrieve, verify and cite—rather than single-pass prompting—show accuracy gains in open-domain tasks and are well-suited to safety-critical settings (e.g., agent plans for guideline lookup, DDx cross-checks, and citation verification) (\citep{sun2025agenticrag}). Clinically, agents can orchestrate EHR queries (SQL, FHIR), calculator tools (risk scores) and literature checks before drafting notes.
+
+\paragraph{Tight EHR integration and structured data grounding.}
+Future systems should natively query structured sources (e.g., MIMIC-IV–like schemas, FHIR servers) to ground generation in vitals, labs and medications, reducing hallucinations and enabling patient-specific recommendations (\citep{yang2022gatortron}). Coupling retrieval over notes with programmatic reads of structured fields is a practical near-term target.
+
+\paragraph{Privacy-preserving and efficient adaptation.}
+Given PHI constraints, parameter-efficient finetuning (e.g., LoRA/PEFT), federated or on-prem training, and auditable data pipelines are essential. On-device and edge inference using distilled or quantised medical LLMs could enable bedside use where network or data-sharing is constrained (\citep{chen2023meditron}).
+
+\paragraph{Provenance, auditing and safety guardrails.}
+Beyond point-in-time citations, future systems should expose evidence provenance graphs, uncertainty estimates and contradiction checks against guidelines, with human-in-the-loop review. Emerging evaluations highlight that even strong medical LLMs have failure modes and access limitations that necessitate robust oversight (\citep{nature2024evallimits}).
+
+Overall, advances in domain-specialised models, multimodal grounding, graph-aware retrieval, agentic verification and EHR-native tool use provide a concrete roadmap for clinical AI systems that go beyond classical RAG while retaining traceability and clinician control.
 
 In conclusion, RAG augments LLMs to deliver more accurate, grounded, and clinically useful outputs. While challenges remain, particularly around ethics, privacy, and dataset bias, RAG represents a crucial pathway towards trustworthy AI in healthcare.
