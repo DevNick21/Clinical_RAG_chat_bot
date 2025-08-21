@@ -1,37 +1,66 @@
 \chapter{Background \& Literature Overview}
-\textbf{In this section you need to explain all the theory required to understand your dissertation (i.e.\ the following chapters)}
-\section{Some Technique One}
-\index{Some Technique One|(}
-\blindtext
-\subsection{Some Sub-technique One}
-\blindtext
-\index{Some Technique One!Some Sub-technique One}
-\blindtext
-\subsubsection{Some Sub-sub-technique One}
-\blindtext
-\index{Some Technique One!Some Sub-sub-technique One}
-\blindtext
-\index{Some Technique One|)}
+\section{Literature Review}
 
-\section[Some Technique Two]{Some Technique Two with Super Long Title Which Will Overrun In Header}
-\index{Some Technique Two|(}
-\blindtext[5]
+Retrieval-Augmented Generation (RAG) systems are emerging as a pivotal advancement in the field of Artificial Intelligence (AI), particularly within the clinical domain. These systems integrate Large Language Models (LLMs) with external knowledge sources to produce more accurate, contextually relevant, and reliable responses, addressing critical limitations inherent in standalone LLMs. The high-stakes nature of healthcare necessitates precise, up-to-date, and verifiable information, making RAG a particularly valuable tool for improving diagnostic accuracy, clinical decision support, and patient care.
 
-Imagine some colourful description on Some Technique Three\index{Some Technique Three}.
+This literature review comprehensively explores the application of RAG within clinical settings, building upon existing foundational work and considering various RAG methodologies, datasets, and ethical implications.
 
-\index{Some Technique Two|)}
+\subsection{Evolution of Language Models Leading to RAG}
 
-\section{Evaluation Criteria}
-This section should contain information on the metrics and background used to evaluate your work.
-\section{Related Work}
-\textbf{In this section you need to explain (and reference) similar work in literature}.  Make sure to:
+The journey towards sophisticated language understanding systems has seen significant transformations. Initially, \textbf{Statistical Language Models (SLMs)} such as n-gram models, which emerged in the 1990s, used probabilistic statistics to model word sequences. These were succeeded by \textbf{Neural Language Models (NLMs)}, which employed neural networks to capture complex linguistic patterns.
 
+Further progress led to \textbf{Recurrent Neural Networks (RNNs)} and, in particular, \textbf{Long Short-Term Memory (LSTM)} and \textbf{Gated Recurrent Neural Networks}, which were established as state-of-the-art for sequence modelling and transduction tasks. However, these architectures faced challenges in handling long-range contextual dependencies.
+
+A significant breakthrough arrived with the introduction of the \textbf{Transformer architecture} in 2017, as detailed in ``Attention Is All You Need'' (\citep{vaswani2017attention}). This architecture fundamentally changed language modelling by replacing recurrence with \textit{self-attention mechanisms}, enabling highly parallel training and more efficient modelling of long-range dependencies.
+
+The Transformer then became the backbone for \textbf{Pre-trained Language Models (PLMs)} such as BERT (\citep{devlin2019bert}) and OpenAI GPT (\citep{radford2019language}). PLMs use large-scale pre-training followed by task-specific fine-tuning.
+
+\textbf{Large Language Models (LLMs)} extend PLMs by incorporating massive datasets, computation, and refined architectures. Models such as GPT-3 (\citep{brown2020language}), GPT-4, PaLM (\citep{chowdhery2022palm}) and LLaMA (\citep{touvron2023llama}) demonstrate zero-shot and few-shot reasoning. Their growth has been propelled by data diversity, specialised GPUs/TPUs, and algorithmic advances. Despite their fluency, LLMs suffer limitations: hallucinations, outdated knowledge, expensive retraining, and lack of transparency (\citep{ji2023survey}). These shortcomings are especially concerning in medicine, motivating the emergence of RAG.
+
+\subsection{Emergence and Mechanics of Retrieval-Augmented Generation (RAG)}
+
+RAG addresses LLM limitations by combining strong generative capabilities with \textbf{external memory retrieval}. Early work such as REALM integrated retrieval into pre-training (\citep{guu2020realm}). Lewis et al. (\citeyear{lewis2020rag}) introduced RAG, pairing a neural retriever with a seq2seq generator: top-k passages are retrieved and used to ground output. Variants such as Fusion-in-Decoder (\citep{izacard2021leveraging}) and RETRO (\citep{borgeaud2022retro}) expanded retrieval to larger corpora. Frameworks like LangChain (\citep{langchain2023}) and LlamaIndex (\citep{llamaindex2023}) operationalised RAG pipelines.
+
+The typical RAG pipeline has three steps:
 \begin{itemize}
- \item Give a systematic overview of papers with related/similar work
- \item Highlight similarities/differences to your work (perhaps in the form of a table)
+  \item \textbf{Indexing:} Documents segmented into chunks, embedded with encoders, and stored in vector databases (e.g., FAISS).
+  \item \textbf{Retrieval:} Queries embedded, top-k chunks retrieved via similarity search.
+  \item \textbf{Generation:} Query and retrieved chunks passed to the LLM for grounded response.
 \end{itemize}
 
-Note that this section may be sectioned based on the different aspects of your dissertation.  Some referenced text, as an example \citep{Arrighi2003, WithersMartinez2012, Ebejer2016}.
+This allows factuality without retraining, making RAG especially attractive in healthcare.
 
-\section{Summary}
-\blindtext
+\subsection{RAG Architectures and Methodologies in Healthcare}
+
+\subsubsection{Naive RAG}
+Naive RAG directly applies indexing, retrieval, and generation. Studies show RAG-enhanced GPT-4 can reach 99\% accuracy on hepatology guidelines compared to 43\% for GPT-4-Turbo alone (\citep{li2024liversa}). Systems such as ChatENT in otolaryngology (\citep{zhang2024chatent}) and Almanac in clinical QA (\citep{singhal2023almanac}) demonstrate fewer hallucinations. In EHR phenotyping, RAG-LLMs outperform rule-based methods (\citep{wu2024ragphenotype}).
+
+\subsubsection{Advanced RAG}
+Advanced RAG adds pre- and post-retrieval refinements: metadata filters, hybrid retrievers, re-ranking. Knowledge graphs are integrated for richer reasoning. MedRAG, for example, combines a diagnostic KG with RAG to improve disease-specific QA and proactive questioning (\citep{zhao2025medrag}). Systems like RECTIFIER use RAG for trial eligibility screening, outperforming human staff in accuracy (\citep{wang2024rectifier}).
+
+\subsubsection{Modular RAG}
+Modular RAG employs multi-component systems: hybrid retrievers, multiple LLM agents, and prompt-engineered retrieval. Prompt-RAG (\citep{kim2024promptrag}) uses natural-language prompts instead of embeddings, while multi-agent approaches improve GPT-4 accuracy to 95\% (\citep{sun2025agenticrag}).
+
+\subsection{Datasets in Clinical RAG Systems}
+
+RAG relies on curated datasets. Frequently used corpora include PubMed, UMLS, MedDialog (\citep{chen2020meddialog}), MedDG (\citep{li2020meddg}), and imaging-text datasets such as MIMIC-CXR (\citep{johnson2019mimiccxr}). Benchmarks include BioASQ, MedMCQA, PubMedQA (\citep{jin2019pubmedqa}), MedQA (\citep{jin2021medqa}), MultiMedQA (\citep{singhal2023multimedqa}), ClinicalQA (\citep{abacha2021nlmclinicalqa}), and MIRAGE (\citep{zhu2023mirage}). Synthetic datasets such as DDXPlus (\citep{liu2023ddxplus}) and CPDD (\citep{zhao2025medrag}) test diagnostic QA.
+
+Most datasets are English-only, limiting multilingual evaluation. This bias restricts fairness and highlights the need for broader language coverage.
+
+\subsection{Ethical Considerations}
+
+Healthcare RAG systems face risks: hallucinations, privacy breaches, bias, and lack of transparency. Patient-sensitive datasets (e.g., MIMIC-IV, \citep{johnson2023mimiciv}) require de-identification to ensure HIPAA/GDPR compliance. Bias in internet-trained LLMs persists even with retrieval (\citep{mehrabi2021survey}). RAG helps transparency by citing sources, but retrieval collapse remains a risk. Integration into workflows must avoid cognitive overload for clinicians.
+
+\subsection{Future Directions}
+
+Future work includes:
+\begin{itemize}
+  \item Improved retrieval mechanisms and embeddings.
+  \item Domain-specific LLMs fine-tuned for clinical tasks.
+  \item Multimodal integration (EHR text + imaging + signals).
+  \item Real-world deployment and workflow testing.
+  \item Language diversity beyond English.
+  \item Robust handling of irrelevant or low-quality sources.
+\end{itemize}
+
+In conclusion, RAG augments LLMs to deliver more accurate, grounded, and clinically useful outputs. While challenges remain, particularly around ethics, privacy, and dataset bias, RAG represents a crucial pathway towards trustworthy AI in healthcare.
