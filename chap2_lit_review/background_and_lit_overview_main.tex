@@ -23,10 +23,16 @@ RAG addresses LLM limitations by combining strong generative capabilities with \
 
 The typical RAG pipeline has three steps:
 \begin{itemize}
-  \item \textbf{Indexing:} Documents segmented into chunks, embedded with encoders, and stored in vector databases (e.g., FAISS).
+  \item \textbf{Indexing:} Documents segmented into chunks, embedded with encoders, and stored in vector databases (e.g., FAISS, Pinecone, Weaviate).
   \item \textbf{Retrieval:} Queries embedded, top-k chunks retrieved via similarity search.
   \item \textbf{Generation:} Query and retrieved chunks passed to the LLM for grounded response.
 \end{itemize}
+
+\subsubsection{Vector Database Technologies}
+Vector databases are critical infrastructure for RAG systems, with different solutions offering distinct advantages for clinical deployments. \textbf{FAISS} (Facebook AI Similarity Search) provides efficient in-memory similarity search with GPU acceleration, making it suitable for research environments (\citep{johnson2019faiss}). \textbf{Pinecone} offers managed cloud-native vector search with real-time updates and hybrid search capabilities (\citep{pinecone2023}). \textbf{Weaviate} combines vector search with GraphQL APIs and supports multimodal embeddings (\citep{weaviate2023}). \textbf{Redis} with vector similarity search extensions provides low-latency retrieval suitable for real-time clinical applications (\citep{redis2023vector}). \textbf{ChromaDB} offers lightweight, open-source vector storage with built-in embedding functions (\citep{chromadb2023}). For clinical RAG systems, database choice depends on latency requirements, data privacy constraints, and scalability needs.
+
+\subsubsection{Clinical Embedding Models}
+The choice of embedding model significantly impacts RAG performance in clinical contexts. \textbf{BioBERT} (\citep{lee2020biobert}) and \textbf{ClinicalBERT} (\citep{alsentzer2019clinicalbert}) are domain-specific transformers pre-trained on biomedical literature and clinical notes respectively, showing superior performance on medical NER and relation extraction. \textbf{PubMedBERT} (\citep{gu2021pubmedbert}) is trained exclusively on PubMed abstracts, achieving state-of-the-art results on biomedical language understanding tasks. General-purpose models like \textbf{all-MiniLM-L6-v2} and \textbf{multi-qa-mpnet-base-dot-v1} (\citep{reimers2019sentencebert}) offer computational efficiency but may lack clinical domain specificity. \textbf{SapBERT} (\citep{liu2021sapbert}) specializes in biomedical entity representation, while \textbf{BlueBERT} (\citep{peng2019bluebert}) combines clinical and biomedical pre-training. Recent work on \textbf{clinical sentence transformers} fine-tuned on medical question-answering pairs shows promise for improving retrieval relevance in clinical RAG systems (\citep{zhang2023clinical}).
 
 This allows factuality without retraining, making RAG especially attractive in healthcare.
 
