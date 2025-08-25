@@ -34,13 +34,13 @@ The performance distribution shows a relatively tight clustering of scores aroun
 
 \begin{itemize}
     \item \textbf{Score Distribution}: Near-normal distribution with slight positive skew
-    \item \textbf{Pass Rate Consistency}: 89.6\% average with relatively low variance (σ=0.062)
-    \item \textbf{Search Time Variability}: High variance (σ=98.7s) indicating significant performance differences
+    \item \textbf{Pass Rate Consistency}: 89.6\% average with relatively low variance ($\sigma$=0.062)
+    \item \textbf{Search Time Variability}: High variance ($\sigma$=98.7s) indicating significant performance differences
     \item \textbf{Coefficient of Variation}: Score consistency (6.2\%) vs. efficiency variability (99.8\%)
 \end{itemize}
 
 \section{Comparison Heatmap}
-Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap (average score). An interactive version is available as HTML in the results folder.
+Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap (average score).
 
 \begin{figure}[!htbp]
   \centering
@@ -143,59 +143,39 @@ All configurations maintain hallucination rates below 45\%, with medical-special
 
 \begin{itemize}
     \item \textbf{Safest Configuration}: MedQuAD + deepseek (10\% hallucination, 0.744 score)
-    \item \textbf{Balanced Safety**: BioBERT + phi3 (15\% hallucination, 0.770 score)
+    \item \textbf{Balanced Safety}: BioBERT + phi3 (15\% hallucination, 0.770 score)
     \item \textbf{Speed vs Safety Trade-off}: Faster configurations tend toward higher hallucination rates
     \item \textbf{Disclaimer Generation}: 100\% across all models, demonstrating appropriate clinical caution
 \end{itemize}
 
 \paragraph{Trade-offs.} The fastest pipeline (e5-base + deepseek) sacrifices some answer quality relative to the top-scoring setups. Mini-lm + llama offers an appealing balance: perfect pass rate, good average score, high throughput, and low hallucination. The safest configuration by hallucination rate (MedQuAD + deepseek) is slower; this may reflect conservative generation behaviour or heavier retrieval.
 
-\section{Clinical Category Performance Analysis}
-
-Medical question categories show distinct performance patterns that reflect the complexity and structure of different types of clinical information:
-
-\subsection{High-Performance Categories}
-\begin{itemize}
-    \item \textbf{Diagnoses}: 100\% average pass rate - Benefits from structured ICD coding
-    \item \textbf{Header Information}: 91\% pass rate - Well-structured administrative data
-\end{itemize}
-
-\subsection{Challenging Categories}
-\begin{itemize}
-    \item \textbf{Laboratory Results}: Complex numerical interpretation and reference ranges
-    \item \textbf{Prescriptions}: Medication dosing and interaction complexity
-    \item \textbf{Procedures}: Technical medical procedure descriptions
-    \item \textbf{Microbiology}: Culture interpretation requiring specialized medical knowledge
-\end{itemize}
-
-\textbf{Clinical Significance}: The performance pattern reflects real-world clinical complexity, where structured diagnoses are more accessible than complex lab interpretations.
-
 \section{Clinical Deployment Recommendations}
 
 Based on comprehensive performance analysis, we provide evidence-based recommendations for different clinical deployment scenarios:
 
 \subsection{High-Accuracy Clinical Decision Support}
-\textbf{Recommended Configuration**: BioBERT + Phi3
+\textbf{Recommended Configuration}: BioBERT + Phi3
 \begin{itemize}
-    \item \textbf{Use Case**: Complex diagnostic assistance, treatment planning
-    \item \textbf{Performance**: 0.770 score, 100\% pass rate, 15\% hallucination
-    \item \textbf{Trade-off**: Moderate search time (67.7s) for maximum accuracy
+    \item \textbf{Use Case}: Complex diagnostic assistance, treatment planning
+    \item \textbf{Performance}: 0.770 score, 100\% pass rate, 15\% hallucination
+    \item \textbf{Trade-off}: Moderate search time (67.7s) for maximum accuracy
 \end{itemize}
 
 \subsection{High-Throughput Clinical Applications}
-\textbf{Recommended Configuration**: mini-lm + llama
+\textbf{Recommended Configuration}: mini-lm + llama
 \begin{itemize}
-    \item \textbf{Use Case**: Rapid patient information retrieval, administrative queries
-    \item \textbf{Performance**: 0.751 score, 100\% pass rate, fast retrieval (56.5s)
-    \item \textbf{Advantage**: Optimal speed-quality balance for high-volume environments
+    \item \textbf{Use Case}: Rapid patient information retrieval, administrative queries
+    \item \textbf{Performance}: 0.751 score, 100\% pass rate, fast retrieval (56.5s)
+    \item \textbf{Advantage}: Optimal speed-quality balance for high-volume environments
 \end{itemize}
 
 \subsection{General Clinical Information System}
-\textbf{Recommended Configuration**: multi-qa + llama
+\textbf{Recommended Configuration}: multi-qa + llama
 \begin{itemize}
-    \item \textbf{Use Case**: General patient information queries, medical education
-    \item \textbf{Performance**: 0.764 score, 95\% pass rate, balanced metrics
-    \item \textbf{Rationale**: Versatile performance across all medical categories
+    \item \textbf{Use Case}: General patient information queries, medical education
+    \item \textbf{Performance}: 0.764 score, 95\% pass rate, balanced metrics
+    \item \textbf{Rationale}: Versatile performance across all medical categories
 \end{itemize}
 
 \section{Statistical Significance and Model Selection}
@@ -206,7 +186,7 @@ Performance differences between top configurations are statistically significant
 \begin{itemize}
     \item \textbf{Embedding Model Differences}: F-statistic: 2.847, p-value: 0.018 (statistically significant)
     \item \textbf{LLM Model Differences}: F-statistic: 1.956, p-value: 0.104 (not statistically significant)
-    \item \textbf{Implication**: Embedding choice is more critical than LLM selection for performance
+    \item \textbf{Implication}: Embedding choice is more critical than LLM selection for performance
 \end{itemize}
 
 The 95\% confidence intervals for top performers show robust performance estimates:
@@ -229,9 +209,6 @@ Unlike many AI systems, our clinical RAG implementation shows weak correlation b
 The strong performance of smaller models (TinyLlama, mini-lm) provides cost-effective deployment options for resource-constrained healthcare environments while maintaining clinical-grade performance standards.
 
 Category analysis indicates substantial headroom for structured clinical facts (labs, microbiology, prescriptions); targeted retrieval improvements (e.g., table-aware chunking, ontology-linked indices) and instruction-tuned prompts for evidence citation are likely to close this gap. Finally, efficiency/safety analysis underscores practical deployment choices: mini-lm + llama emerges as a well-balanced default; BioBERT + phi3 is optimal for peak accuracy; and e5-base + deepseek can serve latency-sensitive workflows when moderate quality is acceptable.
-
-\section*{Artifacts}
-The following artefacts are available in the results folder for reproducibility and further analysis: heatmap PNG and interactive HTML, the consolidated CSVs (results\_dataframe.csv, per\_question\_results.csv), efficiency/safety metrics (run\_efficiency\_and\_safety.csv), and the summary report (summary\_report.md).
 
 % -----------------------------------------
 % Evaluation methodology and metric rationale
@@ -265,38 +242,25 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
 \centering
 \begin{footnotesize}
 \renewcommand\arraystretch{0.95}
-\begin{tabular}{l p{6.2cm} p{6.2cm}}
+\begin{tabularx}{\textwidth}{l X X}
   \toprule
   Metric & What it measures & Why it matters in clinical RAG \\
   \midrule
-  Average score & Overall answer quality (0--1) across questions & Sensitive to partial improvements; aligns with perceived clinical usefulness \\
-  Pass rate & Fraction of answers meeting an acceptability threshold & Simple reliability signal; complements average score \\
-  Factual accuracy & Grounding and correctness of clinical facts & Directly tied to patient safety and evidence use \\
-  Performance/presentation & Structure, clarity, instruction adherence & Affects readability, clinician trust, and efficiency \\
-  Search time & Latency per question (s) & Practical responsiveness for clinical workflows \\
-  Throughput (QPM) & Questions processed per minute & Capacity planning and cost/performance trade-offs \\
-  Documents found & Retrieval depth/coverage proxy & Balances evidence sufficiency vs. noise/latency \\
-  Hallucination rate & Unsupported/incorrect content frequency & Safety and risk mitigation \\
-  Disclaimer rate & Frequency of safety disclaimers & Compliance vs. usefulness balance \\
+  Average score & Overall answer quality (0--1) across questions & Sensitive to partial improvements; aligns with perceived clinical usefulness \\[3em]
+  Pass rate & Fraction of answers meeting an acceptability threshold & Simple reliability signal; complements average score \\[2em]
+  Factual accuracy & Grounding and correctness of clinical facts & Directly tied to patient safety and evidence use \\[2em]
+  Performance/presentation & Structure, clarity, instruction adherence & Affects readability, clinician trust, and efficiency \\[2em]
+  Search time & Latency per question (s) & Practical responsiveness for clinical workflows \\[2em]
+  Throughput (QPM) & Questions processed per minute & Capacity planning and cost/performance trade-offs \\[2em]
+  Documents found & Retrieval depth/coverage proxy & Balances evidence sufficiency vs. noise/latency \\[2em]
+  Hallucination rate & Unsupported/incorrect content frequency & Safety and risk mitigation \\[2em]
+  Disclaimer rate & Frequency of safety disclaimers & Compliance vs. usefulness balance \\[4pt]
   \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{footnotesize}
 \caption{Summary of evaluation metrics and their importance in clinical RAG.}
 \label{tab:metrics_summary}
 \end{table}
-
-% Auto-generated comprehensive tables
-\section{Comprehensive Tables}
-To aid reproducibility, we include the full set of runs and category-wise averages generated from the consolidated CSVs.
-
-\subsection{All 54 Runs (sorted by average score)}
-% Note: Replace this with actual table content when available
-\begin{center}
-\begin{footnotesize}
-\renewcommand\arraystretch{0.95}
-\input{chap4_results/tables/all_runs_table}
-\end{footnotesize}
-\end{center}
 
 \section{Limitations and Future Research Directions}
 
@@ -304,25 +268,25 @@ To aid reproducibility, we include the full set of runs and category-wise averag
 
 \begin{itemize}
     \item \textbf{Dataset Scope}: Limited to MIMIC-IV structure; generalizability to other EHR systems unknown
-    \item \textbf{Evaluation Scale**: 20 questions per configuration; larger question sets would improve statistical power
-    \item \textbf{Temporal Factors**: Single-time evaluation; performance may vary with model updates
-    \item \textbf{Resource Constraints**: Local hardware limitations may not reflect cloud deployment performance
+    \item \textbf{Evaluation Scale}: 20 questions per configuration; larger question sets would improve statistical power
+    \item \textbf{Temporal Factors}: Single-time evaluation; performance may vary with model updates
+    \item \textbf{Resource Constraints}: Local hardware limitations may not reflect cloud deployment performance
 \end{itemize}
 
 \subsection{Future Research Opportunities}
 
 \textbf{Technical Enhancements:}
 \begin{itemize}
-    \item \textbf{Hybrid Architectures**: Combining multiple embedding models for specialized retrieval
-    \item \textbf{Dynamic Model Selection**: Context-aware model switching based on query type
-    \item \textbf{Fine-tuning Studies**: Domain-specific adaptation of pre-trained models
+    \item \textbf{Hybrid Architectures}: Combining multiple embedding models for specialized retrieval
+    \item \textbf{Dynamic Model Selection}: Context-aware model switching based on query type
+    \item \textbf{Fine-tuning Studies}: Domain-specific adaptation of pre-trained models
 \end{itemize}
 
 \textbf{Clinical Validation:}
 \begin{itemize}
-    \item \textbf{Healthcare Professional Evaluation**: Clinician-in-the-loop assessment
-    \item \textbf{Real-world Deployment**: Performance monitoring in clinical environments
-    \item \textbf{Patient Outcome Studies**: Long-term impact assessment
+    \item \textbf{Healthcare Professional Evaluation}: Clinician-in-the-loop assessment
+    \item \textbf{Real-world Deployment}: Performance monitoring in clinical environments
+    \item \textbf{Patient Outcome Studies}: Long-term impact assessment
 \end{itemize}
 
 \section{Additional Figures}
@@ -354,15 +318,15 @@ This comprehensive evaluation of 54 clinical RAG configurations provides crucial
 \begin{enumerate}
     \item \textbf{Task Specialization Over Domain Specialization}: QA-specialized embeddings (multi-qa) outperform medical-domain embeddings, suggesting retrieval task alignment is more critical than medical pre-training.
 
-    \item \textbf{Model Size Efficiency**: Smaller, well-designed models (1.5-2B parameters) achieve performance competitive with larger models while offering significant efficiency gains.
+    \item \textbf{Model Size Efficiency}: Smaller, well-designed models (1.5-2B parameters) achieve performance competitive with larger models while offering significant efficiency gains.
 
-    \item \textbf{Statistical Significance**: Embedding selection has statistically significant impact (p=0.018) while LLM choice shows less variation, indicating where optimization efforts should focus.
+    \item \textbf{Statistical Significance}: Embedding selection has statistically significant impact (p=0.018) while LLM choice shows less variation, indicating where optimization efforts should focus.
 
-    \item \textbf{Safety Profile**: All configurations maintain acceptable hallucination rates (\textless45\%), with medical-specialized models showing superior safety profiles (\textless20\%).
+    \item \textbf{Safety Profile}: All configurations maintain acceptable hallucination rates (\textless45\%), with medical-specialized models showing superior safety profiles (\textless20\%).
 
-    \item \textbf{Clinical Deployment Flexibility**: Multiple configurations achieve clinical-grade performance, providing deployment options based on specific requirements (accuracy: BioBERT+phi3, balanced: multi-qa+llama, speed: mini-lm+llama).
+    \item \textbf{Clinical Deployment Flexibility}: Multiple configurations achieve clinical-grade performance, providing deployment options based on specific requirements (accuracy: BioBERT+phi3, balanced: multi-qa+llama, speed: mini-lm+llama).
 
-    \item \textbf{Efficiency-Quality Independence**: Weak correlation between quality and speed enables selection of both fast and accurate configurations without significant performance trade-offs.
+    \item \textbf{Efficiency-Quality Independence}: Weak correlation between quality and speed enables selection of both fast and accurate configurations without significant performance trade-offs.
 \end{enumerate}
 
 The results demonstrate that clinical RAG systems can achieve reliable, safe, and efficient performance suitable for healthcare applications, with clear evidence-based guidance for model selection based on deployment priorities.
