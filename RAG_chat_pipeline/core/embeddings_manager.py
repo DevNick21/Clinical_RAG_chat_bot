@@ -29,7 +29,7 @@ def setup_clinical_embeddings():
             return clinical_emb
 
         except Exception as e:
-            print(f"⚠️ Error loading local model: {e}")
+            print(f" Error loading local model: {e}")
             print("Downloading model...")
 
     # Download and save model locally
@@ -70,7 +70,7 @@ def load_or_create_vectorstore():
             with open(CHUNKED_DOCS_PATH, "rb") as f:
                 chunked_docs = pickle.load(f)
     except Exception as e:
-        print(f"⚠️ Error loading chunked documents: {e}")
+        print(f" Error loading chunked documents: {e}")
         chunked_docs = None
 
     # Try to load existing vectorstore
@@ -85,7 +85,7 @@ def load_or_create_vectorstore():
         return vectorstore, clinical_emb, chunked_docs
 
     except Exception as e:
-        print(f"⚠️ Error loading vectorstore: {e}")
+        print(f" Error loading vectorstore: {e}")
 
         if chunked_docs is None:
             raise ValueError(
@@ -99,7 +99,7 @@ def load_or_create_vectorstore():
         with open(CHUNKED_DOCS_PATH, "wb") as f:
             pickle.dump(chunked_docs, f)
 
-        print("✅ New vectorstore created and saved")
+        print(" New vectorstore created and saved")
         return vectorstore, clinical_emb, chunked_docs
 
 

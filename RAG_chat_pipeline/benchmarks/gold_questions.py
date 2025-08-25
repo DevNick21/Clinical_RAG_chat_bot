@@ -172,7 +172,7 @@ def generate_gold_questions_from_data(num_questions: int = 20,
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(questions, f, indent=2, ensure_ascii=False)
 
-        print(f"✅ Generated {len(questions)} questions, saved to: {filename}")
+        print(f" Generated {len(questions)} questions, saved to: {filename}")
 
     # Print statistics
     categories = {}
@@ -180,7 +180,7 @@ def generate_gold_questions_from_data(num_questions: int = 20,
         cat = q['category']
         categories[cat] = categories.get(cat, 0) + 1
 
-    print(f"\n📊 Question Statistics:")
+    print(f"\n Question Statistics:")
     print(f"   Total: {len(questions)} questions")
     print(f"   Categories: {dict(categories)}")
     print(
@@ -202,7 +202,7 @@ def main():
 
     args = parser.parse_args()
 
-    print("🎯 Generating Gold Questions for RAG Evaluation")
+    print(" Generating Gold Questions for RAG Evaluation")
     print("=" * 50)
 
     questions = generate_gold_questions_from_data(
@@ -211,7 +211,7 @@ def main():
     )
 
     if questions:
-        print(f"\n📋 Sample Questions:")
+        print(f"\n Sample Questions:")
         for i, q in enumerate(questions[:3], 1):
             print(f"   {i}. [{q['category']}] {q['question']}")
             print(f"      Expected: {q['expected_answer_pattern']}")
@@ -219,7 +219,7 @@ def main():
         if len(questions) > 3:
             print(f"   ... and {len(questions) - 3} more questions")
     else:
-        print("❌ No questions generated")
+        print(" No questions generated")
 
 
 if __name__ == "__main__":

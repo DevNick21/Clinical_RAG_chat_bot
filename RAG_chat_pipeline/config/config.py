@@ -255,7 +255,7 @@ def get_config_summary():
     """Get a summary of current configuration."""
     llm_nickname = next(k for k, v in llms.items() if v == LLM_MODEL)
     return f"""
-🔧 Current Configuration:
+ Current Configuration:
    Embedding Model: {model_in_use} ({CLINICAL_MODEL_NAME})
    LLM Model: {llm_nickname} ({LLM_MODEL})
    Vector Store: {VECTORSTORE_PATH.name}

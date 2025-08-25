@@ -36,27 +36,27 @@ except Exception:  # pragma: no cover
         @staticmethod
         def info(msg):
             if ClinicalLogger._enabled("info"):
-                print(f"ℹ️ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def warning(msg):
             if ClinicalLogger._enabled("warning"):
-                print(f"⚠️ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def error(msg):
             if ClinicalLogger._enabled("error"):
-                print(f"❌ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def success(msg):
             if ClinicalLogger._enabled("info"):
-                print(f"✅ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def debug(msg):
             if ClinicalLogger._enabled("debug"):
-                print(f"🔍 {msg}")
+                print(f" {msg}")
 
 # Initialize logger level from config
 ClinicalLogger.set_level(LOG_LEVEL)
@@ -200,7 +200,7 @@ Based on the provided documents, answer the question directly and include:
 - Specific medical details (codes, values, dates)
 - Source: admission ID and section type
 
-Use only information from the documents. End with: "ℹ️ Data from MIMIC-IV database for research/education only."
+Use only information from the documents. End with: " Data from MIMIC-IV database for research/education only."
 
 Context: {context}"""
 
@@ -398,7 +398,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         """Post-process response to fix common citation and format issues"""
         # Fix missing disclaimer
         if "Data from MIMIC-IV database for research/education only" not in answer:
-            answer += "\n\nℹ️ Data from MIMIC-IV database for research/education only."
+            answer += "\n\n Data from MIMIC-IV database for research/education only."
 
         # Fix incorrect citation claims when documents were found
         if "Source Citations: None provided" in answer and len(retrieved_docs) > 0:

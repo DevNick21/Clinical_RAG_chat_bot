@@ -24,27 +24,27 @@ except Exception:  # pragma: no cover
         @staticmethod
         def info(msg):
             if ClinicalLogger._enabled("info"):
-                print(f"ℹ️ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def warning(msg):
             if ClinicalLogger._enabled("warning"):
-                print(f"⚠️ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def error(msg):
             if ClinicalLogger._enabled("error"):
-                print(f"❌ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def success(msg):
             if ClinicalLogger._enabled("info"):
-                print(f"✅ {msg}")
+                print(f" {msg}")
 
         @staticmethod
         def debug(msg):
             if ClinicalLogger._enabled("debug"):
-                print(f"🔍 {msg}")
+                print(f" {msg}")
 
 __version__ = "1.0.0"
 __author__ = "Ekene Iheanacho"

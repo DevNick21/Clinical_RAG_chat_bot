@@ -5,7 +5,7 @@ from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot
 
 def main():
     """Main execution function"""
-    print("🚀 Starting Clinical RAG System...")
+    print(" Starting Clinical RAG System...")
 
     # Setup embeddings and vectorstore
     print("\nSetting up embeddings and vectorstore...")
@@ -15,7 +15,7 @@ def main():
     print("\nInitializing Clinical RAG Bot...")
     chatbot = ClinicalRAGBot(vectorstore, clinical_emb, chunked_docs)
 
-    print("✅ Clinical RAG System Ready!")
+    print(" Clinical RAG System Ready!")
     return chatbot
 
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     chatbot = main()
 
     # Interactive loop (optional)
-    print("\n🤖 Clinical RAG Chatbot Ready!")
+    print("\n Clinical RAG Chatbot Ready!")
     print("Type 'quit' to exit\n")
 
     chat_history = []
@@ -47,12 +47,12 @@ if __name__ == "__main__":
                 k=5
             )
 
-            print(f"\n💡 Answer: {response['answer']}")
-            print(f"📊 Citations: {len(response['citations'])} sources")
+            print(f"\n Answer: {response['answer']}")
+            print(f" Citations: {len(response['citations'])} sources")
             print("-" * 50)
 
         except KeyboardInterrupt:
             print("\n👋 Goodbye!")
             break
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f" Error: {e}")

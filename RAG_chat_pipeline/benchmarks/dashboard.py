@@ -158,7 +158,7 @@ class EvaluationDashboard:
         </div>
 
         <div class="section">
-            <h2 class="section-title">📊 Overall Performance</h2>
+            <h2 class="section-title"> Overall Performance</h2>
             <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-value {self._get_status_class(summary.get('pass_rate', 0))}">{summary.get('pass_rate', 0):.1%}</div>
@@ -176,7 +176,7 @@ class EvaluationDashboard:
         </div>
 
         <div class="section">
-            <h2 class="section-title">📋 Category Breakdown</h2>
+            <h2 class="section-title"> Category Breakdown</h2>
             <div class="category-breakdown">
 """
 
@@ -202,7 +202,7 @@ class EvaluationDashboard:
         if retrieval_metrics.get("questions_evaluated", 0) > 0:
             html_content += f"""
         <div class="section">
-            <h2 class="section-title">🔍 Retrieval Performance</h2>
+            <h2 class="section-title"> Retrieval Performance</h2>
             <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-value">{retrieval_metrics.get('avg_precision', 0):.3f}</div>
@@ -224,7 +224,7 @@ class EvaluationDashboard:
         if viz_files:
             html_content += """
         <div class="section">
-            <h2 class="section-title">📈 Visualizations</h2>
+            <h2 class="section-title"> Visualizations</h2>
             <div class="visualization-grid">
 """
             for viz_name, viz_file in viz_files.items():

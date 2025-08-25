@@ -52,7 +52,7 @@ const Footer = () => {
             fontStyle: "italic",
           }}
         >
-          ⚠️ This system is for educational purposes only.
+           This system is for educational purposes only.
         </Typography>
       </Container>
     </Box>

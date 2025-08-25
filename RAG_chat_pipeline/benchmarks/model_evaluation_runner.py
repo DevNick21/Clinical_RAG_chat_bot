@@ -51,9 +51,9 @@ class ModelEvaluationRunner:
 
         eval_mode = "chat_history" if use_chat_history else "single_turn"
         if not QUIET:
-            print(f"\n🚀 Running evaluation: {embedding_model} + {llm_model}")
-            print(f"📊 Evaluation type: {evaluation_type}")
-            print(f"🗣️ Evaluation mode: {eval_mode}")
+            print(f"\n Running evaluation: {embedding_model} + {llm_model}")
+            print(f" Evaluation type: {evaluation_type}")
+            print(f"🗣 Evaluation mode: {eval_mode}")
             print("=" * 60)
 
         try:
@@ -114,14 +114,14 @@ class ModelEvaluationRunner:
             )
 
             if not QUIET:
-                print(f"✅ Evaluation completed: {experiment_id}")
-                print(f"⏱️  Total time: {evaluation_time:.1f}s")
+                print(f" Evaluation completed: {experiment_id}")
+                print(f"⏱  Total time: {evaluation_time:.1f}s")
 
             return experiment_id
 
         except Exception as e:
             if not QUIET:
-                print(f"❌ Error during evaluation: {e}")
+                print(f" Error during evaluation: {e}")
             raise
 
     def _update_config(self, embedding_model: str, llm_model: str):
@@ -134,10 +134,10 @@ class ModelEvaluationRunner:
 
             # Print configuration summary
             if not QUIET:
-                print(f"📝 Updated config: {embedding_model} + {llm_model}")
+                print(f" Updated config: {embedding_model} + {llm_model}")
 
         except ValueError as e:
-            print(f"❌ Configuration error: {e}")
+            print(f" Configuration error: {e}")
             raise
 
     def _add_evaluation_result_with_mode(self, embedding_model: str, llm_model: str,
@@ -173,9 +173,9 @@ class ModelEvaluationRunner:
         eval_mode = "chat_history" if use_chat_history else "single_turn"
         print(
             f"🔄 Running evaluations for {total_combinations} model combinations")
-        print(f"📊 Evaluation type: {evaluation_type}")
-        print(f"🗣️ Evaluation mode: {eval_mode}")
-        print(f"⏭️  Skip existing: {skip_existing}")
+        print(f" Evaluation type: {evaluation_type}")
+        print(f"🗣 Evaluation mode: {eval_mode}")
+        print(f"⏭  Skip existing: {skip_existing}")
         print("=" * 60)
 
         completed = 0
@@ -193,12 +193,12 @@ class ModelEvaluationRunner:
                 exists = self._combination_exists(
                     embedding_model, llm_model, evaluation_type, use_chat_history)
                 if skip_existing and exists:
-                    print("⏭️  Skipping - results already exist")
+                    print("⏭  Skipping - results already exist")
                     skipped += 1
                     continue
                 elif exists:
                     print(
-                        "⚠️  Found existing results but --no-skip flag was used. Running evaluation anyway.")
+                        "  Found existing results but --no-skip flag was used. Running evaluation anyway.")
 
                 # Run evaluation
                 experiment_id = self.run_single_evaluation(
@@ -215,19 +215,19 @@ class ModelEvaluationRunner:
                     failed += 1
 
                 print(
-                    f"✅ Progress: {completed} completed, {failed} failed, {skipped} skipped")
+                    f" Progress: {completed} completed, {failed} failed, {skipped} skipped")
 
-        print(f"\n🎉 Batch evaluation complete!")
-        print(f"   ✅ Completed: {completed}")
-        print(f"   ❌ Failed: {failed}")
-        print(f"   ⏭️  Skipped: {skipped}")
+        print(f"\n Batch evaluation complete!")
+        print(f"    Completed: {completed}")
+        print(f"    Failed: {failed}")
+        print(f"   ⏭  Skipped: {skipped}")
 
         # Generate final report
         if completed > 0:
-            print("\n📊 Generating comparison report...")
+            print("\n Generating comparison report...")
             self.results_manager.create_comparison_table()
             self.results_manager.generate_summary_report()
-            print("\n📈 Generating performance heatmap...")
+            print("\n Generating performance heatmap...")
             self.results_manager.create_heatmap("average_score")
 
     def _combination_exists(self, embedding_model: str, llm_model: str, evaluation_type: str = None, use_chat_history: bool = False) -> bool:
@@ -287,7 +287,7 @@ class ModelEvaluationRunner:
             print("No evaluation results found.")
             return
 
-        print(f"📊 Found {len(experiments)} evaluation results:")
+        print(f" Found {len(experiments)} evaluation results:")
         print("=" * 60)
 
         for exp_id, exp_data in experiments.items():
@@ -305,10 +305,10 @@ class ModelEvaluationRunner:
     def clear_results(self, confirm: bool = False):
         """Clear all evaluation results (use with caution!)"""
         if not confirm:
-            print("⚠️  This will delete ALL evaluation results!")
+            print("  This will delete ALL evaluation results!")
             response = input("Are you sure? Type 'yes' to confirm: ")
             if response.lower() != 'yes':
-                print("❌ Operation cancelled")
+                print(" Operation cancelled")
                 return
 
         # Reset results
@@ -322,7 +322,7 @@ class ModelEvaluationRunner:
         }
 
         self.results_manager._save_results()
-        print("🗑️  All evaluation results cleared")
+        print("🗑  All evaluation results cleared")
 
     def debug_results_file(self):
         """Print debug information about the results file"""
@@ -439,7 +439,7 @@ LLM models: deepseek, qwen, llama
         runner.list_existing_results()
 
     elif command == "report":
-        print("📊 Generating comparison report...")
+        print(" Generating comparison report...")
         runner.results_manager.create_comparison_table()
         report = runner.results_manager.generate_summary_report()
         print(report)

@@ -13,7 +13,7 @@ This project implements a production-ready clinical RAG system that:
 - **Compares different LLM and embedding combinations** systematically
 - **Includes a React-based web interface** for easy clinical data querying
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ```mermaid
 graph TB
@@ -113,7 +113,7 @@ graph TB
    - **CLI Interface** (`cli_chat.py`): Command-line interaction
    - **Jupyter Integration**: Notebook-friendly API
 
-## 📊 Supported Models
+##  Supported Models
 
 ### Embedding Models
 
@@ -136,7 +136,7 @@ graph TB
 - **Phi3** (3.8B) - Microsoft's instruction-following model
 - **TinyLlama** (1.1B) - Compact and efficient model
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -351,7 +351,7 @@ python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner single ms-marco d
 
 # Quick test
 python -m RAG_chat_pipeline.benchmarks.rag_evaluator quick
-## 📋 Clinical Data Structure
+##  Clinical Data Structure
 
 The system processes six types of medical records:
 
@@ -364,7 +364,7 @@ The system processes six types of medical records:
 | **Microbiology** | Cultures, infections | "Were any cultures positive?" |
 | **Prescriptions** | Medications, dosages | "What medications was patient on?" |
 
-## 🎯 Evaluation Framework
+##  Evaluation Framework
 
 ### Scoring Methodology
 
@@ -392,7 +392,7 @@ python -m RAG_chat_pipeline.benchmarks.rag_evaluator full
 python -m RAG_chat_pipeline.benchmarks.rag_evaluator short
 ```
 
-## 📈 Performance Analysis
+##  Performance Analysis
 
 ### Results Dashboard
 
@@ -409,7 +409,7 @@ The system generates comprehensive performance reports including:
 - Category breakdown charts
 - Time series analysis of evaluation results
 
-## 🗂️ Project Structure
+## 🗂 Project Structure
 
 ```text
 msc_project/
@@ -483,7 +483,7 @@ The following directories contain large files, sensitive data, or generated arti
 - `*.csv` - Raw data files
 - `*.log` - Log files
 
-## 🛠️ Configuration
+##  Configuration
 
 ### Model Selection
 
@@ -521,7 +521,7 @@ EVALUATION_SCORING_WEIGHTS = {
 ### Example Performance Summary
 
 ```text
-📊 Model Comparison Report
+ Model Comparison Report
 Generated: 2025-01-16 10:30:15
 
 ## Overview
@@ -544,13 +544,13 @@ This system is designed for:
 
 ## 🚦 System Status
 
-- ✅ **Data Processing**: Complete MIMIC-IV integration
-- ✅ **Synthetic Data**: Automated generation of fictional medical data
-- ✅ **RAG Pipeline**: Multi-model support with conversation history
-- ✅ **Evaluation Framework**: Comprehensive scoring and comparison
-- ✅ **Model Comparison**: Automated evaluation across 12 combinations
-- ✅ **Results Analysis**: Performance visualization and reporting
-- ✅ **Web Interface**: React frontend with Flask API
+-  **Data Processing**: Complete MIMIC-IV integration
+-  **Synthetic Data**: Automated generation of fictional medical data
+-  **RAG Pipeline**: Multi-model support with conversation history
+-  **Evaluation Framework**: Comprehensive scoring and comparison
+-  **Model Comparison**: Automated evaluation across 12 combinations
+-  **Results Analysis**: Performance visualization and reporting
+-  **Web Interface**: React frontend with Flask API
 
 ## 📚 Dependencies
 
@@ -599,7 +599,7 @@ If you use this system in your research, please cite:
 }
 ```
 
-## ⚠️ Medical Disclaimer
+##  Medical Disclaimer
 
 This system is for educational and research purposes only. It should not be used for medical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
 

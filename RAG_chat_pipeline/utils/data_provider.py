@@ -80,7 +80,7 @@ class DataProvider:
                 return self.synthetic_data_path
         except Exception as e:
             if self.verbose:
-                print(f"⚠️ Error generating synthetic data: {e}")
+                print(f" Error generating synthetic data: {e}")
 
         # If neither exists and synthetic data can't be created, raise error
         raise FileNotFoundError(
@@ -175,7 +175,7 @@ class DataProvider:
 
             except FileNotFoundError as e:
                 if self.verbose:
-                    print(f"❌ Synthetic data files not found: {e}")
+                    print(f" Synthetic data files not found: {e}")
                 return None, None, None
         else:
             # Use real MIMIC data exports
@@ -197,7 +197,7 @@ class DataProvider:
 
             except FileNotFoundError as e:
                 if self.verbose:
-                    print(f"❌ MIMIC data export files not found: {e}")
+                    print(f" MIMIC data export files not found: {e}")
                     print(
                         "Please run the data processing notebook to export data first")
                 return None, None, None

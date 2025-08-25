@@ -49,5 +49,5 @@ def safe_llm_invoke(chain_or_llm, input_data, fallback_message="Error generating
         return response
 
     except Exception as e:
-        print(f"⚠️ {context} Error: {e}")
+        print(f" {context} Error: {e}")
         return fallback_message

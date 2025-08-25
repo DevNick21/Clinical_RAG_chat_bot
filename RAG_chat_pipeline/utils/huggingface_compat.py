@@ -80,7 +80,7 @@ def patch_huggingface_hub():
         print("✓ Applied huggingface-hub compatibility patch: cached_download -> hf_hub_download")
 
     except Exception as e:
-        print(f"⚠️ Could not apply huggingface-hub compatibility patch: {e}")
+        print(f" Could not apply huggingface-hub compatibility patch: {e}")
 
 
 # Apply the patch when this module is imported

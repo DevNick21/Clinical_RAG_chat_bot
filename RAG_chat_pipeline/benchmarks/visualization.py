@@ -303,6 +303,6 @@ class EvaluationVisualizer:
             viz_files["documents"] = self.create_document_analysis(
                 results, timestamp)
         except Exception as e:
-            print(f"⚠️ Error generating visualizations: {e}")
+            print(f" Error generating visualizations: {e}")
 
         return viz_files

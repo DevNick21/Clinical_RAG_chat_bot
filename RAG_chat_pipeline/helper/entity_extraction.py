@@ -44,7 +44,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
                         result["reasoning"] += f" Found explicit subject_id {match}"
                         result["query_type"] = "patient_history"
                         print(
-                            f"📝 Regex found subject_id: {result['subject_id']}")
+                            f" Regex found subject_id: {result['subject_id']}")
                         break
                     except (ValueError, TypeError):
                         continue
@@ -60,7 +60,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
                         result["hadm_id"] = int(match)
                         result["confidence"] = "high"
                         result["reasoning"] += f" Found explicit hadm_id {match}"
-                        print(f"📝 Regex found hadm_id: {result['hadm_id']}")
+                        print(f" Regex found hadm_id: {result['hadm_id']}")
                         break
                     except (ValueError, TypeError):
                         continue
@@ -72,7 +72,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
             if result["confidence"] == "low":
                 result["confidence"] = "medium"
             result["reasoning"] += f" Found section keywords for '{section}'"
-            print(f"📝 Regex found section: {section}")
+            print(f" Regex found section: {section}")
             break
 
     # Set final confidence based on what was found
@@ -117,7 +117,7 @@ def extract_context_from_chat_history(chat_history: List, current_query: str) ->
                     context["confidence"] = "high" if len(
                         valid_hadm_ids) == 1 else "medium"
                     print(
-                        f"📝 Found hadm_id {context['hadm_id']} in chat history (from {len(valid_hadm_ids)} candidates)")
+                        f" Found hadm_id {context['hadm_id']} in chat history (from {len(valid_hadm_ids)} candidates)")
                     break
 
     # Look for section context in recent messages
@@ -147,14 +147,14 @@ def extract_context_from_chat_history(chat_history: List, current_query: str) ->
         if query_hadm_id:
             context["hadm_id"] = query_hadm_id
             context["confidence"] = "high"
-            print(f"📝 Found hadm_id {context['hadm_id']} in current query")
+            print(f" Found hadm_id {context['hadm_id']} in current query")
 
         # Look for section keywords in current query
         for section, keywords in SECTION_KEYWORDS.items():
             if any(keyword in current_query for keyword in keywords):
                 context["section"] = section
                 print(
-                    f"📝 Found section '{context['section']}' in current query")
+                    f" Found section '{context['section']}' in current query")
                 break
 
     return context

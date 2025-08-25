@@ -227,9 +227,9 @@ class EvaluationResultsManager:
         self._save_results()
 
         if not self.quiet:
-            print(f"✅ Added evaluation result: {experiment_id}")
-            print(f"   📊 Pass Rate: {metrics.pass_rate:.1%}")
-            print(f"   🎯 Average Score: {metrics.average_score:.3f}")
+            print(f" Added evaluation result: {experiment_id}")
+            print(f"    Pass Rate: {metrics.pass_rate:.1%}")
+            print(f"    Average Score: {metrics.average_score:.3f}")
 
         return experiment_id
 
@@ -380,7 +380,7 @@ class EvaluationResultsManager:
         # Save to CSV
         df.to_csv(self.dataframe_file, index=False)
         if not self.quiet:
-            print(f"📊 Results dataframe saved to: {self.dataframe_file}")
+            print(f" Results dataframe saved to: {self.dataframe_file}")
 
         return df
 
@@ -425,7 +425,7 @@ class EvaluationResultsManager:
             comparison_df.to_html(html_file, index=False, table_id="comparison_table",
                                   classes="table table-striped table-hover")
             if not self.quiet:
-                print(f"📋 Comparison table saved to: {html_file}")
+                print(f" Comparison table saved to: {html_file}")
 
         return comparison_df
 
@@ -447,10 +447,10 @@ class EvaluationResultsManager:
             html_path = visualizer.create_model_comparison_heatmap(
                 df, metric=metric)
             if html_path and not self.quiet:
-                print(f"📈 Heatmap HTML saved to: {html_path}")
+                print(f" Heatmap HTML saved to: {html_path}")
         except Exception as e:
             if not self.quiet:
-                print(f"❌ Error creating heatmap: {str(e)}")
+                print(f" Error creating heatmap: {str(e)}")
 
     def generate_summary_report(self) -> str:
         """Generate a comprehensive summary report"""
@@ -556,7 +556,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         self.add_evaluation_result(
             "ms-marco", "deepseek", sample_result, "Sample test run")
         if not self.quiet:
-            print("✅ Sample results added for testing")
+            print(" Sample results added for testing")
 
 
 # Convenience functions for easy usage

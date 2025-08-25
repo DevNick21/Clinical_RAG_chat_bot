@@ -119,13 +119,13 @@ class CLIChatInterface:
 
     def _show_help(self):
         """Show help message"""
-        ClinicalLogger.info("\n📋 Available Commands:")
+        ClinicalLogger.info("\n Available Commands:")
         ClinicalLogger.info("  /help     - Show this help message")
         ClinicalLogger.info("  /clear    - Clear chat history")
         ClinicalLogger.info("  /history  - Show chat history")
         ClinicalLogger.info("  /save     - Save session to file")
         ClinicalLogger.info("  /exit     - Exit chat")
-        ClinicalLogger.info("\n💡 Chat Tips:")
+        ClinicalLogger.info("\n Chat Tips:")
         ClinicalLogger.info(
             "  - Ask about specific admission IDs (e.g., 'What diagnoses does admission 12345 have?')")
         ClinicalLogger.info(
@@ -136,7 +136,7 @@ class CLIChatInterface:
     def _clear_history(self):
         """Clear chat history"""
         self.chat_history = []
-        ClinicalLogger.info("🗑️ Chat history cleared.")
+        ClinicalLogger.info("🗑 Chat history cleared.")
 
     def _show_history(self):
         """Show chat history"""

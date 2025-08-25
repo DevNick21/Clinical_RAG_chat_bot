@@ -32,7 +32,7 @@ per_question_df = pd.read_csv(RESULTS_DIR / "per_question_results.csv")
 # Merge efficiency data
 df = pd.merge(df, efficiency_df, on="experiment_id", how="left")
 
-print("📊 Enhanced Clinical RAG Results Analysis")
+print(" Enhanced Clinical RAG Results Analysis")
 print(f"Total experiments: {len(df)}")
 print(f"Total individual question results: {len(per_question_df)}")
 
@@ -43,7 +43,7 @@ print(f"Total individual question results: {len(per_question_df)}")
 def generate_statistical_summary():
     """Generate comprehensive statistical summary"""
     
-    print("\n🔍 STATISTICAL SUMMARY")
+    print("\n STATISTICAL SUMMARY")
     print("=" * 60)
     
     # Overall performance statistics
@@ -75,7 +75,7 @@ def generate_statistical_summary():
     with open(TABLES_DIR / "overall_statistics.tex", "w") as f:
         f.write(latex_table)
     
-    print("✅ Statistical summary saved to overall_statistics.tex")
+    print(" Statistical summary saved to overall_statistics.tex")
     
     return overall_stats
 
@@ -86,7 +86,7 @@ def generate_statistical_summary():
 def analyze_embedding_performance():
     """Analyze performance by embedding model"""
     
-    print("\n🧬 EMBEDDING MODEL ANALYSIS")
+    print("\n EMBEDDING MODEL ANALYSIS")
     print("=" * 60)
     
     # Group by embedding model
@@ -143,7 +143,7 @@ def analyze_embedding_performance():
     with open(TABLES_DIR / "embedding_model_ranking.tex", "w") as f:
         f.write(latex_ranking)
     
-    print("✅ Embedding analysis saved")
+    print(" Embedding analysis saved")
     return embedding_stats
 
 # ============================================================================
@@ -153,7 +153,7 @@ def analyze_embedding_performance():
 def analyze_llm_performance():
     """Analyze performance by LLM model"""
     
-    print("\n🤖 LLM MODEL ANALYSIS")
+    print("\n LLM MODEL ANALYSIS")
     print("=" * 60)
     
     # Group by LLM model
@@ -191,7 +191,7 @@ def analyze_llm_performance():
     plt.savefig(FIGURES_DIR / "llm_model_comparison.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print("✅ LLM analysis saved")
+    print(" LLM analysis saved")
     return llm_stats
 
 # ============================================================================
@@ -201,7 +201,7 @@ def analyze_llm_performance():
 def analyze_category_performance():
     """Analyze performance by question category"""
     
-    print("\n📋 CATEGORY PERFORMANCE ANALYSIS")
+    print("\n CATEGORY PERFORMANCE ANALYSIS")
     print("=" * 60)
     
     # Extract category columns
@@ -257,7 +257,7 @@ def analyze_category_performance():
     with open(TABLES_DIR / "category_performance.tex", "w") as f:
         f.write(latex_category)
     
-    print("✅ Category analysis saved")
+    print(" Category analysis saved")
     return category_df
 
 # ============================================================================
@@ -267,7 +267,7 @@ def analyze_category_performance():
 def analyze_efficiency_quality_tradeoff():
     """Analyze the tradeoff between efficiency and quality"""
     
-    print("\n⚡ EFFICIENCY-QUALITY TRADEOFF ANALYSIS")
+    print("\n EFFICIENCY-QUALITY TRADEOFF ANALYSIS")
     print("=" * 60)
     
     # Create scatter plot
@@ -322,7 +322,7 @@ def analyze_efficiency_quality_tradeoff():
     plt.savefig(FIGURES_DIR / "correlation_matrix.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print("✅ Efficiency-Quality analysis saved")
+    print(" Efficiency-Quality analysis saved")
     return correlations
 
 # ============================================================================
@@ -332,7 +332,7 @@ def analyze_efficiency_quality_tradeoff():
 def analyze_top_performers():
     """Detailed analysis of top performing configurations"""
     
-    print("\n🏆 TOP PERFORMERS ANALYSIS")
+    print("\n TOP PERFORMERS ANALYSIS")
     print("=" * 60)
     
     # Get top 10 performers
@@ -387,7 +387,7 @@ def analyze_top_performers():
     plt.savefig(FIGURES_DIR / "top_performers_radar.png", dpi=300, bbox_inches='tight')
     plt.close()
     
-    print("✅ Top performers analysis saved")
+    print(" Top performers analysis saved")
     return top_comparison
 
 # ============================================================================
@@ -397,7 +397,7 @@ def analyze_top_performers():
 def perform_statistical_tests():
     """Perform statistical significance tests"""
     
-    print("\n📈 STATISTICAL SIGNIFICANCE TESTING")
+    print("\n STATISTICAL SIGNIFICANCE TESTING")
     print("=" * 60)
     
     # Test embedding model differences
@@ -430,7 +430,7 @@ def perform_statistical_tests():
 
 def main():
     """Run all analyses"""
-    print("🚀 Starting Enhanced Results Analysis...")
+    print(" Starting Enhanced Results Analysis...")
     
     # Generate all analyses
     stats_summary = generate_statistical_summary()
@@ -474,7 +474,7 @@ def main():
         f.write(executive_summary)
     
     print("\n" + "="*60)
-    print("✅ ENHANCED RESULTS ANALYSIS COMPLETE")
+    print(" ENHANCED RESULTS ANALYSIS COMPLETE")
     print("📁 All files saved to report/chap4_results/")
     print("   - Images: Figures saved as high-resolution PNG files")
     print("   - Tables: LaTeX tables ready for dissertation")

@@ -146,7 +146,7 @@ class EvaluationReporter:
             report_files["category_csv"] = str(category_file)
 
         except Exception as e:
-            print(f"⚠️ Error exporting CSV files: {e}")
+            print(f" Error exporting CSV files: {e}")
 
         return report_files
 

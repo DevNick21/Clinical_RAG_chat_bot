@@ -752,7 +752,7 @@ class ClinicalRAGEvaluator:
         report_files = reporter.export_comprehensive_csv(results, timestamp)
 
         ClinicalLogger.info(
-            f"\n📊 Evaluation report generated in: {output_path}")
+            f"\n Evaluation report generated in: {output_path}")
         ClinicalLogger.info("Generated files:")
         for file_type, file_path in report_files.items():
             if file_path:
@@ -800,15 +800,15 @@ class ClinicalRAGEvaluator:
                     labels, comparison_data, timestamp)
                 if img_path and not quiet:
                     ClinicalLogger.info(
-                        f"📈 Comparison visualization saved: {img_path}")
+                        f" Comparison visualization saved: {img_path}")
             except Exception as e:
                 if not quiet:
                     ClinicalLogger.error(
-                        f"❌ Error generating comparison visualization: {e}")
+                        f" Error generating comparison visualization: {e}")
 
         if not quiet:
             ClinicalLogger.info(
-                f"📊 Evaluation comparison saved: {comparison_file}")
+                f" Evaluation comparison saved: {comparison_file}")
         return str(comparison_file)
 
 

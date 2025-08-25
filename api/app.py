@@ -25,12 +25,12 @@ app = Flask(__name__, static_folder='../frontend/build')
 CORS(app)  # Enable CORS for all routes
 
 # Initialize RAG system
-print("🚀 Initializing Clinical RAG System...")
+print(" Initializing Clinical RAG System...")
 try:
     chatbot = initialize_clinical_rag()
-    print("✅ Clinical RAG System initialized successfully")
+    print(" Clinical RAG System initialized successfully")
 except Exception as e:
-    print(f"❌ Error initializing Clinical RAG System: {e}")
+    print(f" Error initializing Clinical RAG System: {e}")
     chatbot = None
 
 
@@ -52,7 +52,7 @@ def chat():
     chat_history = data.get('chat_history', [])
 
     # Debug: Log incoming request details
-    print(f"🔍 API Chat Request:")
+    print(f" API Chat Request:")
     print(f"  - Message: '{user_message}'")
     print(
         f"  - Chat history length: {len(chat_history) if chat_history else 0}")
@@ -65,7 +65,7 @@ def chat():
         response = chatbot.chat(user_message, chat_history)
 
         # Debug: Log response details
-        print(f"✅ API Chat Response:")
+        print(f" API Chat Response:")
         print(f"  - Response length: {len(str(response))}")
         print(f"  - Response preview: {str(response)[:200]}...")
 
