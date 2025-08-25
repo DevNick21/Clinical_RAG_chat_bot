@@ -8,36 +8,989 @@ This appendix contains key code snippets, implementation details, and technical 
 The following sections present the main components of the Clinical RAG system implementation:
 
 \subsection{Document Processing and Chunking}
-% Core text processing and chunking algorithms
+
+The core document processing pipeline transforms raw clinical data into searchable chunks suitable for vector retrieval:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/utils/data_provider.py
+class DataProvider:
+    """Abstraction layer for data source selection (real vs synthetic)"""
+    
+    def __init__(self):
+        self.using_synthetic = not self._has_real_data()
+        if self.using_synthetic:
+            self._ensure_synthetic_data()
+    
+    def _has_real_data(self) -> bool:
+        """Check if real MIMIC-IV data is available"""
+        mimic_path = BASE / "mimic_sample_1000"
+        required_files = [
+            "admissions.csv_sample1000.csv",
+            "diagnoses_icd.csv_sample1000.csv",
+            "labevents.csv_sample1000.csv"
+        ]
+        return all((mimic_path / f).exists() for f in required_files)
+    
+    def load_chunked_docs(self):
+        """Load processed document chunks from appropriate source"""
+        if self.using_synthetic:
+            return self._load_synthetic_chunks()
+        else:
+            return self._load_real_chunks()
+    
+    def _create_document_chunks(self, raw_data):
+        """Transform raw clinical data into semantic chunks"""
+        chunks = []
+        for admission in raw_data:
+            # Create header chunk
+            header_content = self._format_header(admission)
+            chunks.append(Document(
+                page_content=header_content,
+                metadata={
+                    "subject_id": admission["subject_id"],
+                    "hadm_id": admission["hadm_id"],
+                    "section": "header"
+                }
+            ))
+            
+            # Process each clinical section
+            sections = ["diagnoses", "procedures", "labs", 
+                       "prescriptions", "microbiology"]
+            for section in sections:
+                if section in admission and admission[section]:
+                    content = self._format_section(admission[section], section)
+                    chunks.append(Document(
+                        page_content=content,
+                        metadata={
+                            "subject_id": admission["subject_id"],
+                            "hadm_id": admission["hadm_id"],
+                            "section": section
+                        }
+                    ))
+        return chunks
+\end{minted}
 
 \subsection{Vector Embeddings and Storage}
-% Embedding generation and FAISS vector store implementation
+
+The embedding management system handles multiple embedding models and FAISS vector store creation:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/core/embeddings_manager.py
+def setup_clinical_embeddings():
+    """Setup clinical embeddings with local model saving/loading"""
+    
+    # Check if model exists locally
+    if LOCAL_MODEL_PATH.exists() and any(LOCAL_MODEL_PATH.iterdir()):
+        try:
+            clinical_emb = HuggingFaceEmbeddings(
+                model_name=str(LOCAL_MODEL_PATH),
+                encode_kwargs={"batch_size": 16}
+            )
+            # Test the model to ensure it's working
+            test_vector = clinical_emb.embed_query("test medical query")
+            print(f"Local model loaded successfully "
+                  f"(test vector dim: {len(test_vector)})")
+            return clinical_emb
+        
+        except Exception as e:
+            print(f"⚠️ Error loading local model: {e}")
+            print("Downloading model...")
+    
+    # Download and save model locally
+    LOCAL_MODEL_PATH.mkdir(parents=True, exist_ok=True)
+    
+    # Download using SentenceTransformer first
+    model = SentenceTransformer(CLINICAL_MODEL_NAME)
+    model.save(str(LOCAL_MODEL_PATH))
+    print(f"Model saved to: {LOCAL_MODEL_PATH}")
+    
+    # LangChain embedding wrapper for SentenceTransformers
+    clinical_emb = HuggingFaceEmbeddings(
+        model_name=str(LOCAL_MODEL_PATH),
+        encode_kwargs={"batch_size": 16}
+    )
+    
+    return clinical_emb
+
+def load_or_create_vectorstore():
+    """Load existing vectorstore or create new one"""
+    clinical_emb = setup_clinical_embeddings()
+    data_provider = DataProvider()
+    
+    try:
+        # Get chunked docs from appropriate source
+        if data_provider.using_synthetic:
+            chunked_docs = data_provider.load_chunked_docs()
+        else:
+            with open(CHUNKED_DOCS_PATH, "rb") as f:
+                chunked_docs = pickle.load(f)
+    except Exception as e:
+        print(f"⚠️ Error loading chunked documents: {e}")
+        chunked_docs = None
+    
+    # Try to load existing vectorstore
+    try:
+        print("Loading existing vectorstore...")
+        vectorstore = FAISS.load_local(
+            VECTORSTORE_PATH,
+            clinical_emb,
+            allow_dangerous_deserialization=True
+        )
+        print("Vectorstore loaded successfully")
+        return vectorstore, clinical_emb, chunked_docs
+    
+    except Exception as e:
+        print(f"⚠️ Error loading vectorstore: {e}")
+        
+        if chunked_docs is None:
+            raise ValueError("No existing vectorstore found and "
+                           "no chunked_docs provided to create new one")
+        
+        print("Creating new vectorstore...")
+        vectorstore = FAISS.from_documents(chunked_docs, clinical_emb)
+        vectorstore.save_local(VECTORSTORE_PATH)
+        
+        return vectorstore, clinical_emb, chunked_docs
+\end{minted}
 
 \subsection{Retrieval and Context Management}
-% Context retrieval and anti-hallucination measures
+
+The core RAG chatbot implementation with context-aware retrieval and anti-hallucination measures:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/core/clinical_rag.py (key methods)
+class ClinicalRAGBot:
+    """Main RAG chatbot for clinical question answering"""
+    
+    def __init__(self, vectorstore, llm, embedder, chunked_docs=None):
+        self.vectorstore = vectorstore
+        self.llm = llm
+        self.embedder = embedder
+        self.chunked_docs = chunked_docs or []
+        self.chat_history = []
+        self.sources = []
+        
+        # Initialize retrieval chain
+        self.retriever = self._create_contextual_retriever()
+        self.chain = self._create_rag_chain()
+    
+    def _create_contextual_retriever(self):
+        """Create context-aware retriever with filtering"""
+        return self.vectorstore.as_retriever(
+            search_type="mmr",  # Maximum marginal relevance
+            search_kwargs={
+                "k": DEFAULT_K,
+                "fetch_k": DEFAULT_K * 2,
+                "lambda_mult": 0.5  # Diversity parameter
+            }
+        )
+    
+    def ask_question(self, question: str, hadm_id: str = None, 
+                    k: int = DEFAULT_K, search_strategy: str = "auto"):
+        """
+        Ask a question with optional admission-specific filtering
+        
+        Args:
+            question: The clinical question to ask
+            hadm_id: Optional admission ID for filtering
+            k: Number of documents to retrieve
+            search_strategy: 'auto', 'admission', or 'global'
+        """
+        start_time = time.time()
+        
+        try:
+            # Entity extraction for auto-parameterization
+            if ENABLE_ENTITY_EXTRACTION:
+                extracted_entities = extract_entities(question, self.chat_history)
+                if not hadm_id and extracted_entities.get("hadm_id"):
+                    hadm_id = extracted_entities["hadm_id"]
+            
+            # Determine search strategy
+            if search_strategy == "auto":
+                search_strategy = "admission" if hadm_id else "global"
+            
+            # Retrieve relevant documents
+            if search_strategy == "admission" and hadm_id:
+                relevant_docs = self._admission_scoped_search(question, hadm_id, k)
+            else:
+                relevant_docs = self._global_search(question, k)
+            
+            if not relevant_docs:
+                return self._no_documents_response(question)
+            
+            # Generate response using RAG chain
+            response = self._generate_response(question, relevant_docs)
+            
+            # Post-processing and safety checks
+            response = self._post_process_response(response, relevant_docs)
+            
+            search_time = time.time() - start_time
+            
+            return {
+                "answer": response,
+                "source_documents": relevant_docs,
+                "search_time": search_time,
+                "documents_found": len(relevant_docs),
+                "search_strategy": search_strategy
+            }
+        
+        except Exception as e:
+            ClinicalLogger.error(f"Error in ask_question: {e}")
+            return self._error_response(str(e))
+    
+    def _admission_scoped_search(self, query: str, hadm_id: str, k: int):
+        """Search within specific admission context"""
+        # Filter documents by admission ID
+        admission_docs = [
+            doc for doc in self.chunked_docs 
+            if doc.metadata.get("hadm_id") == hadm_id
+        ]
+        
+        if not admission_docs:
+            ClinicalLogger.warning(f"No documents found for admission {hadm_id}")
+            return []
+        
+        # Create temporary vectorstore for admission-specific search
+        temp_vectorstore = FAISS.from_documents(admission_docs, self.embedder)
+        temp_retriever = temp_vectorstore.as_retriever(search_kwargs={"k": k})
+        
+        return temp_retriever.get_relevant_documents(query)
+    
+    def _generate_response(self, question: str, documents: List[Document]):
+        """Generate response using retrieved documents"""
+        
+        # Prepare context from retrieved documents
+        context = self._format_context(documents)
+        
+        # Create clinical-focused prompt
+        prompt = f"""
+        Based on the following clinical information, answer the question accurately and concisely.
+        Focus on factual information from the provided context.
+        
+        Clinical Context:
+        {context}
+        
+        Question: {question}
+        
+        Instructions:
+        - Provide specific clinical details when available
+        - Include relevant values, dates, and medical codes
+        - If information is incomplete, state what is missing
+        - Always include the disclaimer about research/educational use
+        """
+        
+        try:
+            response = safe_llm_invoke(self.llm, prompt)
+            return response
+        except Exception as e:
+            ClinicalLogger.error(f"LLM invocation failed: {e}")
+            return "Unable to process the clinical query due to system error."
+    
+    def _post_process_response(self, response: str, documents: List[Document]):
+        """Post-process response for safety and formatting"""
+        
+        # Ensure disclaimer is present
+        if "MIMIC-IV" not in response:
+            response += "\n\nℹ️ Data from MIMIC-IV database for research/education only."
+        
+        # Basic hallucination detection
+        if self._has_potential_hallucination(response, documents):
+            ClinicalLogger.warning("Potential hallucination detected in response")
+            response = ("Based on the available clinical records, specific details "
+                       "for this query may be limited. " + response)
+        
+        return response
+    
+    def _has_potential_hallucination(self, response: str, documents: List[Document]):
+        """Basic hallucination detection using document grounding"""
+        
+        # Check if response contains medical codes not in source documents
+        response_codes = re.findall(r'\b[A-Z]\d{2,5}\b', response)
+        doc_content = " ".join([doc.page_content for doc in documents])
+        
+        for code in response_codes:
+            if code not in doc_content:
+                return True
+        
+        return False
+
+    def chat(self, message: str, chat_history: list = None):
+        """Handle conversational interactions with memory"""
+        
+        if chat_history:
+            self.chat_history = chat_history
+        
+        # Extract context from chat history if available
+        if ENABLE_ENTITY_EXTRACTION and self.chat_history:
+            context = extract_context_from_chat_history(self.chat_history)
+            enhanced_message = f"{message}\nContext: {context}" if context else message
+        else:
+            enhanced_message = message
+        
+        # Get response using standard ask_question method
+        result = self.ask_question(enhanced_message)
+        
+        # Update chat history
+        self.chat_history.extend([
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": result["answer"]}
+        ])
+        
+        # Trim chat history if too long
+        if len(self.chat_history) > MAX_CHAT_HISTORY:
+            self.chat_history = self.chat_history[-MAX_CHAT_HISTORY:]
+        
+        return result["answer"]
+\end{minted}
 
 \section{API Implementation}
 
 \subsection{Flask Backend Endpoints}
-% Main API routes for chat functionality
+
+The Flask API server provides RESTful endpoints for the frontend interface:
+
+\begin{minted}{python}
+# api/app.py
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
+
+# Initialize Flask app
+app = Flask(__name__, static_folder='../frontend/build')
+CORS(app)  # Enable CORS for all routes
+
+# Initialize RAG system
+print("🚀 Initializing Clinical RAG System...")
+try:
+    chatbot = initialize_clinical_rag()
+    print("✅ Clinical RAG System initialized successfully")
+except Exception as e:
+    print(f"❌ Error initializing Clinical RAG System: {e}")
+    chatbot = None
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Handle chat requests"""
+    if not chatbot:
+        return jsonify({
+            'error': 'RAG system not initialized'
+        }), 500
+
+    data = request.json
+    if not data or 'message' not in data:
+        return jsonify({
+            'error': 'Missing message in request'
+        }), 400
+
+    user_message = data['message']
+    chat_history = data.get('chat_history', [])
+
+    # Debug logging
+    print(f"🔍 API Chat Request:")
+    print(f"  - Message: '{user_message}'")
+    print(f"  - Chat history length: {len(chat_history) if chat_history else 0}")
+
+    # Process with RAG system
+    try:
+        response = chatbot.chat(user_message, chat_history)
+        
+        print(f"✅ API Chat Response:")
+        print(f"  - Response length: {len(str(response))}")
+        print(f"  - Response preview: {str(response)[:200]}...")
+
+        return jsonify({
+            'response': response,
+            'sources': chatbot.sources if hasattr(chatbot, 'sources') else []
+        })
+    except Exception as e:
+        print(f"Error processing message: {e}")
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/question', methods=['POST'])
+def ask_question():
+    """Handle specific clinical questions"""
+    if not chatbot:
+        return jsonify({'error': 'RAG system not initialized'}), 500
+
+    data = request.json
+    if not data or 'question' not in data:
+        return jsonify({'error': 'Missing question in request'}), 400
+
+    question = data['question']
+    hadm_id = data.get('hadm_id')
+    k = data.get('k', 5)
+
+    try:
+        result = chatbot.ask_question(question, hadm_id=hadm_id, k=k)
+        
+        return jsonify({
+            'answer': result['answer'],
+            'source_documents': [
+                {
+                    'content': doc.page_content[:500],  # Truncate for API
+                    'metadata': doc.metadata
+                } for doc in result.get('source_documents', [])
+            ],
+            'search_time': result.get('search_time', 0),
+            'documents_found': result.get('documents_found', 0)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy' if chatbot else 'unhealthy',
+        'system': 'Clinical RAG API',
+        'version': '1.0.0'
+    })
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+\end{minted}
 
 \subsection{Error Handling and Logging}
-% Comprehensive error management system
+
+Comprehensive error management and logging system:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/utils/logger.py
+class ClinicalLogger:
+    """Centralized logging utility with verbosity control"""
+    LEVELS = {"quiet": 0, "error": 1, "warning": 2, "info": 3, "debug": 4}
+    level = "info"
+
+    @classmethod
+    def set_level(cls, level: str):
+        if level in cls.LEVELS:
+            cls.level = level
+
+    @classmethod
+    def _enabled(cls, lvl: str) -> bool:
+        return cls.LEVELS.get(cls.level, 3) >= cls.LEVELS.get(lvl, 3)
+
+    @staticmethod
+    def info(msg):
+        if ClinicalLogger._enabled("info"):
+            print(f"ℹ️ {msg}")
+
+    @staticmethod
+    def warning(msg):
+        if ClinicalLogger._enabled("warning"):
+            print(f"⚠️ {msg}")
+
+    @staticmethod
+    def error(msg):
+        if ClinicalLogger._enabled("error"):
+            print(f"❌ {msg}")
+
+    @staticmethod
+    def success(msg):
+        if ClinicalLogger._enabled("info"):
+            print(f"✅ {msg}")
+
+    @staticmethod
+    def debug(msg):
+        if ClinicalLogger._enabled("debug"):
+            print(f"🔍 {msg}")
+
+# Error handling utility
+class ErrorHandler:
+    """Centralized error handling utility"""
+    @staticmethod
+    def safe_operation(func, *args, fallback=None, 
+                      error_msg="Operation failed", **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            ClinicalLogger.warning(f"{error_msg}: {type(e).__name__}: {e}")
+            return fallback
+
+# Safe LLM invocation with retry logic
+def safe_llm_invoke(llm, prompt, max_retries=3):
+    """Safely invoke LLM with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(prompt)
+        except Exception as e:
+            ClinicalLogger.warning(f"LLM invocation attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                return "Unable to generate response due to system limitations."
+            time.sleep(1)  # Brief pause before retry
+\end{minted}
 
 \section{Frontend Interface}
 
 \subsection{React Chat Components}
-% Material-UI chat interface implementation
 
-\subsection{State Management}
-% Frontend state handling for conversations
+The React frontend provides a Material-UI based chat interface:
 
-\section{Data Processing Scripts}
+\begin{minted}{javascript}
+// frontend/src/hooks/useChat.js
+import { useState, useCallback } from 'react';
 
-\subsection{MIMIC-IV Data Loading}
-% Database connection and data extraction
+export const useChat = () => {
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-\subsection{Text Preprocessing Pipeline}
-% Clinical text preprocessing and normalization
+  const sendMessage = useCallback(async (message) => {
+    if (!message.trim()) return;
 
-\blindtext
+    // Add user message to chat
+    const userMessage = {
+      id: Date.now(),
+      text: message,
+      sender: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: message,
+          chat_history: messages.map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant',
+            content: msg.text
+          }))
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Add bot response to chat
+      const botMessage = {
+        id: Date.now() + 1,
+        text: data.response,
+        sender: 'bot',
+        timestamp: new Date(),
+        sources: data.sources || []
+      };
+
+      setMessages(prev => [...prev, botMessage]);
+    } catch (err) {
+      console.error('Chat error:', err);
+      setError(err.message);
+      
+      // Add error message to chat
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: `Sorry, I encountered an error: ${err.message}`,
+        sender: 'bot',
+        timestamp: new Date(),
+        isError: true
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [messages]);
+
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setError(null);
+  }, []);
+
+  return {
+    messages,
+    isLoading,
+    error,
+    sendMessage,
+    clearChat
+  };
+};
+\end{minted}
+
+\subsection{Main Chat Component}
+
+\begin{minted}{javascript}
+// frontend/src/components/MessageList.js
+import React from 'react';
+import { 
+  Box, 
+  Paper, 
+  Typography, 
+  Chip, 
+  Alert 
+} from '@mui/material';
+import { Message } from './Message';
+
+export const MessageList = ({ messages, isLoading }) => {
+  return (
+    <Box
+      sx={{
+        flexGrow: 1,
+        overflow: 'auto',
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+      }}
+    >
+      {messages.length === 0 && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            Welcome to the Clinical RAG Assistant! 
+            Ask questions about patient data, lab results, diagnoses, 
+            procedures, or medications.
+          </Typography>
+          <Box sx={{ mt: 1 }}>
+            <Chip 
+              label="Example: What lab values were abnormal for admission 25282710?" 
+              variant="outlined" 
+              size="small"
+              sx={{ mr: 1, mb: 1 }}
+            />
+            <Chip 
+              label="Example: Show me diagnostic information for admission 24711716" 
+              variant="outlined" 
+              size="small"
+              sx={{ mr: 1, mb: 1 }}
+            />
+          </Box>
+        </Alert>
+      )}
+
+      {messages.map((message) => (
+        <Message key={message.id} message={message} />
+      ))}
+
+      {isLoading && (
+        <Paper
+          elevation={1}
+          sx={{
+            p: 2,
+            alignSelf: 'flex-start',
+            maxWidth: '70%',
+            bgcolor: 'grey.100',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            Processing your clinical query...
+          </Typography>
+        </Paper>
+      )}
+    </Box>
+  );
+};
+\end{minted}
+
+\section{Evaluation and Benchmarking System}
+
+\subsection{Automated Model Evaluation}
+
+The evaluation system for comparing model combinations:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/benchmarks/rag_evaluator.py (key methods)
+class ClinicalRAGEvaluator:
+    """Configuration-driven RAG evaluator using config.py parameters"""
+
+    def __init__(self, chatbot: ClinicalRAGBot):
+        self.chatbot = chatbot
+        self.patient_data = get_sample_data()
+        self.results = []
+        self.embedding_cache = {}
+
+    def evaluate_question(self, gold_question: Dict, question_id: str = None):
+        """Evaluate a single question with enhanced weighted scoring"""
+        result = {
+            "question": gold_question["question"],
+            "category": gold_question["category"],
+            "timestamp": datetime.now().isoformat(),
+            "question_id": question_id
+        }
+
+        try:
+            # Get chatbot response
+            hadm_id = self._clean_hadm_id(gold_question.get("hadm_id"))
+            enhanced_question = self._enhance_prompt(
+                gold_question["question"], 
+                gold_question["category"]
+            )
+
+            response = self.chatbot.ask_question(
+                question=enhanced_question,
+                hadm_id=hadm_id,
+                k=5
+            )
+
+            # Multi-dimensional scoring
+            factual_score = self.evaluate_factual_accuracy(gold_question, response)
+            context_relevance = self.evaluate_context_relevance(
+                gold_question["question"], 
+                response.get("source_documents", [])
+            )
+            semantic_score = self.evaluate_semantic_similarity(
+                response.get("answer", ""), 
+                self._get_medical_keywords_for_category(gold_question["category"])
+            )
+            performance_score = self.evaluate_performance(response)
+
+            # Weighted overall score
+            overall_score = (
+                factual_score * EVALUATION_SCORING_WEIGHTS["factual_accuracy"] +
+                context_relevance * EVALUATION_SCORING_WEIGHTS["context_relevance"] +
+                semantic_score * EVALUATION_SCORING_WEIGHTS["semantic_similarity"] +
+                performance_score * EVALUATION_SCORING_WEIGHTS["performance"]
+            )
+
+            # Pass/fail determination
+            category = gold_question["category"]
+            threshold = EVALUATION_PASS_THRESHOLDS.get(category, 
+                       EVALUATION_PASS_THRESHOLDS["default"])
+            passed = overall_score >= threshold
+
+            # Store detailed results
+            result.update({
+                "response": response.get("answer", ""),
+                "overall_score": overall_score,
+                "factual_accuracy_score": factual_score,
+                "context_relevance_score": context_relevance,
+                "semantic_similarity_score": semantic_score,
+                "performance_score": performance_score,
+                "pass_threshold": threshold,
+                "passed": passed,
+                "search_time": response.get("search_time", 0),
+                "documents_found": response.get("documents_found", 0)
+            })
+
+            return result
+
+        except Exception as e:
+            result.update({
+                "error": str(e),
+                "overall_score": 0.0,
+                "passed": False
+            })
+            return result
+
+    def run_evaluation(self, questions: List[Dict]) -> Dict:
+        """Run evaluation on a list of questions"""
+        results = []
+        total_time = 0
+
+        for i, question in enumerate(questions):
+            question_id = f"q_{i}"
+            result = self.evaluate_question(question, question_id)
+            results.append(result)
+            total_time += result.get("search_time", 0)
+
+        # Calculate summary statistics
+        passed_count = sum(1 for r in results if r.get("passed", False))
+        pass_rate = passed_count / len(results) if results else 0
+        avg_score = sum(r.get("overall_score", 0) for r in results) / len(results)
+
+        return {
+            "summary": {
+                "total_questions": len(questions),
+                "passed": passed_count,
+                "pass_rate": pass_rate,
+                "average_score": avg_score,
+                "total_time": total_time,
+                "avg_time_per_question": total_time / len(results) if results else 0
+            },
+            "detailed_results": results,
+            "category_breakdown": self._calculate_category_breakdown(results)
+        }
+\end{minted}
+
+\subsection{Hallucination Detection and Safety Metrics}
+
+\begin{minted}{python}
+# RAG_chat_pipeline/results/enrich_results.py (safety metrics extraction)
+def extract_efficiency_and_safety(payload: Dict[str, Any]) -> Tuple[float, float, float]:
+    """Extract efficiency and safety metrics from evaluation results"""
+    metrics = payload.get("metrics", {}) or {}
+    notes = metrics.get("notes", "")
+    
+    # Extract total evaluation time
+    m = re.search(r"completed in\s+([\d\.]+)s", notes)
+    total_s = float(m.group(1)) if m else None
+
+    # Get detailed question results
+    detailed = (payload.get("raw_results", {}) or {}
+                ).get("detailed_results", []) or []
+    responses = [r.get("response", "") or "" for r in detailed 
+                if r.get("response") is not None]
+
+    # Calculate disclaimer rate
+    disclaimer_hits = sum("Data from MIMIC-IV" in r for r in responses)
+    disclaimer_rate = (disclaimer_hits / len(responses)) if responses else 0.0
+
+    # Calculate hallucination rate based on factual accuracy threshold
+    low_factual = [r.get("factual_accuracy_score", 0.0) for r in detailed]
+    hallucination_rate = (sum(x < 0.6 for x in low_factual) / 
+                         len(low_factual)) if low_factual else 0.0
+
+    return total_s, disclaimer_rate, hallucination_rate
+\end{minted}
+
+\section{Configuration Management}
+
+\subsection{Dynamic Model Configuration}
+
+The configuration system allows dynamic switching between model combinations:
+
+\begin{minted}{python}
+# RAG_chat_pipeline/config/config.py (key configuration functions)
+def set_models(embedding_model: str = "ms-marco", llm_model: str = "deepseek"):
+    """
+    Dynamically set the embedding and LLM models for the current session.
+    
+    Args:
+        embedding_model: Embedding model nickname 
+        llm_model: LLM model nickname
+    
+    Returns:
+        tuple: (embedding_model, llm_model) that were set
+    """
+    global model_in_use, LLM_MODEL, CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH
+
+    # Validate embedding model
+    if embedding_model not in model_names:
+        raise ValueError(f"Invalid embedding model: {embedding_model}. "
+                        f"Available: {list(model_names.keys())}")
+
+    # Validate LLM model
+    if llm_model not in llms:
+        raise ValueError(f"Invalid LLM model: {llm_model}. "
+                        f"Available: {list(llms.keys())}")
+
+    # Update global variables
+    model_in_use = embedding_model
+    LLM_MODEL = llms[llm_model]
+
+    return embedding_model, llm_model
+
+def get_config_summary():
+    """Get a summary of current configuration."""
+    llm_nickname = next(k for k, v in llms.items() if v == LLM_MODEL)
+    return f"""
+🔧 Current Configuration:
+   Embedding Model: {model_in_use} ({CLINICAL_MODEL_NAME})
+   LLM Model: {llm_nickname} ({LLM_MODEL})
+   Vector Store: {VECTORSTORE_PATH.name}
+   Model Path: {LOCAL_MODEL_PATH.name}
+"""
+
+# Model configurations for 54 combinations
+model_names = {
+    "ms-marco": ["S-PubMedBert-MS-MARCO", "pritamdeka/S-PubMedBert-MS-MARCO", 
+                "faiss_mimic_sample1000_ms-marco"],
+    "multi-qa": ["multi-qa-mpnet-base-cos-v1", "sentence-transformers/multi-qa-mpnet-base-cos-v1", 
+                "faiss_mimic_sample1000_multi-qa"],
+    "mini-lm": ["all-MiniLM-L6-v2", "sentence-transformers/all-MiniLM-L6-v2", 
+               "faiss_mimic_sample1000_mini-lm"],
+    "BioBERT": ["BioBERT-mnli-snli-scinli-scitail-mednli-stsb", 
+               "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", 
+               "faiss_mimic_sample1000_BioBERT"],
+    # ... additional model configurations
+}
+
+llms = {
+    "deepseek": "deepseek-r1:1.5b",
+    "qwen": "qwen3:1.7b",
+    "llama": "llama3.2:latest",
+    "gemma": "gemma:2b",
+    "phi3": "phi3:3.8b",
+    "tinyllama": "tinyllama:1.1b",
+}
+\end{minted}
+
+\section{Data Processing and Synthetic Data Generation}
+
+\subsection{Synthetic Data Generation for Public Deployment}
+
+\begin{minted}{python}
+# synthetic_data/synthetic_data_generator.py (key methods)
+class SyntheticDataGenerator:
+    """Generate realistic synthetic clinical data matching MIMIC-IV structure"""
+    
+    def __init__(self, num_patients=100, num_admissions=150):
+        self.num_patients = num_patients
+        self.num_admissions = num_admissions
+        self.fake = Faker()
+        
+    def generate_complete_dataset(self):
+        """Generate complete synthetic dataset with all clinical tables"""
+        
+        # Generate base patient population
+        patients = self._generate_patients()
+        admissions = self._generate_admissions(patients)
+        
+        # Generate clinical data tables
+        diagnoses = self._generate_diagnoses(admissions)
+        procedures = self._generate_procedures(admissions)
+        lab_events = self._generate_lab_events(admissions)
+        prescriptions = self._generate_prescriptions(admissions)
+        microbiology = self._generate_microbiology_events(admissions)
+        
+        return {
+            'patients': patients,
+            'admissions': admissions,
+            'diagnoses': diagnoses,
+            'procedures': procedures,
+            'lab_events': lab_events,
+            'prescriptions': prescriptions,
+            'microbiology': microbiology
+        }
+    
+    def _generate_realistic_lab_values(self, admission_type):
+        """Generate realistic lab values based on admission context"""
+        
+        normal_ranges = {
+            'Hemoglobin': (12.0, 16.0),
+            'White Blood Cell Count': (4.5, 11.0),
+            'Platelet Count': (150, 450),
+            'Creatinine': (0.6, 1.2),
+            'Glucose': (70, 110),
+            'Sodium': (136, 145),
+            'Potassium': (3.5, 5.0)
+        }
+        
+        labs = []
+        for lab_name, (min_val, max_val) in normal_ranges.items():
+            # Introduce abnormalities based on admission type
+            if admission_type == 'EMERGENCY':
+                # Higher chance of abnormal values
+                if random.random() < 0.4:
+                    value = random.uniform(min_val * 0.7, min_val * 0.9) if random.random() < 0.5 else random.uniform(max_val * 1.1, max_val * 1.3)
+                else:
+                    value = random.uniform(min_val, max_val)
+            else:
+                # Mostly normal values
+                value = random.uniform(min_val, max_val)
+            
+            labs.append({
+                'itemid': hash(lab_name) % 10000,
+                'label': lab_name,
+                'value': round(value, 2),
+                'valueuom': 'mg/dL' if 'Glucose' in lab_name or 'Creatinine' in lab_name else 'count',
+                'flag': 'abnormal' if value < min_val or value > max_val else 'normal'
+            })
+        
+        return labs
+\end{minted}
+
+This comprehensive code appendix provides implementation details for all major components of the Clinical RAG system, demonstrating the technical depth and architectural decisions that enable the system's clinical capabilities while maintaining code quality and safety standards.
