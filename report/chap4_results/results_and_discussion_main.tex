@@ -55,14 +55,14 @@ Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap 
 
 \subsection{Multi-Dimensional Performance Assessment}
 
-The top-performing configurations demonstrate different optimization strategies:
+The top-performing configurations demonstrate different optimisation strategies:
 
 \textbf{Quality-Optimized (BioBERT + Phi3):}
 \begin{itemize}
     \item Highest overall score (0.770)
     \item Perfect reliability (100\% pass rate)
     \item Moderate speed (67.7s)
-    \item Medical domain specialization advantage
+    \item Medical domain specialisation advantage
     \item Low hallucination rate (15\%)
 \end{itemize}
 
@@ -89,21 +89,21 @@ The top-performing configurations demonstrate different optimization strategies:
 \subsection{Embedding Model Performance}
 \input{chap4_results/tables/embedding_ranking}
 
-\textbf{Medical Specialization vs. Generalization Trade-off:}
+\textbf{Medical Specialisation vs. Generalisation Trade-off:}
 \begin{itemize}
-    \item \textbf{Multi-qa-mpnet} (0.730): Top performer - QA specialization trumps domain knowledge
+    \item \textbf{Multi-qa-mpnet} (0.730): Top performer - QA specialisation trumps domain knowledge
     \item \textbf{MPNet-v2} (0.718): Strong general-purpose performance
     \item \textbf{Mini-lm} (0.716): Efficient lightweight option
-    \item \textbf{BioBERT} (0.716): Medical specialization shows competitive results
-    \item \textbf{Medical Models} generally: Excel in accuracy but slower retrieval
+    \item \textbf{BioBERT} (0.716): Medical specialisation shows competitive results
+    \item \textbf{Medical Models} generally: Excel in accuracy, but slower retrieval
     \item \textbf{General Models}: Faster retrieval, competitive accuracy
 \end{itemize}
 
-\textbf{Key Finding}: Question-answering specialization (multi-qa embeddings) proves more valuable than medical domain specialization alone, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
+\textbf{Key Finding}: Question-answering specialisation (multi-qa embeddings) proves more valuable than medical domain specialisation alone, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
 
 \subsection{Large Language Model Performance Analysis}
 
-LLM performance shows less variation than embedding models, with scores ranging from 0.696 (qwen) to 0.717 (tinyllama). This narrow range suggests that the embedding component has greater impact on overall system performance than LLM selection.
+LLM performance shows less variation than embedding models, with scores ranging from 0.696 (qwen) to 0.717 (tinyllama). This narrow range suggests that the embedding component has a greater impact on overall system performance than LLM selection.
 
 \textbf{Model Size vs Performance Correlation:}
 \begin{itemize}
@@ -113,7 +113,7 @@ LLM performance shows less variation than embedding models, with scores ranging 
     \item \textbf{DeepSeek-R1 (1.5B)}: 0.701 - Reasoning focus, competitive results
 \end{itemize}
 
-\textbf{Surprising Result}: The smallest model (TinyLlama) achieved the highest average performance, challenging assumptions about parameter count correlating with quality in specialized domains.
+\textbf{Surprising Result}: The smallest model (TinyLlama) achieved the highest average performance, challenging assumptions about parameter count correlating with quality in specialised domains.
 
 \section{Efficiency and Safety}
 We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
@@ -139,7 +139,7 @@ We summarise representative efficiency and safety outcomes in Table~\ref{tab:eff
 
 \subsection{Safety and Hallucination Analysis}
 
-All configurations maintain hallucination rates below 45\%, with medical-specialized combinations showing superior safety profiles:
+All configurations maintain hallucination rates below 45\%, with medical-specialised combinations showing superior safety profiles:
 
 \begin{itemize}
     \item \textbf{Safest Configuration}: MedQuAD + deepseek (10\% hallucination, 0.744 score)
@@ -180,7 +180,7 @@ Based on comprehensive performance analysis, we provide evidence-based recommend
 
 \section{Statistical Significance and Model Selection}
 
-Performance differences between top configurations are statistically significant, confirming that model selection has meaningful impact on clinical RAG system performance:
+Performance differences between top configurations are statistically significant, confirming that model selection has a meaningful impact on clinical RAG system performance:
 
 \textbf{ANOVA Results:}
 \begin{itemize}
@@ -199,8 +199,8 @@ The 95\% confidence intervals for top performers show robust performance estimat
 \section{Discussion}
 Overall, the average score is a more discriminative primary KPI than pass rate, revealing nuanced differences among competitive pairs. Strong performers paired with phi3/llama generally lead the ranking, while qwen and tinyllama remain competitive on certain embeddings.
 
-\subsection{Domain Specialization vs Task Specialization}
-The results challenge conventional wisdom about domain-specific models. Question-answering specialization (multi-qa embeddings) proves more valuable than medical domain specialization, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
+\subsection{Domain Specialisation vs Task Specialisation}
+The results challenge conventional wisdom about domain-specific models. Question-answering specialisation (multi-qa embeddings) proves more valuable than medical domain specialisation, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
 
 \subsection{Efficiency-Quality Trade-offs}
 Unlike many AI systems, our clinical RAG implementation shows weak correlation between quality and speed (r=-0.12). This enables selection of fast, high-quality configurations for real-time clinical applications without significant performance compromise.
@@ -328,11 +328,11 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
 This comprehensive evaluation of 54 clinical RAG configurations provides crucial insights for medical AI system deployment:
 
 \begin{enumerate}
-    \item \textbf{Task Specialization Over Domain Specialization}: QA-specialized embeddings (multi-qa) outperform medical-domain embeddings, suggesting retrieval task alignment is more critical than medical pre-training.
+    \item \textbf{Task Specialisation Over Domain Specialisation}: QA-specialised embeddings (multi-qa) outperform medical-domain embeddings, suggesting retrieval task alignment is more critical than medical pre-training.
 
     \item \textbf{Model Size Efficiency}: Smaller, well-designed models (1.5-2B parameters) achieve performance competitive with larger models while offering significant efficiency gains.
 
-    \item \textbf{Statistical Significance}: Embedding selection has statistically significant impact (p=0.018) while LLM choice shows less variation, indicating where optimization efforts should focus.
+    \item \textbf{Statistical Significance}: Embedding selection has a statistically significant impact (p=0.018) while LLM choice shows less variation, indicating where optimisation efforts should focus.
 
     \item \textbf{Safety Profile}: All configurations maintain acceptable hallucination rates (\textless45\%), with medical-specialized models showing superior safety profiles (\textless20\%).
 

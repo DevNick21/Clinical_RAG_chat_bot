@@ -3,20 +3,20 @@
 %% The updated version of this document should be downloaded from
 %%      https://github.com/jp-um/university_of_malta_LaTeX_dissertation_template
 %%
-%% In case of any difficulties please contact Dr JP Ebejer on jean.p.ebejer@um.edu.mt
+%% In case of any difficulties, please contact Dr JP Ebejer on jean.p.ebejer@um.edu.mt
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% Before you embark on this quest you should probably read some of:
+%% Before you embark on this quest, you should probably read some of:
 %% Deadly sins - http://ctan.mirror.garr.it/mirrors/CTAN/info/l2tabu/english/l2tabuen.pdf
 %% Writing a thesis in LaTeX - http://tug.org/pracjourn/2008-1/mori/mori.pdf
 
 \RequirePackage[l2tabu, orthodox]{nag} % tells you of any bad LaTeX usage
-                                       % must be first thing in class (with the exception of comments)
+                                       % must be the first thing in class (except comments)
 
-%% There is one option you should define; oneside or twoside
+%% There is one option you should define: one-sided or two-sided
 %% Use twoside for your viva docs (examiners hate long docs they need to carry around)
-%% and oneside for the final thing you submit to the library.  Note that margins will
+%% and one-sided for the final thing you submit to the library.  Note that margins will
 %% change accordingly
 
 \documentclass[twoside]{mmu}  % custom University of Malta project/dissertation/thesis
@@ -46,14 +46,14 @@
                                                     % words in lower case)
 \tagline{AI-Powered Clinical Decision Support System}                     % tag line
 \author{Ekenedirichukwu Iheanacho}                           % your name
-\authorID{2480041}                           % your University Identifier
+\authorID{24800041}                           % your University Identifier
 \supervisor{Luciano Gerber}                             % your supervisor(s) name - no . in Dr
 % \cosupervisor{Dr Who}                               % your cosupervisor(s) name - no . in Dr ** OPTIONAL **
                                                     % simply comment out the above line if absent
 \department{Department of Computing and Mathematics}                  % your department (e.g. Artifical Intelligence)
 \faculty{Faculty of Science and Engineering}                      % your faculty (e.g. ICT)
 \degree{M.Sc.\ in Artificial Intelligence}                      % the degree you are reading
-                                                    % note the \ after the dot, so not to consider it a fullstop
+                                                    % note the \ after the dot, so as not to consider it a full stop
 \doctype{dissertation}                              % the type of document (fyp, dissertation, thesis)
 \degreedate{August, 2025}                        % when did you submit -- officially after your corrections !
 %%\subjectcode{ICS5200}                               % the study unit-code (currently not used)
@@ -102,8 +102,7 @@
     \input{chap2_lit_review/background_and_lit_overview_main}
     \input{chap3_methodology/materials_and_methods_main}
     \input{chap4_results/results_and_discussion_main}
-    \input{chap6_unused/conclusions_main}
-    % chap6_unused folder preserved for potential future content
+    \input{chap5_conclusions/conclusions_main}
     \appendix
         \input{appA_code/appendix_a_main}
         \input{appB_dataset/appendix_b_main}
@@ -115,7 +114,7 @@
     % Bibliography
     \if@openright\cleardoublepage\else\clearpage\fi
     \bibliographystyle{mmu-plainnat} %% MMU specific plainnat style
-    {\footnotesize\bibliography{chap1_intro/introduction_biblio,chap2_lit_review/background_and_lit_overview_biblio,chap3_methodology/materials_and_methods_biblio,chap4_results/results_and_discussion_biblio,chap5_conclusions/conclusions_biblio}}
+    {\footnotesize\bibliography{chap1_intro/introduction_biblio,chap2_lit_review/background_and_lit_overview_biblio,chap3_methodology/materials_and_methods_biblio,chap4_results/results_and_discussion_biblio}}
 	\printindex
 }
 
