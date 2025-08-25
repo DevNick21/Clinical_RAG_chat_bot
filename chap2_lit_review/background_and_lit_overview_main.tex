@@ -19,7 +19,7 @@ The Transformer then became the backbone for \textbf{Pre-trained Language Models
 
 \subsection{Emergence and Mechanics of Retrieval-Augmented Generation (RAG)}
 
-RAG addresses LLM limitations by combining strong generative capabilities with \textbf{external memory retrieval}. Early work such as REALM integrated retrieval into pre-training (\citep{guu2020realm}). Lewis et al. (\citeyear{lewis2020rag}) introduced RAG, pairing a neural retriever with a seq2seq generator: top-k passages are retrieved and used to ground output. Variants such as Fusion-in-Decoder (\citep{izacard2021leveraging}) and RETRO (\citep{borgeaud2022retro}) expanded retrieval to larger corpora. Frameworks like LangChain (\citep{langchain2023}) and LlamaIndex (\citep{llamaindex2023}) operationalised RAG pipelines.
+RAG addresses LLM limitations by combining strong generative capabilities with \textbf{external memory retrieval}. Early work, such as REALM integrated retrieval into pre-training (\citep{guu2020realm}). Lewis et al. (\citeyear{lewis2020rag}) introduced RAG, pairing a neural retriever with a seq2seq generator: top-k passages are retrieved and used to ground output. Variants such as Fusion-in-Decoder (\citep{izacard2021leveraging}) and RETRO (\citep{borgeaud2022retro}) expanded retrieval to larger corpora. Frameworks like LangChain (\citep{langchain2023}) and LlamaIndex (\citep{llamaindex2023}) operationalised RAG pipelines.
 
 The typical RAG pipeline has three steps:
 \begin{itemize}
@@ -36,7 +36,7 @@ This allows factuality without retraining, making RAG especially attractive in h
 Naive RAG directly applies indexing, retrieval, and generation. Studies show RAG-enhanced GPT-4 can reach 99\% accuracy on hepatology guidelines compared to 43\% for GPT-4-Turbo alone (\citep{li2024liversa}). Systems such as ChatENT in otolaryngology (\citep{zhang2024chatent}) and Almanac in clinical QA (\citep{singhal2023almanac}) demonstrate fewer hallucinations. In EHR phenotyping, RAG-LLMs outperform rule-based methods (\citep{wu2024ragphenotype}).
 
 \subsubsection{Advanced RAG}
-Advanced RAG adds pre- and post-retrieval refinements: metadata filters, hybrid retrievers, re-ranking. Knowledge graphs are integrated for richer reasoning. MedRAG, for example, combines a diagnostic KG with RAG to improve disease-specific QA and proactive questioning (\citep{zhao2025medrag}). Systems like RECTIFIER use RAG for trial eligibility screening, outperforming human staff in accuracy (\citep{wang2024rectifier}).
+Advanced RAG adds pre- and post-retrieval refinements: metadata filters, hybrid retrievers, and re-ranking. Knowledge graphs are integrated for richer reasoning. MedRAG, for example, combines a diagnostic KG with RAG to improve disease-specific QA and proactive questioning (\citep{zhao2025medrag}). Systems like RECTIFIER use RAG for trial eligibility screening, outperforming human staff in accuracy (\citep{wang2024rectifier}).
 
 \subsubsection{Modular RAG}
 Modular RAG employs multi-component systems: hybrid retrievers, multiple LLM agents, and prompt-engineered retrieval. Prompt-RAG (\citep{kim2024promptrag}) uses natural-language prompts instead of embeddings, while multi-agent approaches improve GPT-4 accuracy to 95\% (\citep{sun2025agenticrag}).
@@ -62,13 +62,13 @@ Open and proprietary medical LLMs fine-tuned on biomedical corpora show consiste
 Beyond single-turn QA, systems optimised for history taking and iterative differential diagnosis (DDx) indicate that LLMs can support the diagnostic process itself. Google's AMIE reports clinically preferred diagnostic dialogues and improved DDx support in controlled studies (\citep{amie2025nature,amie2024blog}). Embedding such models into triage, clerking, and MDT workflows is a natural next step.
 
 \paragraph{Multimodal clinical models (text + imaging + signals).}
-Vision language models specialised for medicine (e.g. LLaVA-Med and Med-Flamingo) demonstrate open-ended reasoning over biomedical figures and radiology, with clinical-rated gains in medical VQA and progress in report generation (\citep{llavamed2023,moor2023medflamingo,nature2024flamingocxr}). Extending RAG to \emph{multimodal RAG} retrieving not just passages but also linked images and structured findings can provide better ground answers in PACS and reporting systems.
+Vision language models specialised for medicine (e.g. LLaVA-Med and Med-Flamingo) demonstrate open-ended reasoning over biomedical figures and radiology, with clinical-rated gains in medical VQA and progress in report generation (\citep{llavamed2023,moor2023medflamingo,nature2024flamingocxr}). Extending RAG to \emph{multimodal RAG}, retrieving not just passages but also linked images and structured findings can provide better ground answers in PACS and reporting systems.
 
 \paragraph{Graph-augmented and structure-aware retrieval.}
 New pipelines like GraphRAG construct and query knowledge graphs over private corpora, improving recall and reasoning on narrative clinical data (\citep{larson2024graphrag,graphrag2024arxiv}). In healthcare, combining ontology-backed graphs (e.g., UMLS) with free-text retrieval may mitigate retrieval blind spots and support multi-hop guideline reasoning.
 
 \paragraph{Agentic workflows and tool use.}
-Multi-agent pipelines that plan, retrieve, verify and cite, rather than single-pass prompting show accuracy gains in open-domain tasks and are well suited to safety-critical settings (e.g., agent plans for guideline lookup, DDx cross-checks, and citation verification) (\citep{sun2025agenticrag}). Clinically, agents can orchestrate EHR queries (SQL, FHIR), calculator tools (risk scores) and literature checks before drafting notes.
+Multi-agent pipelines that plan, retrieve, verify and cite, rather than single-pass prompting, show accuracy gains in open-domain tasks and are well-suited to safety-critical settings (e.g., agent plans for guideline lookup, DDx cross-checks, and citation verification) (\citep{sun2025agenticrag}). Clinically, agents can orchestrate EHR queries (SQL, FHIR), calculator tools (risk scores) and literature checks before drafting notes.
 
 \paragraph{Tight EHR integration and structured data grounding.}
 Future systems should natively query structured sources (e.g. MIMIC-IV–like schemas, FHIR servers) to ground generation in vitals, labs and medications, reducing hallucinations and enabling patient-specific recommendations (\citep{yang2022gatortron}). Coupling retrieval over notes with programmatic reads of structured fields is a practical near-term target.
