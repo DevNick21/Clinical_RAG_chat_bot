@@ -93,7 +93,7 @@ def setup_clinical_embeddings():
             return clinical_emb
         
         except Exception as e:
-            print(f"⚠️ Error loading local model: {e}")
+            print(f"Error loading local model: {e}")
             print("Downloading model...")
     
     # Download and save model locally
@@ -125,7 +125,7 @@ def load_or_create_vectorstore():
             with open(CHUNKED_DOCS_PATH, "rb") as f:
                 chunked_docs = pickle.load(f)
     except Exception as e:
-        print(f"⚠️ Error loading chunked documents: {e}")
+        print(f"Error loading chunked documents: {e}")
         chunked_docs = None
     
     # Try to load existing vectorstore
@@ -140,7 +140,7 @@ def load_or_create_vectorstore():
         return vectorstore, clinical_emb, chunked_docs
     
     except Exception as e:
-        print(f"⚠️ Error loading vectorstore: {e}")
+        print(f"Error loading vectorstore: {e}")
         
         if chunked_docs is None:
             raise ValueError("No existing vectorstore found and "
@@ -291,7 +291,7 @@ class ClinicalRAGBot:
         
         # Ensure disclaimer is present
         if "MIMIC-IV" not in response:
-            response += "\n\nℹ️ Data from MIMIC-IV database for research/education only."
+            response += "\n\nData from MIMIC-IV database for research/education only."
         
         # Basic hallucination detection
         if self._has_potential_hallucination(response, documents):
@@ -360,12 +360,12 @@ app = Flask(__name__, static_folder='../frontend/build')
 CORS(app)  # Enable CORS for all routes
 
 # Initialize RAG system
-print("🚀 Initializing Clinical RAG System...")
+print("Initializing Clinical RAG System...")
 try:
     chatbot = initialize_clinical_rag()
-    print("✅ Clinical RAG System initialized successfully")
+    print("Clinical RAG System initialized successfully")
 except Exception as e:
-    print(f"❌ Error initializing Clinical RAG System: {e}")
+    print(f"Error initializing Clinical RAG System: {e}")
     chatbot = None
 
 @app.route('/api/chat', methods=['POST'])
@@ -386,7 +386,7 @@ def chat():
     chat_history = data.get('chat_history', [])
 
     # Debug logging
-    print(f"🔍 API Chat Request:")
+    print(f"API Chat Request:")
     print(f"  - Message: '{user_message}'")
     print(f"  - Chat history length: {len(chat_history) if chat_history else 0}")
 
@@ -394,7 +394,7 @@ def chat():
     try:
         response = chatbot.chat(user_message, chat_history)
         
-        print(f"✅ API Chat Response:")
+        print(f"API Chat Response:")
         print(f"  - Response length: {len(str(response))}")
         print(f"  - Response preview: {str(response)[:200]}...")
 
@@ -475,27 +475,27 @@ class ClinicalLogger:
     @staticmethod
     def info(msg):
         if ClinicalLogger._enabled("info"):
-            print(f"ℹ️ {msg}")
+            print(f"INFO: {msg}")
 
     @staticmethod
     def warning(msg):
         if ClinicalLogger._enabled("warning"):
-            print(f"⚠️ {msg}")
+            print(f"WARNING: {msg}")
 
     @staticmethod
     def error(msg):
         if ClinicalLogger._enabled("error"):
-            print(f"❌ {msg}")
+            print(f"ERROR: {msg}")
 
     @staticmethod
     def success(msg):
         if ClinicalLogger._enabled("info"):
-            print(f"✅ {msg}")
+            print(f"SUCCESS: {msg}")
 
     @staticmethod
     def debug(msg):
         if ClinicalLogger._enabled("debug"):
-            print(f"🔍 {msg}")
+            print(f"DEBUG: {msg}")
 
 # Error handling utility
 class ErrorHandler:
@@ -887,7 +887,7 @@ def get_config_summary():
     """Get a summary of current configuration."""
     llm_nickname = next(k for k, v in llms.items() if v == LLM_MODEL)
     return f"""
-🔧 Current Configuration:
+Current Configuration:
    Embedding Model: {model_in_use} ({CLINICAL_MODEL_NAME})
    LLM Model: {llm_nickname} ({LLM_MODEL})
    Vector Store: {VECTORSTORE_PATH.name}
