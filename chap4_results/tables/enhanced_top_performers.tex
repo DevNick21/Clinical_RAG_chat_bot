@@ -1,0 +1,24 @@
+\begin{table}[!htbp]
+\centering
+\begin{small}
+\renewcommand\arraystretch{1.1}
+\begin{tabular}{|c|l|l|c|c|c|}
+\hline
+\textbf{Rank} & \textbf{Embedding} & \textbf{LLM} & \textbf{Score} & \textbf{Pass Rate} & \textbf{Time (s)} \\
+\hline
+1 & BioBERT & phi3 & 0.7702 & 100.00% & 67.7 \\
+2 & multi-qa & phi3 & 0.7692 & 95.00% & 70.8 \\
+3 & multi-qa & llama & 0.7637 & 95.00% & 61.2 \\
+4 & mini-lm & deepseek & 0.7586 & 95.00% & 326.0 \\
+5 & mini-lm & llama & 0.7508 & 100.00% & 56.5 \\
+6 & multi-qa & qwen & 0.7475 & 95.00% & 72.7 \\
+7 & MedQuAD & deepseek & 0.7443 & 90.00% & 355.7 \\
+8 & BioBERT & llama & 0.7418 & 90.00% & 82.5 \\
+9 & BioLORD & tinyllama & 0.7416 & 95.00% & 73.4 \\
+10 & biomedbert & tinyllama & 0.7416 & 95.00% & 355.3 \\
+\hline
+\end{tabular}
+\end{small}
+\caption{Top 10 Performing Model Combinations}
+\label{tab:enhanced_top_performers}
+\end{table}
