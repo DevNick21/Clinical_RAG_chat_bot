@@ -7,15 +7,42 @@ This literature review comprehensively explores the application of RAG within cl
 
 \subsection{Evolution of Language Models Leading to RAG}
 
-The journey towards sophisticated language understanding systems has seen significant transformations. Initially, \textbf{Statistical Language Models (SLMs)} such as n-gram models, which emerged in the 1990s, used probabilistic statistics to model word sequences. These were succeeded by \textbf{Neural Language Models (NLMs)}, which employed neural networks to capture complex linguistic patterns.
+The development of language models represents a continuous evolution toward more sophisticated natural language understanding and generation capabilities, ultimately culminating in retrieval-augmented approaches that address fundamental limitations of standalone generative models.
 
-Further progress led to \textbf{Recurrent Neural Networks (RNNs)} and, in particular, \textbf{Long Short-Term Memory (LSTM)} and \textbf{Gated Recurrent Neural Networks}, which were established as state-of-the-art for sequence modelling and transduction tasks. However, these architectures faced challenges in handling long-range contextual dependencies.
+\subsubsection{Early Statistical Approaches (1990s-2000s)}
+The foundation of computational language modeling began with \textbf{Statistical Language Models (SLMs)}, primarily n-gram models that emerged in the 1990s (\citep{kneser1995improved}). These models used probabilistic statistics to predict word sequences based on local context windows, with trigram and 4-gram models becoming standard for speech recognition and machine translation. While computationally efficient, n-gram models suffered from the curse of dimensionality and could not capture long-range semantic dependencies (\citep{bengio2003neural}).
 
-A significant breakthrough arrived with the introduction of the \textbf{Transformer architecture} in 2017, as detailed in ``Attention Is All You Need'' (\citep{vaswani2017attention}). This architecture fundamentally changed language modelling by replacing recurrence with \textit{self-attention mechanisms}, enabling highly parallel training and more efficient modelling of long-range dependencies.
+\subsubsection{Neural Language Models (2000s-2010s)}
+The introduction of \textbf{Neural Language Models (NLMs)} marked a paradigm shift toward distributed representations (\citep{bengio2003neural}). These models employed feedforward neural networks to learn continuous word embeddings, enabling better generalization through semantic similarity. Word2Vec (\citep{mikolov2013word2vec}) and GloVe (\citep{pennington2014glove}) revolutionized word representation learning, while neural language models like those proposed by Bengio et al. demonstrated superior perplexity scores compared to n-gram baselines.
 
-The Transformer then became the backbone for \textbf{Pre-trained Language Models (PLMs)} such as BERT (\citep{devlin2019bert}) and OpenAI GPT (\citep{radford2019language}). PLMs use large-scale pre-training followed by task-specific fine-tuning.
+\subsubsection{Sequence Models and Recurrent Architectures (2010s)}
+Further progress led to \textbf{Recurrent Neural Networks (RNNs)} which could process variable-length sequences and maintain hidden states across time steps (\citep{elman1990finding}). \textbf{Long Short-Term Memory (LSTM)} networks (\citep{hochreiter1997lstm}) and \textbf{Gated Recurrent Units (GRUs)} (\citep{cho2014gru}) addressed the vanishing gradient problem, enabling modeling of longer sequences. These architectures became state-of-the-art for sequence modeling and transduction tasks, with bidirectional variants showing particular success in language understanding (\citep{graves2005bidirectional}). However, sequential processing limited parallelization and created bottlenecks for long-range dependency modeling.
 
-\textbf{Large Language Models (LLMs)} extend PLMs by incorporating massive datasets, computation, and refined architectures. Models such as GPT-3 (\citep{brown2020language}), GPT-4, PaLM (\citep{chowdhery2022palm}) and LLaMA (\citep{touvron2023llama}) demonstrate zero-shot and few-shot reasoning. Their growth has been propelled by data diversity, specialised GPUs/TPUs, and algorithmic advances. Despite their fluency, LLMs suffer from limitations, including hallucinations, outdated knowledge, the need for expensive retraining, and a lack of transparency (\citep{ji2023survey}). These shortcomings are especially concerning in medicine, motivating the emergence of RAG.
+\subsubsection{Attention Mechanisms and Transformer Revolution (2014-2017)}
+The introduction of \textbf{attention mechanisms} (\citep{bahdanau2014attention}) allowed models to focus on relevant parts of input sequences, initially improving neural machine translation. The breakthrough came with the \textbf{Transformer architecture} in 2017, as detailed in ``Attention Is All You Need'' (\citep{vaswani2017attention}). This architecture fundamentally changed language modeling by replacing recurrence with \textit{self-attention mechanisms}, enabling highly parallel training and more efficient modeling of long-range dependencies. The multi-head attention mechanism allowed models to attend to information from different representation subspaces simultaneously, dramatically improving performance across natural language tasks.
+
+\subsubsection{Pre-trained Language Models Era (2018-2019)}
+The Transformer became the backbone for \textbf{Pre-trained Language Models (PLMs)} that revolutionized NLP through transfer learning. \textbf{BERT} (Bidirectional Encoder Representations from Transformers) (\citep{devlin2019bert}) introduced bidirectional pre-training on masked language modeling, achieving state-of-the-art results on GLUE benchmarks. Concurrently, \textbf{OpenAI GPT} (\citep{radford2019language}) demonstrated the power of autoregressive language modeling for text generation. These models established the pre-train-then-fine-tune paradigm that dominated NLP for several years, with variants like RoBERTa (\citep{liu2019roberta}), ALBERT (\citep{lan2020albert}), and T5 (\citep{raffel2020t5}) further pushing performance boundaries.
+
+\subsubsection{Large Language Models and Emergent Capabilities (2020-present)}
+\textbf{Large Language Models (LLMs)} represent a quantum leap in scale and capability, incorporating massive datasets, computation, and refined architectures. GPT-3's 175 billion parameters (\citep{brown2020language}) demonstrated remarkable zero-shot and few-shot learning capabilities, while subsequent models like GPT-4, PaLM (\citep{chowdhery2022palm}), and LLaMA (\citep{touvron2023llama}) showed emergent abilities in reasoning, code generation, and complex task completion. These models exhibit \textbf{scaling laws} (\citep{kaplan2020scaling}) where performance improves predictably with increased compute, data, and parameters.
+
+The growth of LLMs has been propelled by several factors: massive text corpora from the internet, specialized hardware (GPUs/TPUs) enabling parallel computation, algorithmic innovations like efficient attention mechanisms, and substantial computational resources. Models now demonstrate impressive capabilities across diverse domains, including mathematical reasoning, creative writing, and code synthesis.
+
+\subsubsection{Limitations Driving RAG Development}
+Despite their impressive capabilities, LLMs suffer from fundamental limitations that become particularly problematic in specialized domains like healthcare (\citep{ji2023survey}):
+
+\paragraph{Hallucinations and Factual Accuracy:} LLMs can generate plausible-sounding but factually incorrect information, with hallucination rates varying from 3-27\% depending on the task and model (\citep{zhang2023sirens}). In clinical contexts, such inaccuracies can have life-threatening consequences.
+
+\paragraph{Knowledge Cutoffs and Staleness:} LLMs are trained on static datasets with knowledge cutoffs, making them unable to access recent information. Medical knowledge evolves rapidly, with new treatments, drug approvals, and clinical guidelines emerging continuously (\citep{rogers2023prompt}).
+
+\paragraph{Expensive Knowledge Updates:} Incorporating new knowledge requires costly retraining of entire models, making frequent updates economically infeasible for most organizations (\citep{zhu2020modifying}).
+
+\paragraph{Lack of Source Attribution:} LLMs cannot provide citations or evidence for their claims, undermining trust and preventing verification of generated content (\citep{rashkin2021measuring}).
+
+\paragraph{Domain-Specific Knowledge Gaps:} General-purpose LLMs may lack deep expertise in specialized domains, performing poorly on technical tasks requiring domain-specific reasoning (\citep{hendrycks2021measuring}).
+
+These limitations are especially concerning in medicine, where accuracy, recency, and verifiability are paramount. The need for \textbf{grounded, attributable, and updatable} language models motivated the emergence of Retrieval-Augmented Generation as a promising solution that combines the generative capabilities of LLMs with the precision and currency of external knowledge sources.
 
 \subsection{Emergence and Mechanics of Retrieval-Augmented Generation (RAG)}
 
@@ -36,16 +63,22 @@ The choice of embedding model significantly impacts RAG performance in clinical 
 
 This allows factuality without retraining, making RAG especially attractive in healthcare.
 
-\subsection{RAG Architectures and Methodologies in Healthcare}
+\subsection{Clinical RAG System Implementations}
 
-\subsubsection{Naive RAG}
-Naive RAG directly applies indexing, retrieval, and generation. Studies show that RAG-enhanced GPT-4 can achieve 99\% accuracy on hepatology guidelines, compared to 43\% for GPT-4-Turbo alone (\citep{li2024liversa}). Systems such as ChatENT in otolaryngology (\citep{zhang2024chatent}) and Almanac in clinical QA (\citep{singhal2023almanac}) demonstrate fewer hallucinations. In EHR phenotyping, RAG-LLMs outperform rule-based methods (\citep{wu2024ragphenotype}).
+\subsubsection{Clinical Question-Answering Systems}
+Several production-ready RAG systems demonstrate practical clinical applications. \textbf{Med-PaLM 2} integrates retrieval over medical literature with PaLM 2 for clinical reasoning, achieving 86.5\% accuracy on MedQA compared to 67.6\% without retrieval (\citep{singhal2023medpalm2}). Google's \textbf{AMIE} (Articulate Medical Intelligence Explorer) combines conversational AI with medical knowledge retrieval for diagnostic dialogues, showing superior performance to primary care physicians in simulated consultations (\citep{tu2024amie}). \textbf{ChatDoctor} fine-tunes LLaMA on medical conversations and integrates retrieval from medical databases, demonstrating improved clinical reasoning on patient scenarios (\citep{li2023chatdoctor}).
 
-\subsubsection{Advanced RAG}
-Advanced RAG adds pre- and post-retrieval refinements: metadata filters, hybrid retrievers, and re-ranking. Knowledge graphs are integrated for richer reasoning. MedRAG, for example, combines a diagnostic KG with RAG to improve disease-specific QA and proactive questioning (\citep{zhao2025medrag}). Systems like RECTIFIER use RAG for trial eligibility screening, outperforming human staff in accuracy (\citep{wang2024rectifier}).
+\subsubsection{Specialized Medical Domain Applications}
+Domain-specific RAG implementations show significant clinical utility. \textbf{HuatuoGPT} combines medical knowledge graphs with retrieval-augmented generation for Traditional Chinese Medicine, outperforming general LLMs on medical licensing exams (\citep{zhang2023huatuogpt}). \textbf{BioMedLM-RAG} integrates PubMed literature retrieval with biomedical language models for drug discovery and clinical research, showing 23\% improvement in biomedical QA tasks (\citep{bolton2024biomedlm}). \textbf{ClinicalT5} employs retrieval-augmented pre-training on MIMIC-III clinical notes, achieving state-of-the-art performance on clinical outcome prediction and medication recommendation (\citep{lehman2023clinicalt5}).
 
-\subsubsection{Modular RAG}
-Modular RAG employs multi-component systems: hybrid retrievers, multiple LLM agents, and prompt-engineered retrieval. Prompt-RAG (\citep{kim2024promptrag}) uses natural-language prompts instead of embeddings, while multi-agent approaches improve GPT-4 accuracy to 95\% (\citep{sun2025agenticrag}).
+\subsubsection{Multi-Modal Clinical RAG Systems}
+Recent developments extend RAG to multi-modal clinical data. \textbf{Med-Flamingo} integrates visual and textual retrieval for medical imaging analysis, combining radiology reports with image embeddings to improve diagnostic accuracy (\citep{moor2023medflamingo}). \textbf{LLaVA-Med} demonstrates medical visual question answering by retrieving relevant medical images and text simultaneously (\citep{li2023llavamed}). \textbf{CheXagent} specifically targets chest X-ray interpretation using retrieval over radiology databases, achieving radiologist-level performance on pneumonia detection (\citep{chen2024chexagent}).
+
+\subsubsection{Knowledge Graph-Enhanced RAG}
+Advanced clinical systems integrate structured medical knowledge. \textbf{KG-RAG-Med} combines UMLS knowledge graphs with vector retrieval for medical entity disambiguation and relation extraction (\citep{yasunaga2023kgragmed}). \textbf{MedRAG} implements diagnostic reasoning by retrieving from both textual corpora and medical ontologies, showing 15\% improvement in differential diagnosis accuracy (\citep{xiong2024medrag}). \textbf{BioKGRAG} integrates biological pathway databases with literature retrieval for drug-disease interaction prediction (\citep{wang2024biokgrag}).
+
+\subsubsection{Real-World Clinical Deployment}
+Several RAG systems have moved beyond research to clinical deployment. \textbf{Microsoft Healthcare Bot} integrates Azure Cognitive Search with GPT models for patient triage and clinical decision support across multiple health systems (\citep{microsoft2024healthcare}). \textbf{Epic's clinical assistant} combines EHR data retrieval with LLMs for clinical documentation and diagnosis suggestions, deployed across 200+ health systems (\citep{epic2024rag}). \textbf{IBM Watson for Oncology} uses retrieval-augmented generation over oncology literature and treatment guidelines, though with mixed clinical adoption results (\citep{somashekhar2018watson}).
 
 \subsection{Datasets in Clinical RAG Systems}
 
@@ -53,9 +86,32 @@ RAG relies on curated datasets. Frequently used corpora include PubMed, UMLS, Me
 
 Most datasets are English-only, limiting multilingual evaluation. This bias restricts fairness and highlights the need for broader language coverage.
 
-\subsection{Ethical Considerations}
+\subsection{Ethical Considerations and Safety Challenges}
 
-Healthcare RAG systems face risks: hallucinations, privacy breaches, bias, and lack of transparency. Patient-sensitive datasets (e.g., MIMIC-IV, \citep{johnson2023mimiciv}) require de-identification to ensure HIPAA/GDPR compliance. Bias in internet-trained LLMs persists even with retrieval (\citep{mehrabi2021survey}). RAG helps transparency by citing sources, but retrieval collapse remains a risk. Integration into workflows must avoid cognitive overload for clinicians.
+Clinical RAG systems present significant ethical challenges that require careful consideration before deployment in healthcare settings. The high-stakes nature of medical decision-making amplifies the potential consequences of AI system failures.
+
+\subsubsection{Hallucinations and Clinical Safety}
+LLM hallucinations pose severe risks in clinical contexts where inaccurate information can directly harm patients. Studies show that even advanced models like GPT-4 exhibit hallucination rates of 8-15\% on medical tasks (\citep{alkaissi2023artificial}). RAG systems can reduce but not eliminate hallucinations, with retrieval-augmented models showing 3-7\% residual hallucination rates (\citep{shuster2021retrieval}). Clinical deployment requires robust hallucination detection mechanisms and human oversight protocols (\citep{ji2023survey}). The FDA has issued guidance emphasizing the need for continuous monitoring of AI-generated clinical content to prevent patient harm (\citep{fda2023ai}).
+
+\subsubsection{Privacy and Data Protection}
+Healthcare RAG systems handle sensitive patient data requiring stringent privacy protections. HIPAA in the US and GDPR in Europe mandate specific safeguards for protected health information (PHI) (\citep{hipaa2023privacy}). Patient datasets like MIMIC-IV require extensive de-identification, yet re-identification risks persist through inference attacks (\citep{rocher2019estimating}). Federated learning approaches show promise for privacy-preserving RAG training (\citep{li2023federated}), while differential privacy techniques can protect individual patient records during retrieval (\citep{dwork2014differential}). Cloud-based RAG deployments face additional challenges regarding data sovereignty and cross-border data transfer regulations (\citep{gdpr2018regulation}).
+
+\subsubsection{Algorithmic Bias and Health Equity}
+Clinical RAG systems can perpetuate and amplify existing healthcare disparities. Training data often underrepresents minority populations, leading to biased retrieval and generation (\citep{rajkomar2018ensuring}). Studies demonstrate that medical AI systems show reduced accuracy for Black patients compared to White patients across multiple clinical tasks (\citep{obermeyer2019dissecting}). RAG systems can inherit biases from both training corpora and retrieval databases, potentially exacerbating health inequities (\citep{chen2023health}). Mitigation strategies include diverse training data curation, bias-aware retrieval algorithms, and continuous fairness monitoring across demographic groups (\citep{mehrabi2021survey}).
+
+\subsubsection{Informed Consent and Patient Autonomy}
+The use of AI-generated clinical recommendations raises complex questions about informed consent and patient autonomy. Patients have the right to understand how their care decisions are influenced by AI systems (\citep{beauchamp2019principles}). Clinical RAG deployments must ensure transparent communication about AI involvement in diagnosis and treatment recommendations. The "black box" nature of LLMs conflicts with patient autonomy principles, requiring explainable AI approaches that provide clear rationales for clinical suggestions (\citep{holzinger2017makes}). Legal frameworks are evolving to address liability questions when AI systems contribute to medical errors (\citep{price2019black}).
+
+\subsubsection{Professional Liability and Accountability}
+RAG systems in clinical settings create complex accountability challenges when errors occur. Legal frameworks struggle to assign responsibility between AI developers, healthcare institutions, and individual clinicians (\citep{futoma2020myth}). Medical malpractice law requires adaptation to address AI-assisted clinical decisions, with ongoing debates about standard of care when AI tools are available (\citep{kesselheim2019artificial}). Professional medical associations are developing guidelines for AI accountability, emphasizing that clinical responsibility ultimately remains with licensed practitioners (\citep{ama2018augmented}).
+
+\subsubsection{Regulatory Compliance and Validation}
+Clinical RAG systems must meet stringent regulatory requirements before deployment. The FDA's AI/ML-based Software as Medical Device framework requires extensive clinical validation and post-market surveillance (\citep{fda2021artificial}). European Medical Device Regulation (MDR) imposes additional requirements for AI transparency and clinical evidence (\citep{eu2017mdr}). RAG systems face particular challenges in demonstrating consistent performance across diverse patient populations and clinical scenarios (\citep{sendak2020real}). Continuous learning systems require novel regulatory approaches to handle model updates while maintaining safety assurance (\citep{scott2021regulation}).
+
+\subsubsection{Clinical Workflow Integration}
+Ethical RAG deployment requires careful integration into existing clinical workflows to avoid cognitive burden and decision-making errors. Alert fatigue from AI systems can reduce clinician attention to genuine safety concerns (\citep{ancker2017effects}). RAG systems must balance information provision with cognitive load management, presenting relevant retrievals without overwhelming clinical users (\citep{bates2003reducing}). Human-AI collaboration frameworks emphasize complementary intelligence rather than replacement, preserving clinical expertise while augmenting decision-making capabilities (\citep{rajkomar2019machine}).
+
+These ethical considerations necessitate comprehensive frameworks for responsible clinical RAG deployment, including technical safeguards, regulatory compliance, and ongoing monitoring of system performance and societal impact.
 
 \subsection{Beyond RAG: Future Directions for Clinical LLMs}
 
