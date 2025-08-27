@@ -12,15 +12,22 @@ class ApiService {
   }
 
   /**
-   * Send a chat message to the RAG system
+   * Send a streaming chat message to the RAG system (default)
    * @param {string} message - User message
    * @param {Array} chatHistory - Previous chat messages
-   * @returns {Promise<Object>} Response with answer and sources
+   * @param {Function} onChunk - Callback for each streaming chunk
+   * @param {Function} onComplete - Callback when streaming is complete
+   * @returns {Promise<Object>} Final response with metadata
    */
-  async sendMessage(message, chatHistory = []) {
+  async sendMessage(message, chatHistory = [], onChunk = null, onComplete = null) {
     try {
-      // Direct API call without proxy
-      const response = await fetch(`${this.baseUrl}/chat`, {
+      // Use streaming by default
+      if (onChunk || onComplete) {
+        return await this.sendStreamingMessage(message, chatHistory, onChunk, onComplete);
+      }
+
+      // Fallback to non-streaming for backward compatibility
+      const response = await fetch(`${this.baseUrl}/chat/non-streaming`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,6 +59,120 @@ class ApiService {
       };
     } catch (error) {
       console.error("API Error:", error);
+
+      // Provide user-friendly error messages
+      if (error.message.includes("fetch")) {
+        throw new Error(
+          "Unable to connect to the server. Please check if the backend is running."
+        );
+      } else if (error.message.includes("timeout")) {
+        throw new Error("Request timed out. The server may be overloaded.");
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Send a streaming chat message to the RAG system
+   * @param {string} message - User message
+   * @param {Array} chatHistory - Previous chat messages
+   * @param {Function} onChunk - Callback for each streaming chunk
+   * @param {Function} onComplete - Callback when streaming is complete
+   * @returns {Promise<Object>} Final response with metadata
+   */
+  async sendStreamingMessage(message, chatHistory = [], onChunk = null, onComplete = null) {
+    try {
+      console.log("Starting streaming request...");
+      
+      const response = await fetch(`${this.baseUrl}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: message.trim(),
+          chat_history: this.formatChatHistory(chatHistory),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || `HTTP ${response.status}: ${response.statusText}`
+        );
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let fullResponse = "";
+      let metadata = {};
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log("Streaming complete");
+          break;
+        }
+
+        // Decode the chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete lines in the buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.trim() === "") continue;
+          
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'content') {
+                fullResponse += data.content;
+                if (onChunk) {
+                  onChunk({
+                    content: data.content,
+                    fullContent: fullResponse,
+                    done: data.done
+                  });
+                }
+              } else if (data.type === 'metadata') {
+                metadata = data.metadata || {};
+                console.log("Received metadata:", metadata);
+              } else if (data.type === 'error') {
+                throw new Error(data.content);
+              } else if (data.type === 'end') {
+                console.log("Stream ended");
+                break;
+              }
+            } catch (parseError) {
+              console.error("Error parsing chunk:", parseError);
+            }
+          }
+        }
+      }
+
+      const finalResult = {
+        answer: fullResponse,
+        sources: metadata.citations || [],
+        metadata: metadata,
+        timestamp: new Date().toISOString(),
+        isStreaming: true
+      };
+
+      if (onComplete) {
+        onComplete(finalResult);
+      }
+
+      return finalResult;
+
+    } catch (error) {
+      console.error("Streaming API Error:", error);
 
       // Provide user-friendly error messages
       if (error.message.includes("fetch")) {

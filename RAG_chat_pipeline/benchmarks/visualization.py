@@ -23,6 +23,35 @@ class EvaluationVisualizer:
         # Set consistent style
         plt.style.use('default')
         sns.set_palette("husl")
+    
+    def generate_all_visualizations(self, df: pd.DataFrame) -> Dict[str, str]:
+        """Generate all visualization outputs and return file paths"""
+        file_paths = {}
+        
+        if df.empty:
+            return file_paths
+        
+        try:
+            # Generate performance heatmap
+            heatmap_html = self.create_model_comparison_heatmap(df, metric="f1_score")
+            if heatmap_html:
+                file_paths["performance_heatmap_html"] = heatmap_html
+            
+            # Generate and save heatmap data CSV
+            try:
+                heatmap_data = df.groupby(['embedding_model', 'llm_model'])['f1_score'].mean().unstack()
+                csv_file = self.output_dir / "heatmap_matrix.csv"
+                heatmap_data.to_csv(csv_file)
+                file_paths["performance_heatmap_matrix_csv"] = str(csv_file)
+            except Exception as csv_err:
+                print(f"Failed to save heatmap matrix CSV: {csv_err}")
+            
+            # Add other visualizations as needed
+            
+        except Exception as e:
+            print(f"Error generating visualizations: {e}")
+        
+        return file_paths
 
     def create_score_heatmap(self, results: Dict, timestamp: str = None) -> str:
         """Create score heatmap by category and metric"""
@@ -35,22 +64,14 @@ class EvaluationVisualizer:
         # Create score matrix for heatmap
         score_matrix = []
         categories = []
-        metrics = ["Overall", "Factual", "Behavior",
-                   "Performance", "Context", "Completeness", "Semantic"]
+        metrics = ["Precision", "Recall", "F1-Score"]
 
         for category, cat_results in category_results.items():
             categories.append(category)
             row = [
-                np.mean([r.get("overall_score", 0) for r in cat_results]),
-                np.mean([r.get("factual_accuracy_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("behavior_score", 0) for r in cat_results]),
-                np.mean([r.get("performance_score", 0) for r in cat_results]),
-                np.mean([r.get("context_relevance_score", 0)
-                        for r in cat_results]),
-                np.mean([r.get("completeness_score", 0) for r in cat_results]),
-                np.mean([r.get("semantic_similarity_score", 0)
-                        for r in cat_results])
+                np.mean([r.get("precision", 0) for r in cat_results]),
+                np.mean([r.get("recall", 0) for r in cat_results]),
+                np.mean([r.get("f1_score", 0) for r in cat_results])
             ]
             score_matrix.append(row)
 

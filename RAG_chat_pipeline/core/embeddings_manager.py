@@ -7,7 +7,7 @@ from RAG_chat_pipeline.utils import huggingface_compat  # Auto-patches on import
 from sentence_transformers import SentenceTransformer
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from RAG_chat_pipeline.config.config import CLINICAL_MODEL_NAME, LOCAL_MODEL_PATH, VECTORSTORE_PATH, CHUNKED_DOCS_PATH
+from RAG_chat_pipeline.config import config as cfg
 from RAG_chat_pipeline.utils.data_provider import DataProvider
 
 
@@ -15,11 +15,11 @@ def setup_clinical_embeddings():
     """Setup clinical embeddings with local model saving/loading"""
 
     # Check if model exists locally
-    if LOCAL_MODEL_PATH.exists() and any(LOCAL_MODEL_PATH.iterdir()):
+    if cfg.LOCAL_MODEL_PATH.exists() and any(cfg.LOCAL_MODEL_PATH.iterdir()):
         # Attempt to load local model
         try:
             clinical_emb = HuggingFaceEmbeddings(
-                model_name=str(LOCAL_MODEL_PATH),
+                model_name=str(cfg.LOCAL_MODEL_PATH),
                 encode_kwargs={"batch_size": 16}
             )
             # Test the model to ensure it's working
@@ -35,16 +35,16 @@ def setup_clinical_embeddings():
     # Download and save model locally
 
     # Create directory
-    LOCAL_MODEL_PATH.mkdir(parents=True, exist_ok=True)
+    cfg.LOCAL_MODEL_PATH.mkdir(parents=True, exist_ok=True)
 
     # Download using SentenceTransformer first
-    model = SentenceTransformer(CLINICAL_MODEL_NAME)
-    model.save(str(LOCAL_MODEL_PATH))
-    print(f"Model saved to: {LOCAL_MODEL_PATH}")
+    model = SentenceTransformer(cfg.CLINICAL_MODEL_NAME)
+    model.save(str(cfg.LOCAL_MODEL_PATH))
+    print(f"Model saved to: {cfg.LOCAL_MODEL_PATH}")
 
     # LangChain embedding wrapper for SentenceTransformers (STMs)
     clinical_emb = HuggingFaceEmbeddings(
-        model_name=str(LOCAL_MODEL_PATH),
+        model_name=str(cfg.LOCAL_MODEL_PATH),
         encode_kwargs={"batch_size": 16}
     )
 
@@ -67,7 +67,7 @@ def load_or_create_vectorstore():
         if data_provider.using_synthetic:
             chunked_docs = data_provider.load_chunked_docs()
         else:
-            with open(CHUNKED_DOCS_PATH, "rb") as f:
+            with open(cfg.CHUNKED_DOCS_PATH, "rb") as f:
                 chunked_docs = pickle.load(f)
     except Exception as e:
         print(f" Error loading chunked documents: {e}")
@@ -77,7 +77,7 @@ def load_or_create_vectorstore():
     try:
         print("Loading existing vectorstore...")
         vectorstore = FAISS.load_local(
-            VECTORSTORE_PATH,
+            cfg.VECTORSTORE_PATH,
             clinical_emb,
             allow_dangerous_deserialization=True
         )
@@ -93,10 +93,10 @@ def load_or_create_vectorstore():
 
         print("Creating new vectorstore...")
         vectorstore = FAISS.from_documents(chunked_docs, clinical_emb)
-        vectorstore.save_local(VECTORSTORE_PATH)
+        vectorstore.save_local(cfg.VECTORSTORE_PATH)
 
         # Save chunked docs
-        with open(CHUNKED_DOCS_PATH, "wb") as f:
+        with open(cfg.CHUNKED_DOCS_PATH, "wb") as f:
             pickle.dump(chunked_docs, f)
 
         print(" New vectorstore created and saved")

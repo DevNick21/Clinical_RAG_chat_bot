@@ -1,23 +1,12 @@
-\begin{table}[!htbp]
-\centering
-\begin{small}
-\renewcommand\arraystretch{1.1}
-\begin{tabular}{|l|c|c|}
-\hline
-\textbf{Embedding Model} & \textbf{Average Score} & \textbf{Configurations} \\
-\hline
-multi-qa & 0.7295 & 6 \\
-mpnet-v2 & 0.7181 & 6 \\
-mini-lm & 0.7157 & 6 \\
-BioBERT & 0.7156 & 6 \\
-MedQuAD & 0.7125 & 6 \\
-ms-marco & 0.6935 & 6 \\
-biomedbert & 0.6923 & 6 \\
-BioLORD & 0.6888 & 6 \\
-e5-base & 0.6874 & 6 \\
-\hline
-\end{tabular}
-\end{small}
+\begin{table}
 \caption{Embedding Model Performance Ranking}
 \label{tab:embedding_ranking}
+\begin{tabular}{lrrr}
+\toprule
+ & F1 Score & Precision & Search Time (s) \\
+embedding_model &  &  &  \\
+\midrule
+ms-marco & 0.921000 & 1.000000 & 64.193000 \\
+\bottomrule
+\end{tabular}
 \end{table}

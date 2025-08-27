@@ -9,7 +9,22 @@ from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
-from RAG_chat_pipeline.config.config import LLM_MODEL, DEFAULT_K, MAX_CHAT_HISTORY, SECTION_KEYWORDS, ENABLE_REPHRASING, ENABLE_ENTITY_EXTRACTION, LOG_LEVEL
+from RAG_chat_pipeline.config.config import (
+    LLM_MODEL,
+    DEFAULT_K,
+    MAX_CHAT_HISTORY,
+    SECTION_KEYWORDS,
+    ENABLE_REPHRASING,
+    ENABLE_ENTITY_EXTRACTION,
+    LOG_LEVEL,
+    RETRIEVAL_MAX_K,
+    GLOBAL_SEARCH_MAX_K,
+    CANDIDATE_DOC_LIMIT,
+    FINAL_DOCS_LIMIT,
+    STREAMING_CANDIDATE_DOC_LIMIT,
+    STREAMING_GLOBAL_SEARCH_MAX_K,
+    STREAMING_FINAL_DOCS_LIMIT,
+)
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
@@ -157,7 +172,8 @@ class ClinicalRAGBot:
         self.llm = Ollama(
             model=LLM_MODEL,
             temperature=0.1,  # Slight randomness for better responses
-            repeat_penalty=1.1  # Standard repeat penalty
+            repeat_penalty=1.1,  # Standard repeat penalty
+            streaming=True  # Enable streaming responses by default
         )
 
         # Embedding cache
@@ -200,11 +216,11 @@ Based on the provided documents, answer the question directly and include:
 - Specific medical details (codes, values, dates)
 - Source: admission ID and section type
 
-Use only information from the documents. End with: " Data from MIMIC-IV database for research/education only."
+Use only information from the documents. End with: "ℹ️ Data from MIMIC-IV database for research/education only."
 
 Context: {context}"""
 
-        # Create chains - these will be updated dynamically
+        # Create chains
         self.question_answer_chain = None
 
     def _create_clinical_prompt(self, hadm_id=None, subject_id=None):
@@ -378,15 +394,29 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 return top_docs
 
             else:
-                # For larger sets, create temporary FAISS index (still faster than before)
+                # For larger sets, use optimized batch similarity instead of temporary FAISS
                 ClinicalLogger.info(
-                    f"Creating temporary index for {len(candidate_docs)} documents")
-                faiss_temp = FAISS.from_documents(
-                    candidate_docs, self.clinical_emb)
-                top_docs = faiss_temp.similarity_search(question, k=k)
+                    f"Using batch similarity for {len(candidate_docs)} documents (avoiding temporary FAISS)")
+
+                # Process in smaller batches to avoid memory issues
+                batch_size = 50
+                all_scored_docs = []
+
+                for i in range(0, len(candidate_docs), batch_size):
+                    batch = candidate_docs[i:i + batch_size]
+                    for doc in batch:
+                        doc_text = doc.page_content[:500]
+                        doc_embedding = self._emb_cache.get(doc_text)
+                        similarity = cosine_similarity(
+                            [question_embedding], [doc_embedding])[0][0]
+                        all_scored_docs.append((similarity, doc))
+
+                # Sort and return top k
+                all_scored_docs.sort(key=lambda x: x[0], reverse=True)
+                top_docs = [doc for _, doc in all_scored_docs[:k]]
 
                 ClinicalLogger.debug(
-                    f"Selected top {len(top_docs)} documents via temporary FAISS")
+                    f"Selected top {len(top_docs)} documents via batch similarity")
                 return top_docs
 
         except Exception as similarity_error:
@@ -477,11 +507,11 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
         try:
             # Performance optimization: limit k to reasonable values
-            k = min(k, 5)  # Focus on most relevant documents
+            k = min(k, RETRIEVAL_MAX_K)  # Configurable cap
 
             # Get filtered documents with performance limits
             candidate_docs = self._filter_candidate_documents(
-                hadm_id, subject_id, section, limit=20)  # Smaller candidate pool
+                hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)  # Configurable candidate pool
 
             if candidate_docs is not None:
                 # Filtered search
@@ -508,7 +538,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 # Global semantic search with tighter limits
                 ClinicalLogger.info(
                     "Performing optimized semantic search across all records...")
-                k_global = min(k, 20)  # Even tighter limit for global search
+                # Configurable global cap
+                k_global = min(k, GLOBAL_SEARCH_MAX_K)
                 retrieved_docs = self.vectorstore.similarity_search(
                     question, k=k_global)
                 ClinicalLogger.debug(
@@ -522,11 +553,11 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     ClinicalLogger.debug(
                         f"Section filtering: {original_count} → {len(retrieved_docs)} documents")
 
-            # Performance check: warn if too many documents
-            if len(retrieved_docs) > 5:
-                ClinicalLogger.warning(
-                    f"Processing {len(retrieved_docs)} documents - reducing to top 3")
-                retrieved_docs = retrieved_docs[:3]
+            # Performance check: limit final docs to configured value
+            if len(retrieved_docs) > FINAL_DOCS_LIMIT:
+                ClinicalLogger.debug(
+                    f"Processing {len(retrieved_docs)} documents - reducing to top {FINAL_DOCS_LIMIT}")
+                retrieved_docs = retrieved_docs[:FINAL_DOCS_LIMIT]
 
             # INTELLIGENT CONTENT EXTRACTION: Extract structured clinical data
             original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get(
@@ -713,36 +744,19 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             return question
 
     def _has_hallucination(self, text):
-        """Check for common hallucination patterns"""
-        patterns = [
-            r'\b[A-Z]\d{4,5}\b',  # ICD-like codes
-            r'\bcode\s*[A-Z]?\d+',  # "code K5080"
-            r'\b(pneumonia|diabetes|hypertension|sepsis|myocardial|stroke)\b'
-        ]
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        """Disabled - was causing false positives on legitimate medical terms"""
+        return False  # Disabled to prevent filtering of legitimate medical content
 
     def _is_rephrasing_valid(self, rephrased, original, chat_history):
-        """Validate rephrasing quality"""
+        """Simplified rephrasing validation - only check extreme cases"""
+        # Only reject extremely long rephrasings (likely hallucinated)
         length_ratio = len(rephrased) / max(1, len(original))
-        if length_ratio > 3.0:
+        if length_ratio > 5.0:  # Increased threshold
             return False
 
-        # Check for suspicious medical terms
-        original_tokens = set(original.lower().split())
-        rephrased_tokens = set(rephrased.lower().split())
-        new_tokens = rephrased_tokens - original_tokens
-
-        # Get chat tokens for context
-        chat_tokens = set()
-        for role, msg in chat_history[-4:]:
-            if isinstance(msg, str):
-                chat_tokens.update(msg.lower().split())
-
-        suspicious_tokens = new_tokens - chat_tokens
-        medical_terms_added = [token for token in suspicious_tokens
-                               if any(med_term in token for med_term in MEDICAL_KEYWORDS) or len(token) > 8]
-
-        return len(medical_terms_added) <= 1 and len(suspicious_tokens) <= 8
+        # Accept all other rephrasings - removed medical term filtering
+        # as it was blocking legitimate medical queries
+        return True
 
     def _create_template_question(self, hadm_id, original_question):
         """Create safe template-based question"""
@@ -883,7 +897,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
 
         # Performance optimization: validate k early and set reasonable limits
-        k = min(k, 3)  # Focus on top 3 most relevant documents
+        k = min(k, RETRIEVAL_MAX_K)  # Configurable cap
 
         try:
             performance_start = time.time()
@@ -979,6 +993,144 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         # Call main processing method
         response = self.ask_question(message, processed_chat_history)
         return response.get('answer', 'No answer generated')
+
+    def chat_stream(self, message, chat_history=None):
+        """Streaming chat interface for API - yields response chunks"""
+        # Identify the context of the call
+        caller_info = sys._getframe(1)
+        caller_filename = caller_info.f_code.co_filename
+
+        is_api_call = "app.py" in caller_filename
+        is_cli_call = "main.py" in caller_filename
+        is_evaluation = "rag_evaluator.py" in caller_filename or "evaluator" in caller_filename
+
+        # Log context appropriately
+        if is_api_call:
+            ClinicalLogger.debug("Processing streaming API request...")
+        elif is_cli_call:
+            ClinicalLogger.debug("Processing streaming CLI request...")
+        elif is_evaluation:
+            ClinicalLogger.debug("Running in streaming evaluation mode...")
+
+        # Convert and validate chat history
+        processed_chat_history = self._process_api_chat_history(chat_history)
+
+        # Truncate if too long
+        if processed_chat_history and len(processed_chat_history) > MAX_CHAT_HISTORY:
+            processed_chat_history = processed_chat_history[-MAX_CHAT_HISTORY:]
+            ClinicalLogger.warning(
+                f"Chat history truncated to {MAX_CHAT_HISTORY} messages")
+
+        # Basic input validation
+        if not is_evaluation and (not message or not isinstance(message, str) or len(message.strip()) < 2):
+            ClinicalLogger.warning("Empty or invalid message received")
+            yield {"error": "I couldn't understand your message. Please provide a valid question."}
+            return
+
+        try:
+            # Process question and get context
+            performance_start = time.time()
+            chat_history_processed = processed_chat_history or []
+
+            # Validate and extract parameters
+            question, hadm_id, subject_id, section, k, extracted_entities = self._extract_and_validate_params(
+                message, None, None, None, DEFAULT_K)
+
+            # Process chat context if conversational
+            original_question = question
+            if chat_history_processed:
+                search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
+                    chat_history_processed, question, hadm_id, subject_id, section)
+            else:
+                search_question = question
+                chat_context = {}
+
+            # Get relevant documents for context
+            k = min(k, RETRIEVAL_MAX_K)
+            candidate_docs = self._filter_candidate_documents(
+                hadm_id, subject_id, section, limit=STREAMING_CANDIDATE_DOC_LIMIT)
+
+            if candidate_docs is not None:
+                if not candidate_docs:
+                    yield {"error": f"No records found for {'admission' if hadm_id else 'patient/subject'} {hadm_id or subject_id}"}
+                    return
+
+                retrieved_docs = self._semantic_search_on_docs(
+                    candidate_docs, search_question, k) if len(candidate_docs) > k else candidate_docs
+            else:
+                # Streaming cap from config
+                k_global = min(k, STREAMING_GLOBAL_SEARCH_MAX_K)
+                retrieved_docs = self.vectorstore.similarity_search(
+                    search_question, k=k_global)
+
+                if section is not None:
+                    retrieved_docs = [doc for doc in retrieved_docs
+                                      if doc.metadata.get('section', '').lower() == section.lower()]
+
+            if len(retrieved_docs) > STREAMING_FINAL_DOCS_LIMIT:  # Reduced for speed
+                retrieved_docs = retrieved_docs[:STREAMING_FINAL_DOCS_LIMIT]
+
+            # Extract clinical content
+            if retrieved_docs:
+                extracted_content = self._extract_clinical_content(
+                    retrieved_docs)
+                structured_doc = Document(
+                    page_content=extracted_content,
+                    metadata={"combined": True,
+                              "doc_count": len(retrieved_docs)}
+                )
+                context_docs = [structured_doc]
+            else:
+                context_docs = []
+
+            # Create dynamic prompt
+            clinical_prompt = self._create_clinical_prompt(hadm_id, subject_id)
+            dynamic_qa_chain = create_stuff_documents_chain(
+                self.llm, clinical_prompt)
+
+            # Stream the response
+            ClinicalLogger.info("Starting streaming clinical response...")
+
+            full_response = ""
+            for chunk in dynamic_qa_chain.stream({
+                "input": search_question,
+                "context": context_docs,
+                "chat_history": chat_history_processed
+            }):
+                if isinstance(chunk, str):
+                    full_response += chunk
+                    yield {"content": chunk, "done": False}
+                elif isinstance(chunk, dict) and "answer" in chunk:
+                    chunk_text = chunk["answer"]
+                    full_response += chunk_text
+                    yield {"content": chunk_text, "done": False}
+
+            # Post-process and finalize
+            final_answer = self._validate_and_fix_response(
+                full_response, retrieved_docs, hadm_id)
+
+            # Update chat history
+            if chat_history_processed:
+                chat_history_processed.extend(
+                    [("human", message), ("assistant", final_answer)])
+                if len(chat_history_processed) > MAX_CHAT_HISTORY:
+                    chat_history_processed = chat_history_processed[-MAX_CHAT_HISTORY:]
+
+            # Send final metadata
+            total_time = time.time() - performance_start
+            yield {
+                "done": True,
+                "metadata": {
+                    "search_time": total_time,
+                    "documents_found": len(retrieved_docs),
+                    "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
+                    "final_answer": final_answer
+                }
+            }
+
+        except Exception as e:
+            ClinicalLogger.error(f"Streaming error: {e}")
+            yield {"error": f"An error occurred while processing your request: {str(e)}", "done": True}
 
     def _process_api_chat_history(self, chat_history):
         """Convert API chat history format to internal format"""

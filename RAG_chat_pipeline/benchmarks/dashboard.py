@@ -25,8 +25,12 @@ class EvaluationDashboard:
         dashboard_file = self.output_dir / \
             f"performance_dashboard_{timestamp}.html"
 
-        # Extract summary data
-        summary = results.get("summary", {})
+        # Extract summary data - handle both old and new format
+        if "summary_stats" in results:
+            summary = results["summary_stats"].get("overall", {})
+            summary.update(results["summary_stats"])  # Include model_rankings, etc.
+        else:
+            summary = results.get("summary", {})
 
         html_content = f"""
 <!DOCTYPE html>
@@ -161,35 +165,62 @@ class EvaluationDashboard:
             <h2 class="section-title"> Overall Performance</h2>
             <div class="metrics-grid">
                 <div class="metric-card">
-                    <div class="metric-value {self._get_status_class(summary.get('pass_rate', 0))}">{summary.get('pass_rate', 0):.1%}</div>
-                    <div class="metric-label">Pass Rate</div>
+                    <div class="metric-value {self._get_status_class(summary.get('avg_precision', 0))}">{summary.get('avg_precision', 0):.3f}</div>
+                    <div class="metric-label">Average Precision</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{summary.get('average_score', 0):.3f}</div>
-                    <div class="metric-label">Average Score</div>
+                    <div class="metric-value {self._get_status_class(summary.get('avg_recall', 0))}">{summary.get('avg_recall', 0):.3f}</div>
+                    <div class="metric-label">Average Recall</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">{summary.get('passed', 0)}/{summary.get('total_questions', 0)}</div>
-                    <div class="metric-label">Questions Passed</div>
+                    <div class="metric-value {self._get_status_class(summary.get('avg_f1_score', 0))}">{summary.get('avg_f1_score', 0):.3f}</div>
+                    <div class="metric-label">Average F1-Score</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{summary.get('total_evaluations', 0)}</div>
+                    <div class="metric-label">Total Evaluations</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{summary.get('average_search_time', 0):.2f}s</div>
+                    <div class="metric-label">Avg Response Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{summary.get('unique_model_combinations', 0)}</div>
+                    <div class="metric-label">Model Combinations</div>
                 </div>
             </div>
         </div>
 
         <div class="section">
-            <h2 class="section-title"> Category Breakdown</h2>
+            <h2 class="section-title"> 📊 Performance Breakdown</h2>
             <div class="category-breakdown">
 """
 
-        # Add category cards
-        category_breakdown = summary.get("category_breakdown", {})
-        for category, stats in category_breakdown.items():
-            html_content += f"""
-                <div class="category-card">
-                    <div class="category-name">{category.title()}</div>
-                    <div>Pass Rate: <span class="{self._get_status_class(stats.get('pass_rate', 0))}">{stats.get('pass_rate', 0):.1%}</span></div>
-                    <div>Avg Score: {stats.get('average_score', 0):.3f}</div>
-                    <div>Questions: {stats.get('count', 0)}</div>
-                </div>
+        # Add category cards from category_performance if available
+        category_performance = summary.get("category_performance", {})
+        if category_performance:
+            for category, stats in category_performance.items():
+                html_content += f"""
+                    <div class="category-card">
+                        <div class="category-name">{category.title()}</div>
+                        <div>F1-Score: <span class="{self._get_status_class(stats.get('f1_score', 0))}">{stats.get('f1_score', 0):.3f}</span></div>
+                        <div>Precision: {stats.get('precision', 0):.3f}</div>
+                        <div>Recall: {stats.get('recall', 0):.3f}</div>
+                        <div>Avg Time: {stats.get('search_time', 0):.2f}s</div>
+                    </div>
+"""
+        else:
+            # Show top performers instead
+            top_performers = summary.get("top_performers", {})
+            for model_combo, stats in list(top_performers.items())[:6]:  # Show top 6
+                html_content += f"""
+                    <div class="category-card">
+                        <div class="category-name">{model_combo}</div>
+                        <div>F1-Score: <span class="{self._get_status_class(stats.get('f1_score', 0))}">{stats.get('f1_score', 0):.3f}</span></div>
+                        <div>Precision: {stats.get('precision', 0):.3f}</div>
+                        <div>Recall: {stats.get('recall', 0):.3f}</div>
+                        <div>Time: {stats.get('search_time', 0):.2f}s</div>
+                    </div>
 """
 
         html_content += """
@@ -197,25 +228,26 @@ class EvaluationDashboard:
         </div>
 """
 
-        # Add retrieval metrics section if available
-        retrieval_metrics = summary.get("retrieval_metrics", {})
-        if retrieval_metrics.get("questions_evaluated", 0) > 0:
-            html_content += f"""
+        # Add model rankings section if available
+        model_rankings = summary.get("model_rankings", {})
+        if model_rankings:
+            html_content += """
         <div class="section">
-            <h2 class="section-title"> Retrieval Performance</h2>
+            <h2 class="section-title"> 🏆 Top Model Rankings</h2>
             <div class="metrics-grid">
+"""
+            for i, (model_combo, stats) in enumerate(list(model_rankings.items())[:3], 1):
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
+                html_content += f"""
                 <div class="metric-card">
-                    <div class="metric-value">{retrieval_metrics.get('avg_precision', 0):.3f}</div>
-                    <div class="metric-label">Average Precision</div>
+                    <div class="metric-label">{medal} #{i} - {model_combo}</div>
+                    <div class="metric-value {self._get_status_class(stats.get('f1_score', 0))}">{stats.get('f1_score', 0):.3f}</div>
+                    <div class="metric-label">F1-Score</div>
+                    <div>P: {stats.get('precision', 0):.3f} | R: {stats.get('recall', 0):.3f}</div>
+                    <div>Time: {stats.get('search_time', 0):.2f}s</div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-value">{retrieval_metrics.get('avg_recall', 0):.3f}</div>
-                    <div class="metric-label">Average Recall</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value">{retrieval_metrics.get('avg_f1', 0):.3f}</div>
-                    <div class="metric-label">Average F1</div>
-                </div>
+"""
+            html_content += """
             </div>
         </div>
 """
@@ -277,10 +309,10 @@ class EvaluationDashboard:
         return str(dashboard_file)
 
     def _get_status_class(self, value: float) -> str:
-        """Get CSS class based on value"""
-        if value >= 0.8:
+        """Get CSS class based on value - adjusted for F1/precision/recall scores"""
+        if value >= 0.75:
             return "status-good"
-        elif value >= 0.6:
+        elif value >= 0.5:
             return "status-warning"
         else:
             return "status-bad"

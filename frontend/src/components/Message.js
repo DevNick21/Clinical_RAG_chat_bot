@@ -20,6 +20,7 @@ import {
   ExpandMore as ExpandIcon,
   ContentCopy as CopyIcon,
   CheckCircle as CheckIcon,
+  MoreHoriz as StreamingIcon,
 } from "@mui/icons-material";
 
 const Message = ({ message }) => {
@@ -29,6 +30,7 @@ const Message = ({ message }) => {
   const isUser = message.type === "user";
   const isBot = message.type === "bot";
   const isError = message.type === "error";
+  const isStreaming = message.isStreaming;
 
   const handleCopy = async () => {
     try {
@@ -207,6 +209,33 @@ const Message = ({ message }) => {
             }}
           >
             {message.content}
+            {/* Streaming indicator */}
+            {isStreaming && (
+              <Box
+                component="span"
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  ml: 1,
+                  animation: "pulse 1.5s ease-in-out infinite",
+                  "@keyframes pulse": {
+                    "0%, 100%": {
+                      opacity: 0.4,
+                    },
+                    "50%": {
+                      opacity: 1,
+                    },
+                  },
+                }}
+              >
+                <StreamingIcon
+                  sx={{
+                    fontSize: "1rem",
+                    color: "text.secondary",
+                  }}
+                />
+              </Box>
+            )}
           </Typography>
 
           {/* Sources for bot messages */}

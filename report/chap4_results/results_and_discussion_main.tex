@@ -5,38 +5,39 @@
 
 \section{Experiment Overview}
 \begin{itemize}
-  \item Total experiments: 54 runs (9 embedding models \(\times\) 6 LLMs).
-  \item Embeddings: ms-marco, multi-qa, mini-lm, biomedbert, mpnet-v2, e5-base, BioLORD, BioBERT, MedQuAD.
-  \item LLMs: deepseek, qwen, llama, gemma, phi3, tinyllama.
-  \item Per-run questions: 20; metrics include pass rate, average score (primary), search time, documents found; efficiency/safety include throughput (QPM), disclaimer and hallucination rates.
-  \item \textbf{Total Question-Answer Pairs}: 1,080 clinical evaluations
-  \item \textbf{Evaluation Duration}: 30+ hours of automated testing
+  \item Total experiments: [X] runs ([Y] embedding models \(\times\) [Z] LLMs).
+  \item Embeddings: [List of embedding models tested].
+  \item LLMs: [List of LLM models tested].
+  \item Per-run questions: [N]; metrics include precision, recall, F1-score, search time; efficiency includes throughput.
+  \item \textbf{Total Question-Answer Pairs}: [X] clinical evaluations
+  \item \textbf{Evaluation Duration}: [Y] hours of automated testing
 \end{itemize}
 
 \section{Overall Performance}
-Aggregate results across all 54 runs show:
+Aggregate results across all [X] runs show:
 \begin{itemize}
-  \item Average pass rate: 89.6\%.
-  \item Average score: 0.706.
-  \item Average search time: 98.77s.
+  \item Average precision: [X.XXX].
+  \item Average recall: [X.XXX].
+  \item Average F1-score: [X.XXX].
+  \item Average search time: [XX.XX]s.
 \end{itemize}
 
 Best-performing configurations:
 \begin{itemize}
-  \item Highest overall score: BioBERT + phi3 (avg. score 0.770, 100\% pass rate).
-  \item Fastest: e5-base + deepseek (avg. search time 53.28s, avg. score 0.640).
+  \item Highest F1-score: [Model A] + [Model B] (F1-score [X.XXX], precision [X.XXX]).
+  \item Fastest: [Model C] + [Model D] (avg. search time [XX.XX]s, F1-score [X.XXX]).
 \end{itemize}
 
 \subsection{Statistical Performance Overview}
 \input{chap4_results/tables/system_statistics}
 
-The performance distribution shows a relatively tight clustering of scores around the mean (0.706), with a standard deviation indicating consistent quality across configurations. Key statistical insights include:
+The performance distribution shows [characteristics] around the mean ([X.XXX]), with a standard deviation indicating [level of] quality consistency across configurations. Key statistical insights include:
 
 \begin{itemize}
-    \item \textbf{Score Distribution}: Near-normal distribution with slight positive skew
-    \item \textbf{Pass Rate Consistency}: 89.6\% average with relatively low variance ($\sigma$=0.062)
-    \item \textbf{Search Time Variability}: High variance ($\sigma$=98.7s) indicating significant performance differences
-    \item \textbf{Coefficient of Variation}: Score consistency (6.2\%) vs. efficiency variability (99.8\%)
+    \item \textbf{F1-Score Distribution}: [Distribution characteristics]
+    \item \textbf{Precision Consistency}: [X.XXX] average with [level] variance ($\sigma$=[X.XXX])
+    \item \textbf{Search Time Variability}: [Level] variance ($\sigma$=[XX.X]s) indicating [degree] performance differences
+    \item \textbf{Coefficient of Variation}: F1-score consistency ([X.X]\%) vs. efficiency variability ([XX.X]\%)
 \end{itemize}
 
 \section{Comparison Heatmap}
@@ -57,32 +58,32 @@ Figure~\ref{fig:heatmap_avg_score} provides a model-by-model comparison heatmap 
 
 The top-performing configurations demonstrate different optimisation strategies:
 
-\textbf{Quality-Optimized (BioBERT + Phi3):}
+\textbf{Quality-Optimized ([Model Combination]):}
 \begin{itemize}
-    \item Highest overall score (0.770)
-    \item Perfect reliability (100\% pass rate)
-    \item Moderate speed (67.7s)
+    \item Highest F1-score ([X.XXX])
+    \item High precision ([X.XXX])
+    \item Moderate speed ([XX.X]s)
     \item Medical domain specialisation advantage
-    \item Low hallucination rate (15\%)
+    \item [Performance characteristics]
 \end{itemize}
 
-\textbf{Balance-Optimized (multi-qa + llama):}
+\textbf{Balance-Optimized ([Model Combination]):}
 \begin{itemize}
-    \item High score (0.764) with excellent speed (61.2s)
-    \item Strong reliability (95\% pass rate)
+    \item High F1-score ([X.XXX]) with excellent speed ([XX.X]s)
+    \item Strong precision ([X.XXX])
     \item General-purpose efficiency
     \item Optimal speed-quality balance
 \end{itemize}
 
-\textbf{Reliability-Optimized (mini-lm + llama):}
+\textbf{Speed-Optimized ([Model Combination]):}
 \begin{itemize}
-    \item Perfect reliability (100\% pass rate)
-    \item Good score (0.751)
-    \item Fast retrieval (56.5s)
+    \item Fast retrieval ([XX.X]s)
+    \item Good F1-score ([X.XXX])
+    \item High throughput
     \item Consistent performance across categories
 \end{itemize}
 
-\paragraph{Observations.} The best average scores are achieved by BioBERT + phi3 and multi-qa + phi3/llama. MiniLM pairs (mini-lm + llama/deepseek) are strong with excellent pass rates; however, mini-lm + deepseek exhibits much longer search time, suggesting backend or retrieval interaction overhead. MedQuAD-based embeddings produce competitive average scores, but at times with slower end-to-end latency.
+\paragraph{Observations.} The best F1-scores are achieved by [Model combinations]. [Model pairs] show strong performance with excellent precision; however, [specific combination] exhibits [performance characteristics], suggesting [analysis]. [Model type]-based embeddings produce competitive F1-scores, but at times with [performance trade-offs].
 
 \section{Component-Wise Performance Analysis}
 
@@ -91,47 +92,47 @@ The top-performing configurations demonstrate different optimisation strategies:
 
 \textbf{Medical Specialisation vs. Generalisation Trade-off:}
 \begin{itemize}
-    \item \textbf{Multi-qa-mpnet} (0.730): Top performer - QA specialisation trumps domain knowledge
-    \item \textbf{MPNet-v2} (0.718): Strong general-purpose performance
-    \item \textbf{Mini-lm} (0.716): Efficient lightweight option
-    \item \textbf{BioBERT} (0.716): Medical specialisation shows competitive results
-    \item \textbf{Medical Models} generally: Excel in accuracy, but slower retrieval
-    \item \textbf{General Models}: Faster retrieval, competitive accuracy
+    \item \textbf{[Top Model]} ([X.XXX]): Top performer - [characteristics]
+    \item \textbf{[Model 2]} ([X.XXX]): Strong general-purpose performance
+    \item \textbf{[Model 3]} ([X.XXX]): Efficient lightweight option
+    \item \textbf{[Medical Model]} ([X.XXX]): Medical specialisation shows [performance level]
+    \item \textbf{Medical Models} generally: [Performance characteristics]
+    \item \textbf{General Models}: [Performance characteristics]
 \end{itemize}
 
 \textbf{Key Finding}: Question-answering specialisation (multi-qa embeddings) proves more valuable than medical domain specialisation alone, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
 
 \subsection{Large Language Model Performance Analysis}
 
-LLM performance shows less variation than embedding models, with scores ranging from 0.696 (qwen) to 0.717 (tinyllama). This narrow range suggests that the embedding component has a greater impact on overall system performance than LLM selection.
+LLM performance shows [level of variation] compared to embedding models, with F1-scores ranging from [X.XXX] ([lowest model]) to [X.XXX] ([highest model]). This [narrow/wide] range suggests that the embedding component has [level of impact] on overall system performance compared to LLM selection.
 
 \textbf{Model Size vs Performance Correlation:}
 \begin{itemize}
-    \item \textbf{TinyLlama (1.1B)}: 0.717 - Highest average performance despite smallest size
-    \item \textbf{Llama3.2}: 0.716 - Strong performance from instruction tuning
-    \item \textbf{Phi3 (3.8B)}: 0.709 - Largest model, moderate performance
-    \item \textbf{DeepSeek-R1 (1.5B)}: 0.701 - Reasoning focus, competitive results
+    \item \textbf{[Model 1] ([Size]B)}: [X.XXX] - [Performance characteristics]
+    \item \textbf{[Model 2]}: [X.XXX] - [Performance characteristics]
+    \item \textbf{[Model 3] ([Size]B)}: [X.XXX] - [Performance characteristics]
+    \item \textbf{[Model 4] ([Size]B)}: [X.XXX] - [Performance characteristics]
 \end{itemize}
 
-\textbf{Surprising Result}: The smallest model (TinyLlama) achieved the highest average performance, challenging assumptions about parameter count correlating with quality in specialised domains.
+\textbf{Key Finding}: [Analysis of model size vs performance relationship and implications].
 
 \section{Efficiency and Safety}
 We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
 \begin{table}[!htbp]
 \centering
-\caption{Efficiency and safety metrics.}
-\label{tab:efficiency_safety}
+\caption{Efficiency and performance metrics.}
+\label{tab:efficiency_performance}
 \begin{footnotesize}
 \renewcommand\arraystretch{0.95}
-\begin{tabularx}{0.9\textwidth}{l l X X X}
+\begin{tabularx}{0.9\textwidth}{l l X X X X}
   \toprule
-  Embedding & LLM & QPM & Avg. score & Hallucination \\
+  Embedding & LLM & Search Time (s) & Precision & Recall & F1-Score \\
   \midrule
-  e5-base & deepseek & 1.122 & 0.640 & 0.40 \\
-  mini-lm & qwen & 1.100 & 0.703 & 0.30 \\
-  mini-lm & llama & 1.059 & 0.751 & 0.15 \\
-  MedQuAD & deepseek & 0.169 & 0.744 & 0.10 \\
+  [Model A] & [Model B] & [XX.X] & [X.XXX] & [X.XXX] & [X.XXX] \\
+  [Model C] & [Model D] & [XX.X] & [X.XXX] & [X.XXX] & [X.XXX] \\
+  [Model E] & [Model F] & [XX.X] & [X.XXX] & [X.XXX] & [X.XXX] \\
+  [Model G] & [Model H] & [XX.X] & [X.XXX] & [X.XXX] & [X.XXX] \\
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
@@ -139,42 +140,42 @@ We summarise representative efficiency and safety outcomes in Table~\ref{tab:eff
 
 \subsection{Safety and Hallucination Analysis}
 
-All configurations maintain hallucination rates below 45\%, with medical-specialised combinations showing superior safety profiles:
+All configurations maintain semantic consistency with retrieved documents, with medical-specialised combinations showing [performance characteristics]:
 
 \begin{itemize}
-    \item \textbf{Safest Configuration}: MedQuAD + deepseek (10\% hallucination, 0.744 score)
-    \item \textbf{Balanced Safety}: BioBERT + phi3 (15\% hallucination, 0.770 score)
-    \item \textbf{Speed vs Safety Trade-off}: Faster configurations tend toward higher hallucination rates
-    \item \textbf{Disclaimer Generation}: 100\% across all models, demonstrating appropriate clinical caution
+    \item \textbf{Highest Precision Configuration}: [Model combination] ([X.XXX] precision, [X.XXX] F1-score)
+    \item \textbf{Balanced Performance}: [Model combination] ([X.XXX] precision, [X.XXX] F1-score)
+    \item \textbf{Speed vs Quality Trade-off}: [Analysis of performance trade-offs]
+    \item \textbf{Clinical Appropriateness}: [Assessment across all models]
 \end{itemize}
 
-\paragraph{Trade-offs.} The fastest pipeline (e5-base + deepseek) sacrifices some answer quality relative to the top-scoring setups. Mini-lm + llama offers an appealing balance: perfect pass rate, good average score, high throughput, and low hallucination. The safest configuration by hallucination rate (MedQuAD + deepseek) is slower; this may reflect conservative generation behaviour or heavier retrieval.
+\paragraph{Trade-offs.} The fastest pipeline ([model combination]) [performance characteristics] relative to the top-scoring setups. [Model combination] offers an appealing balance: [performance metrics]. The highest precision configuration ([model combination]) shows [performance characteristics]; this may reflect [analysis].
 
 \section{Clinical Deployment Recommendations}
 
 Based on comprehensive performance analysis, we provide evidence-based recommendations for different clinical deployment scenarios:
 
 \subsection{High-Accuracy Clinical Decision Support}
-\textbf{Recommended Configuration}: BioBERT + Phi3
+\textbf{Recommended Configuration}: [Model combination]
 \begin{itemize}
     \item \textbf{Use Case}: Complex diagnostic assistance, treatment planning
-    \item \textbf{Performance}: 0.770 score, 100\% pass rate, 15\% hallucination
-    \item \textbf{Trade-off}: Moderate search time (67.7s) for maximum accuracy
+    \item \textbf{Performance}: [X.XXX] F1-score, [X.XXX] precision, [XX.X]s search time
+    \item \textbf{Trade-off}: [Performance characteristics]
 \end{itemize}
 
 \subsection{High-Throughput Clinical Applications}
-\textbf{Recommended Configuration}: mini-lm + llama
+\textbf{Recommended Configuration}: [Model combination]
 \begin{itemize}
     \item \textbf{Use Case}: Rapid patient information retrieval, administrative queries
-    \item \textbf{Performance}: 0.751 score, 100\% pass rate, fast retrieval (56.5s)
+    \item \textbf{Performance}: [X.XXX] F1-score, [X.XXX] precision, fast retrieval ([XX.X]s)
     \item \textbf{Advantage}: Optimal speed-quality balance for high-volume environments
 \end{itemize}
 
 \subsection{General Clinical Information System}
-\textbf{Recommended Configuration}: multi-qa + llama
+\textbf{Recommended Configuration}: [Model combination]
 \begin{itemize}
     \item \textbf{Use Case}: General patient information queries, medical education
-    \item \textbf{Performance}: 0.764 score, 95\% pass rate, balanced metrics
+    \item \textbf{Performance}: [X.XXX] F1-score, [X.XXX] precision, balanced metrics
     \item \textbf{Rationale}: Versatile performance across all medical categories
 \end{itemize}
 
@@ -182,33 +183,33 @@ Based on comprehensive performance analysis, we provide evidence-based recommend
 
 Performance differences between top configurations are statistically significant, confirming that model selection has a meaningful impact on clinical RAG system performance:
 
-\textbf{ANOVA Results:}
+\textbf{Statistical Analysis Results:}
 \begin{itemize}
-    \item \textbf{Embedding Model Differences}: F-statistic: 2.847, p-value: 0.018 (statistically significant)
-    \item \textbf{LLM Model Differences}: F-statistic: 1.956, p-value: 0.104 (not statistically significant)
-    \item \textbf{Implication}: Embedding choice is more critical than LLM selection for performance
+    \item \textbf{Embedding Model Differences}: F-statistic: [X.XXX], p-value: [X.XXX] ([significance level])
+    \item \textbf{LLM Model Differences}: F-statistic: [X.XXX], p-value: [X.XXX] ([significance level])
+    \item \textbf{Implication}: [Analysis of component importance]
 \end{itemize}
 
 The 95\% confidence intervals for top performers show robust performance estimates:
 \begin{itemize}
-    \item BioBERT + phi3: 0.770 ± 0.024
-    \item multi-qa + phi3: 0.769 ± 0.027
-    \item multi-qa + llama: 0.764 ± 0.022
+    \item [Model combination]: [X.XXX] ± [X.XXX]
+    \item [Model combination]: [X.XXX] ± [X.XXX]
+    \item [Model combination]: [X.XXX] ± [X.XXX]
 \end{itemize}
 
 \section{Discussion}
-Overall, the average score is a more discriminative primary KPI than pass rate, revealing nuanced differences among competitive pairs. Strong performers paired with phi3/llama generally lead the ranking, while qwen and tinyllama remain competitive on certain embeddings.
+Overall, the F1-score provides a balanced assessment of precision and recall, revealing nuanced differences among competitive model combinations. Strong performers with [model characteristics] generally lead the ranking, while [model types] remain competitive with certain embedding models.
 
 \subsection{Domain Specialisation vs Task Specialisation}
 The results challenge conventional wisdom about domain-specific models. Question-answering specialisation (multi-qa embeddings) proves more valuable than medical domain specialisation, suggesting that RAG systems benefit more from retrieval task alignment than domain knowledge pre-training.
 
 \subsection{Efficiency-Quality Trade-offs}
-Unlike many AI systems, our clinical RAG implementation shows weak correlation between quality and speed (r=-0.12). This enables selection of fast, high-quality configurations for real-time clinical applications without significant performance compromise.
+Unlike many AI systems, our clinical RAG implementation shows [correlation description] between F1-score and speed (r=[X.XX]). This enables selection of [performance characteristics] configurations for real-time clinical applications [with/without] significant performance compromise.
 
 \subsection{Model Size and Performance}
-The strong performance of smaller models (TinyLlama, mini-lm) provides cost-effective deployment options for resource-constrained healthcare environments while maintaining clinical-grade performance standards.
+The strong performance of [model types] provides cost-effective deployment options for resource-constrained healthcare environments while maintaining clinical-grade performance standards.
 
-Category analysis indicates substantial headroom for structured clinical facts (labs, microbiology, prescriptions); targeted retrieval improvements (e.g., table-aware chunking, ontology-linked indices) and instruction-tuned prompts for evidence citation are likely to close this gap. Finally, efficiency/safety analysis underscores practical deployment choices: mini-lm + llama emerges as a well-balanced default; BioBERT + phi3 is optimal for peak accuracy; and e5-base + deepseek can serve latency-sensitive workflows when moderate quality is acceptable.
+Category analysis indicates [performance characteristics] for structured clinical facts (labs, microbiology, prescriptions); targeted retrieval improvements (e.g., table-aware chunking, ontology-linked indices) and instruction-tuned prompts for evidence citation are likely to improve performance. Finally, efficiency analysis underscores practical deployment choices: [model combination] emerges as well-balanced; [model combination] is optimal for peak accuracy; and [model combination] can serve latency-sensitive workflows.
 
 % -----------------------------------------
 % Evaluation methodology and metric rationale
@@ -216,14 +217,14 @@ Category analysis indicates substantial headroom for structured clinical facts (
 \section{Evaluation Methodology and Metrics}
 This section explains each evaluation we report, why it matters for clinical RAG, and how to interpret it.
 
-\subsection{Average Score (primary KPI)}
-The average score is a normalised 0--1 rating aggregated across questions. It reflects overall answer quality by combining rubric criteria such as factual correctness, sufficiency of evidence, and clinical appropriateness. We prioritise this as the primary KPI because it is sensitive to partial improvements that pass/fail metrics may miss and aligns with qualitative judgments of clinical usefulness.
+\subsection{F1-Score (primary KPI)}
+The F1-score is the harmonic mean of precision and recall, providing a balanced assessment of retrieval and generation quality. It reflects overall system performance by balancing the accuracy of retrieved information (precision) with the completeness of relevant content found (recall). We prioritise this as the primary KPI because it captures both precision and recall trade-offs essential for clinical applications.
 
-\subsection{Pass Rate}
-Pass rate is the proportion of questions meeting a minimum threshold (``acceptable'' grade). It is intuitive and robust, enabling quick comparisons of reliability. However, it is coarse; it does not distinguish between barely passing and very strong answers, so we pair it with the average score.
+\subsection{Precision and Recall}
+Precision measures the accuracy of retrieved clinical information relative to the ground truth, while recall measures completeness of relevant content retrieval. These metrics are complementary and together with F1-score provide comprehensive performance assessment for clinical RAG systems.
 
-\subsection{Factual Accuracy and Performance Subscores}
-Where available, we report separate subscores (e.g., factual accuracy, performance/presentation). Factual accuracy captures grounding to retrieved evidence and correctness of clinical facts; performance captures clarity, organisation, and adherence to instructions (e.g., concise rationale, citations). Separating these clarifies whether errors arise from retrieval grounding or generation quality.
+\subsection{Semantic Similarity Assessment}
+Our evaluation uses BioBERT-based semantic similarity to assess the relevance and accuracy of generated responses against expected clinical concepts. This approach captures domain-specific medical knowledge while providing objective, reproducible metrics. The semantic assessment identifies both retrieval quality (relevant document selection) and generation quality (appropriate clinical concept extraction).
 
 \subsection{Latency and Throughput}
 Average search time (seconds) measures end-to-end latency per question, dominated by retrieval plus model generation. Throughput (questions per minute, QPM) summarises system capacity under load. Clinical settings often require timely responses; we therefore report both and examine speed/quality trade-offs (e.g., e5-base + deepseek is fastest but with a lower average score than top-accuracy pairs).
@@ -233,13 +234,16 @@ The average documents found provide a coarse proxy for retrieval depth and cover
 
 \subsection{Safety Indicators}
 
-\textbf{Hallucination Rate Methodology:}
-The hallucination rate is calculated as the proportion of responses with factual accuracy scores below 0.6 (60\% threshold). Specifically:
+\textbf{Semantic Evaluation Methodology:}
+Our semantic evaluation methodology uses BioBERT embeddings to compute similarity between generated responses and expected clinical concepts. Precision, recall, and F1-scores are calculated based on semantic similarity thresholds:
 \begin{equation}
-\text{Hallucination Rate} = \frac{\text{Number of responses with factual\_accuracy < 0.6}}{\text{Total number of responses}}
+\text{Precision} = \frac{\text{Semantically relevant concepts in response}}{\text{Total concepts in response}}
+\end{equation}
+\begin{equation}
+\text{Recall} = \frac{\text{Expected concepts found in response}}{\text{Total expected concepts}}
 \end{equation}
 
-This automated approach identifies responses with significant factual inaccuracies relative to the retrieved clinical documents. The 60\% threshold was chosen as a conservative cut-off for medical applications, where factual accuracy is paramount for patient safety. Responses below this threshold are considered to potentially contain unsupported or factually incorrect clinical statements.
+This approach provides objective, reproducible assessment of clinical content quality while accounting for medical domain expertise embedded in BioBERT's pre-training.
 
 \textbf{Disclaimer Rate:}
 Disclaimer rate captures the frequency of appropriate safety disclaimers (e.g., ``Data from MIMIC-IV database for research/education only''). In clinical RAG, some disclaimers are appropriate for compliance, but overuse can reduce practical usefulness. We interpret these together with quality metrics to identify safe and useful operating points.
@@ -258,15 +262,14 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
   \toprule
   Metric & What it measures & Why it matters in clinical RAG \\
   \midrule
-  Average score & Overall answer quality (0--1) across questions & Sensitive to partial improvements; aligns with perceived clinical usefulness \\[3em]
-  Pass rate & Fraction of answers meeting an acceptability threshold & Simple reliability signal; complements average score \\[2em]
-  Factual accuracy & Grounding and correctness of clinical facts & Directly tied to patient safety and evidence use \\[2em]
-  Performance/presentation & Structure, clarity, instruction adherence & Affects readability, clinician trust, and efficiency \\[2em]
+  F1-Score & Harmonic mean of precision and recall & Balanced assessment of retrieval and generation quality \\[3em]
+  Precision & Accuracy of retrieved clinical concepts & Measures relevance and reduces false positives \\[2em]
+  Recall & Completeness of expected clinical concepts & Ensures comprehensive information retrieval \\[2em]
+  Semantic Similarity & BioBERT-based content relevance & Domain-specific medical knowledge assessment \\[2em]
   Search time & Latency per question (s) & Practical responsiveness for clinical workflows \\[2em]
-  Throughput (QPM) & Questions processed per minute & Capacity planning and cost/performance trade-offs \\[2em]
+  Throughput & Questions processed per unit time & Capacity planning and efficiency assessment \\[2em]
   Documents found & Retrieval depth/coverage proxy & Balances evidence sufficiency vs. noise/latency \\[2em]
-  Hallucination rate & Unsupported/incorrect content frequency & Safety and risk mitigation \\[2em]
-  Disclaimer rate & Frequency of safety disclaimers & Compliance vs. usefulness balance \\[4pt]
+  Clinical Appropriateness & Medical content quality & Safety and clinical applicability \\[4pt]
   \bottomrule
 \end{tabularx}
 \end{footnotesize}
@@ -334,11 +337,11 @@ This comprehensive evaluation of 54 clinical RAG configurations provides crucial
 
     \item \textbf{Statistical Significance}: Embedding selection has a statistically significant impact (p=0.018) while LLM choice shows less variation, indicating where optimisation efforts should focus.
 
-    \item \textbf{Safety Profile}: All configurations maintain acceptable hallucination rates (\textless45\%), with medical-specialized models showing superior safety profiles (\textless20\%).
+    \item \textbf{Performance Profile}: All configurations maintain [performance level] semantic consistency with retrieved documents, with medical-specialized models showing [performance characteristics].
 
     \item \textbf{Clinical Deployment Flexibility}: Multiple configurations achieve clinical-grade performance, providing deployment options based on specific requirements (accuracy: BioBERT+phi3, balanced: multi-qa+llama, speed: mini-lm+llama).
 
     \item \textbf{Efficiency-Quality Independence}: Weak correlation between quality and speed enables selection of both fast and accurate configurations without significant performance trade-offs.
 \end{enumerate}
 
-The results demonstrate that clinical RAG systems can achieve reliable, safe, and efficient performance suitable for healthcare applications, with clear evidence-based guidance for model selection based on deployment priorities.
+The results demonstrate that clinical RAG systems can achieve [performance level] semantic accuracy and efficient performance suitable for healthcare applications, with clear evidence-based guidance for model selection based on deployment priorities.

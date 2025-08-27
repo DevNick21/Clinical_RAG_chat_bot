@@ -43,7 +43,7 @@ export const useChat = () => {
   }, []);
 
   /**
-   * Send a message to the RAG system
+   * Send a message to the RAG system with streaming support
    * @param {string} messageText - The user's message
    */
   const sendMessage = useCallback(
@@ -72,33 +72,76 @@ export const useChat = () => {
         abortControllerRef.current.abort();
       }
 
+      // Create a placeholder bot message for streaming updates
+      const botMessageId = Date.now() + Math.random() + 1;
+      const initialBotMessage = {
+        id: botMessageId,
+        type: "bot",
+        content: "",
+        sources: [],
+        timestamp: new Date().toISOString(),
+        isStreaming: true,
+      };
+
+      setMessages((prev) => [...prev, initialBotMessage]);
+
       try {
-        // Send message to API
+        // Send streaming message to API
         const response = await apiService.sendMessage(
           validation.message,
-          messages.slice(-20) // Send last 20 messages for context
+          messages.slice(-20), // Send last 20 messages for context
+          
+          // onChunk callback - updates the bot message in real-time
+          (chunk) => {
+            setMessages((prev) => 
+              prev.map((msg) => 
+                msg.id === botMessageId 
+                  ? {
+                      ...msg, 
+                      content: chunk.fullContent,
+                      isStreaming: !chunk.done
+                    }
+                  : msg
+              )
+            );
+          },
+          
+          // onComplete callback - finalizes the message
+          (finalResponse) => {
+            setMessages((prev) => 
+              prev.map((msg) => 
+                msg.id === botMessageId 
+                  ? {
+                      ...msg,
+                      content: finalResponse.answer,
+                      sources: finalResponse.sources || [],
+                      timestamp: finalResponse.timestamp,
+                      metadata: finalResponse.metadata,
+                      isStreaming: false
+                    }
+                  : msg
+              )
+            );
+          }
         );
 
-        const botMessage = {
-          id: Date.now() + Math.random() + 1,
-          type: "bot",
-          content: response.answer,
-          sources: response.sources || [],
-          timestamp: response.timestamp,
-        };
+        console.log("Streaming completed successfully:", response);
 
-        setMessages((prev) => [...prev, botMessage]);
       } catch (error) {
         console.error("Chat error:", error);
 
-        const errorMessage = {
-          id: Date.now() + Math.random() + 2,
-          type: "error",
-          content: `Sorry, I encountered an error: ${error.message}`,
-          timestamp: new Date().toISOString(),
-        };
-
-        setMessages((prev) => [...prev, errorMessage]);
+        // Remove the placeholder bot message and add error message
+        setMessages((prev) => {
+          const withoutBotMessage = prev.filter((msg) => msg.id !== botMessageId);
+          const errorMessage = {
+            id: Date.now() + Math.random() + 2,
+            type: "error",
+            content: `Sorry, I encountered an error: ${error.message}`,
+            timestamp: new Date().toISOString(),
+          };
+          return [...withoutBotMessage, errorMessage];
+        });
+        
         setError(error.message);
       } finally {
         setLoading(false);
