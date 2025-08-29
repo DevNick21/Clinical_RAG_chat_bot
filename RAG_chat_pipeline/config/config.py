@@ -5,8 +5,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[2]  # Base directory for the project
 CHUNKED_DOCS_PATH = BASE / "mimic_sample_1000" / "chunked_docs.pkl"
 
-# Default model to use, can be changed to "multi-qa", "mini-lm", or "static-retr"
-model_in_use = "mini-lm"
+model_in_use = "biomedbert"
 
 # Model configuration
 # Clinical model for entity extraction and question answering
@@ -97,7 +96,8 @@ SECTION_KEYWORDS = {
 # Semantic similarity configuration for BioBERT-based evaluation
 SEMANTIC_EVALUATION_CONFIG = {
     "biobert_model_path": "models/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
-    "similarity_threshold": 0.60,  # Adjusted threshold for clinical domain (was 0.75)
+    # Adjusted threshold for clinical domain (was 0.75)
+    "similarity_threshold": 0.60,
     "batch_size": 32,              # Embedding batch size
     "max_sequence_length": 512     # Max tokens for BioBERT
 }

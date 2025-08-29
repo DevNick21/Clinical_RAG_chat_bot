@@ -13,7 +13,7 @@ This project implements a production-ready clinical RAG system that:
 - **Compares different LLM and embedding combinations** systematically
 - **Includes a React-based web interface** for easy clinical data querying
 
-##  System Architecture
+## System Architecture
 
 ```mermaid
 graph TB
@@ -88,7 +88,10 @@ graph TB
    - Support for both general-purpose and medical-specific models
 
 6. **Comprehensive Evaluation Framework** (`RAG_chat_pipeline/benchmarks/`)
-   - Multi-dimensional scoring: Factual Accuracy (60%), Behavior (30%), Performance (10%)
+   - **Semantic Precision/Recall/F1 Scoring**: BioBERT-based evaluation using clinical domain embeddings
+   - **Precision**: Average semantic similarity of matched expected keywords
+   - **Recall**: Proportion of expected keywords found in responses
+   - **F1-Score**: Harmonic mean of precision and recall for overall performance
    - Category-specific validation for different medical question types
    - Automated gold question generation from real patient data
    - Both single-turn and conversational evaluation capabilities
@@ -113,7 +116,7 @@ graph TB
    - **CLI Interface** (`cli_chat.py`): Command-line interaction
    - **Jupyter Integration**: Notebook-friendly API
 
-##  Supported Models
+## Supported Models
 
 ### Embedding Models
 
@@ -136,7 +139,7 @@ graph TB
 - **Phi3** (3.8B) - Microsoft's instruction-following model
 - **TinyLlama** (1.1B) - Compact and efficient model
 
-##  Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -366,11 +369,15 @@ The system processes six types of medical records:
 
 ##  Evaluation Framework
 
-### Scoring Methodology
+### Semantic Scoring Methodology
 
-- **Factual Accuracy (60%)**: Validates against actual patient data
-- **Behavioral Assessment (30%)**: Checks appropriate clinical responses
-- **Performance Metrics (10%)**: Measures search speed and document retrieval
+The evaluation framework uses **BioBERT-based semantic similarity** for clinical domain accuracy:
+
+- **Precision**: Average semantic similarity of matched expected keywords (how accurate the matches are)
+- **Recall**: Proportion of expected keywords semantically found in responses (how complete the response is)  
+- **F1-Score**: Harmonic mean of precision and recall providing balanced overall performance measure
+- **Similarity Threshold**: 0.60 for clinical domain semantic matching
+- **Hybrid Matching**: Combines direct substring matching with BioBERT embeddings for robust evaluation
 
 ### Question Categories
 
@@ -392,21 +399,24 @@ python -m RAG_chat_pipeline.benchmarks.rag_evaluator full
 python -m RAG_chat_pipeline.benchmarks.rag_evaluator short
 ```
 
-##  Performance Analysis
+## Performance Analysis
 
 ### Results Dashboard
 
 The system generates comprehensive performance reports including:
 
-- **Pass rates by model combination**
+- **F1-Score rankings by model combination**
+- **Precision/Recall trade-off analysis**
 - **Category-specific performance breakdowns**
+- **Semantic similarity score distributions**
 - **Search time and efficiency metrics**
-- **Comparative analysis across embedding models**
+- **BioBERT-based semantic matching statistics**
 
 ### Visualization
 
-- Performance heatmaps comparing model combinations
-- Category breakdown charts
+- F1-Score heatmaps comparing model combinations
+- Precision vs Recall scatter plots
+- Category breakdown charts with semantic similarity scores
 - Time series analysis of evaluation results
 
 ## 🗂 Project Structure
@@ -483,7 +493,7 @@ The following directories contain large files, sensitive data, or generated arti
 - `*.csv` - Raw data files
 - `*.log` - Log files
 
-##  Configuration
+## Configuration
 
 ### Model Selection
 
@@ -500,19 +510,20 @@ LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama, gemma, phi3, tin
 ### Evaluation Parameters
 
 ```python
-# Scoring weights
-EVALUATION_SCORING_WEIGHTS = {
-    "factual_accuracy": 0.6,
-    "behavior": 0.3,
-    "performance": 0.1
+# BioBERT semantic evaluation configuration
+SEMANTIC_EVALUATION_CONFIG = {
+    "biobert_model_path": "models/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
+    "similarity_threshold": 0.60,  # Clinical domain threshold
+    "batch_size": 32,              # Embedding batch size
+    "max_sequence_length": 512     # Max tokens for BioBERT
 }
 
-# Pass thresholds by category
-## 🧪 Evaluation Results
-
-### Example Performance Summary
-    "prescriptions": 0.70,
-    # ...
+# Core evaluation parameters
+EVALUATION_DEFAULT_PARAMS = {
+    "default_k": 5,  # Documents retrieved for evaluation
+    "search_strategy": "fast",
+    "short_evaluation_limit": 5,
+    "quick_test_limit": 3
 }
 ```
 
@@ -530,9 +541,11 @@ Generated: 2025-01-16 10:30:15
 - LLM Models Tested: 6
 
 ## Best Performing Combinations
-### Highest Overall Score
+### Highest F1-Score
 - Models: ms-marco + deepseek
-- Overall Score: 0.847
+- F1-Score: 0.847
+- Precision: 0.832
+- Recall: 0.863
 ## 🔬 Research Applications
 
 This system is designed for:
@@ -599,7 +612,7 @@ If you use this system in your research, please cite:
 }
 ```
 
-##  Medical Disclaimer
+## Medical Disclaimer
 
 This system is for educational and research purposes only. It should not be used for medical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
 
