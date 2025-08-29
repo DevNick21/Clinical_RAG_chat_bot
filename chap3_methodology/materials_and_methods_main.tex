@@ -175,7 +175,7 @@ for i, doc in enumerate(self.chunked_docs):
 Top-$k$ (default \(k=5\), bounded for performance) documents are semantically ranked. For efficiency and to improve answer formatting, the system extracts concise, section-aware snippets (diagnoses, procedures, labs, prescriptions, microbiology, header) and composes a single structured context document passed to the LLM. Rules favour lines with section-specific keywords and patterns (e.g., ICD codes, dosages, numeric lab values/units) while limiting per-section lines to keep within context windows.
 
 \subsection{LLM Answering}
-Answers are generated using an Ollama-hosted model through LangChain's \texttt{create\_stuff\_documents\_chain}, with a prompt that enforces the guard\-rails below.
+Answers are generated using an Ollama-hosted model through LangChain's \newline\texttt{create\_stuff\_documents\_chain}, with a prompt that enforces the guardrails below.
 
 \noindent \textbf{Prompt guardrails:}
 \begin{itemize}
@@ -186,7 +186,7 @@ Answers are generated using an Ollama-hosted model through LangChain's \texttt{c
 \end{itemize}
 
 \subsection{Entity Extraction and Conversational Context}
-A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}; see \texttt{MAX\_CHAT\_HISTORY} in config) to control context length.
+A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}) to control context length.
 
 \subsection{RAG Core Emphasis and Design Evolution}
 The initial blueprint used a straightforward vector index + chat engine with strict context mode:
@@ -274,10 +274,11 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 % 3.10 Evaluation Protocol
 % ========================
 \section{Evaluation Protocol}
-We provide only a brief overview here; detailed metrics and comparisons are in Results. The evaluator generates category-specific gold questions and computes pass/fail and summary statistics per model combination. We validate against structured signals (ICD patterns, dosages, units) and measure retrieval latency; full scoring details are in Results.
+Detailed metrics and comparisons are in Results.
+The evaluator generates category-specific gold questions and computes precision, recall and F1 score and summary statistics per model combination. We validate against structured signals (ICD patterns, dosages, units) and measure retrieval latency; full scoring details are in Results.
 
 \subsection{Gold Questions and Categories}
-Gold questions are created from available records (diagnoses, procedures, labs, etc.) with associated \texttt{hadm\_id}s when applicable. Full evaluation outcomes are reported in Results.
+Gold questions are created from available records (diagnoses, procedures, labs, etc.) with associated \texttt{hadm\_id}s when applicable.
 
 % ========================
 % 3.11 Modularity and Extensibility
@@ -308,11 +309,7 @@ The system is modular: configuration (\texttt{config/}), core RAG components (\t
   \item API: \texttt{python api/app.py}
   \item UI: \texttt{cd frontend; npm start}
   \item CLI: \texttt{python cli\_chat.py chat}
-<<<<<<< HEAD
   \item Quick eval: \texttt{python -m benchmarks.model\_evaluation\_runner} \break \texttt{single ms-marco deepseek short}
-=======
-  \item Quick eval: \texttt{python -m benchmarks.model\_evaluation\_runner} \break \texttt{single ms-marco} deepseek short}
->>>>>>> 65c0981d934e760449bf221409be485512361546
   \item Full comp: \texttt{python -m benchmarks.model\_evaluation\_runner all full}
 \end{itemize}
 

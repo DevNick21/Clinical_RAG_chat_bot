@@ -12,7 +12,7 @@
   \item \textbf{Total Question-Answer Pairs}: 1,080 clinical evaluations
   \item \textbf{Evaluation Duration}: Comprehensive automated testing across 54 model combinations
 \end{itemize}
-
+\newpage
 \section{Overall Performance}
 Aggregate results across all 1,080 evaluations show:
 \begin{itemize}
@@ -27,11 +27,10 @@ Best-performing configurations:
   \item Highest F1-score: multi-qa + phi3 (F1-score 0.758, precision 0.971).
   \item Fastest good performer: biomedbert + gemma (avg. search time 56.1s, F1-score 0.669).
 \end{itemize}
-
+\newpage
 \subsection{Statistical Performance Overview}
-\input{chap4_results/tables/enhanced_system_statistics}
-
 The performance distribution shows substantial variability around the mean (0.632), with a standard deviation of 0.326 indicating moderate quality consistency across configurations. Key statistical insights include:
+\input{chap4_results/tables/enhanced_system_statistics}
 
 \begin{itemize}
     \item \textbf{F1-Score Distribution}: Right-skewed distribution with median 0.632, 90th percentile 0.758
@@ -43,27 +42,27 @@ The performance distribution shows substantial variability around the mean (0.63
 \section{Comparison Heatmaps}
 Figures~\ref{fig:heatmap_f1_score}, \ref{fig:heatmap_precision}, and \ref{fig:heatmap_recall} provide comprehensive model-by-model comparison heatmaps showing F1 scores, precision, and recall across all embedding-LLM combinations.
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/heatmap_f1_score.png}
   \caption{Model comparison heatmap by average F1 score. Darker green indicates better performance.}
   \label{fig:heatmap_f1_score}
 \end{figure}
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/heatmap_precision.png}
   \caption{Model comparison heatmap by average precision. Shows clinical accuracy patterns across model combinations.}
   \label{fig:heatmap_precision}
 \end{figure}
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/heatmap_recall.png}
   \caption{Model comparison heatmap by average recall. Shows clinical completeness patterns across model combinations.}
   \label{fig:heatmap_recall}
 \end{figure}
-
+\newpage
 \section{Top-Performing Configurations}
 
 \input{chap4_results/tables/comprehensive_model_rankings}
@@ -133,7 +132,7 @@ LLM performance shows moderate variation compared to embedding models, with F1-s
 \section{Efficiency and Safety}
 We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_performance}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
-\begin{table}[!htbp]
+\begin{table}[H]
 \centering
 \caption{Efficiency and performance metrics.}
 \label{tab:efficiency_performance}
@@ -405,7 +404,7 @@ Performance varies with document retrieval complexity, suggesting different opti
 
 \begin{figure}[!htbp]
   \centering
-  \includegraphics[width=\textwidth]{chap4_results/images/pass_rate_vs_score.png}
+  \includegraphics[width=\textwidh]{chap4_results/images/pass_rate_vs_score.png}
   \caption{Pass rate vs. F1 score by LLM. Highlights model pairs that achieve both reliability and high performance.}
   \label{fig:pass_rate_vs_score}
 \end{figure}
