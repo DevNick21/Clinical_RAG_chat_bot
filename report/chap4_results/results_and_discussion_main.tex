@@ -131,13 +131,13 @@ LLM performance shows moderate variation compared to embedding models, with F1-s
 \textbf{Key Finding}: Smaller, well-designed models (1.5-3.8B parameters) achieve performance competitive with larger models while offering significant efficiency gains, suggesting diminishing returns of scale for clinical RAG tasks.
 
 \section{Efficiency and Safety}
-We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_safety}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
+We summarise representative efficiency and safety outcomes in Table~\ref{tab:efficiency_performance}. Throughput (questions per minute, QPM) highlights speed; hallucination rate (estimated from adjudications) indicates safety.
 
 \begin{table}[!htbp]
 \centering
 \caption{Efficiency and performance metrics.}
 \label{tab:efficiency_performance}
-\begin{footnotesize}
+{\footnotesize
 \renewcommand\arraystretch{0.95}
 \begin{tabularx}{0.9\textwidth}{l l X X X X}
   \toprule
@@ -149,7 +149,7 @@ We summarise representative efficiency and safety outcomes in Table~\ref{tab:eff
   biomedbert & gemma & 56.1 & 0.882 & 0.605 & 0.669 \\
   \bottomrule
 \end{tabularx}
-\end{footnotesize}
+}
 \end{table}
 
 \subsection{Safety and Hallucination Analysis}
@@ -280,7 +280,7 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
 % A compact summary table for quick reference
 \begin{table}[h]
 \centering
-\begin{footnotesize}
+{\footnotesize
 \renewcommand\arraystretch{0.95}
 \begin{tabularx}{\textwidth}{l X X}
   \toprule
@@ -296,7 +296,7 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
   Clinical Appropriateness & Medical content quality & Safety and clinical applicability \\[4pt]
   \bottomrule
 \end{tabularx}
-\end{footnotesize}
+}
 \caption{Summary of evaluation metrics and their importance in clinical RAG.}
 \label{tab:metrics_summary}
 \end{table}
