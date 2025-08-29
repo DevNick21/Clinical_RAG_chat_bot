@@ -131,7 +131,7 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 6) Generate with a prompt that enforces grounding and citations.
 
 \noindent Here is a Pseudocode:
-\begin{minted}[fontsize=small, breaklines]{python}
+\begin{minted}[fontsize=\small, breaklines]{python}
 ids = parse_hints(query, chat_history)  # hadm_id, subject_id, section
 candidates = build_candidates(ids)  # from in-memory indices or full corpus
 ranked = faiss_rank(candidates, query)
@@ -308,7 +308,7 @@ The system is modular: configuration (\texttt{config/}), core RAG components (\t
   \item API: \texttt{python api/app.py}
   \item UI: \texttt{cd frontend; npm start}
   \item CLI: \texttt{python cli\_chat.py chat}
-  \item Quick eval: \texttt{python -m benchmarks.model\_evaluation\_runner} \break \texttt{single ms-marco} deepseek short}
+  \item Quick eval: \texttt{python -m benchmarks.model\_evaluation\_runner} \break \texttt{single ms-marco deepseek short}
   \item Full comp: \texttt{python -m benchmarks.model\_evaluation\_runner all full}
 \end{itemize}
 
