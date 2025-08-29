@@ -39,8 +39,8 @@
 \usepackage[printonlyused,withpage]{acronym}
 
 % Fix Lato font warnings for missing bold small caps
-\DeclareFontShape{T1}{lato-TLF}{b}{sc}{<->sub*lato-TLF/b/n}{}
-\DeclareFontShape{T1}{lato-TLF}{bx}{sc}{<->sub*lato-TLF/bx/n}{}
+\DeclareFontShape{T1}{lato-TLF}{b}{sc}{<->ssub*lato-TLF/b/n}{}
+\DeclareFontShape{T1}{lato-TLF}{bx}{sc}{<->ssub*lato-TLF/bx/n}{}
 
 %% ****************** Packages (End) *********************
 
