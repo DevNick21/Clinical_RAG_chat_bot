@@ -1,0 +1,20 @@
+\begin{table}
+\caption{Model Consistency and Reliability Analysis}
+\label{tab:consistency_analysis}
+\begin{tabular}{lrrr}
+\toprule
+Model Combination & Reliability Score & Good Performance Rate & F1 CV (\%) \\
+\midrule
+biomedbert + tinyllama & 0.709 & 0.700 & 29.1 \\
+biomedbert + llama & 0.663 & 0.700 & 33.7 \\
+multi-qa + phi3 & 0.658 & 0.700 & 34.2 \\
+e5-base + phi3 & 0.605 & 0.650 & 39.5 \\
+BioBERT + phi3 & 0.596 & 0.650 & 40.4 \\
+mini-lm + qwen & 0.584 & 0.700 & 41.6 \\
+biomedbert + phi3 & 0.584 & 0.650 & 41.6 \\
+BioLORD + deepseek & 0.572 & 0.750 & 42.8 \\
+BioLORD + qwen & 0.554 & 0.700 & 44.6 \\
+e5-base + gemma & 0.549 & 0.750 & 45.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
