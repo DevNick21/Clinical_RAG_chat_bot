@@ -1,7 +1,7 @@
 \chapter{Introduction}
 
 \section{Motivation}
-Electronic Health Records (EHRs) contain structured tables and unstructured \mbox{narratives} that chronicle patient encounters across time. Clinicians and analysts routinely need \mbox{targeted} answers that span medications, labs, procedures, microbiology, and admin details. Traditional keyword search or isolated SQL queries struggle to synthesise evidence across modalities and context. Retrieval-Augmented Generation (RAG) has emerged as a practical approach: it retrieves relevant documents and asks a language model to compose grounded answers with citations. This project delivers a clinical RAG system aligned with MIMIC-IV style data, designed to be modular, reproducible, and usable through both an API and a simple web interface.
+Electronic Health Records (EHRs) contain structured tables and unstructured \mbox{narratives} that chronicle patient encounters across time. Clinicians and analysts routinely need \mbox{targeted} answers that span medications, labs, procedures, microbiology, and admin \mbox{details}. Traditional keyword search or isolated SQL queries struggle to synthesise \mbox{evidence} across modalities and context. \newline Retrieval-Augmented Generation (RAG) has emerged as a practical approach: \newline It retrieves relevant documents and asks a language model to compose grounded \mbox{answers} with citations. This project delivers a clinical RAG system aligned with MIMIC-IV style data, designed to be modular, reproducible, and usable through both an API and a simple web interface.
 
 \section{Aims \& Objectives}
 This project designs and implements a Retrieval-Augmented Generation (RAG) chat system for clinical settings. The aim is to develop and assess a chatbot that integrates a locally hosted Large Language Model (LLM) with external medical records \mbox{(MIMIC-IV)} so that responses are grounded in real patient data, improving factual accuracy and contextual relevance.
@@ -24,8 +24,8 @@ The system follows four layers that mirror practical deployment needs:
 \end{enumerate}
 
 \section{Data and Ethical Considerations}
-To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mirrors realistic distributions without reproducing real patients. The main MIMIC-IV dataset is also de-identified and credentialed by PhysioNet. The software is intended for research and educational purposes only and is not a clinical decision support tool.
-
+To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mirrors realistic distributions without reproducing real patients. The main MIMIC-IV dataset is also de-identified and credentialed by PhysioNet. The software is intended for research and educational purposes only.
+\newpage
 \section{Project Description}
 This system improves the factual accuracy and contextual reliability of answers from a local LLM by retrieving supporting evidence from MIMIC-IV at query time. Unlike traditional chatbots that depend on online APIs, the full stack runs locally to safeguard sensitive data. The pipeline covers data preparation, embedding and indexing, retrieval-augmented answer generation, and practical access via a Flask API and React front-end.
 
@@ -54,17 +54,18 @@ A custom retriever returns top-$k$ semantically similar chunks for a user query.
 
 \subsection{Evaluation and Iteration}
 We compare RAG-augmented outputs to a standalone LLM baseline. Quantitative signals include average answer score, pass rate, retrieval latency, and topic-wise breakdowns; qualitative review examines fidelity to evidence and clinical style. Iterative improvements consider richer metadata, chunking strategies, re-prompting, and model choices.
-
+\newpage
 \section{Evaluation Plan}
 We will:
 \begin{itemize}
   \item Establish a clinical QA set spanning admissions, labs, microbiology, procedures, and prescriptions.
-  \item Track quality metrics (average score, pass rate), latency proxies (search time), and safety indicators (hallucination/disclaimer rates where applicable).
+  \item Track quality metrics (Precision, Recall and F1 score), latency proxies (search time), and safety indicators (hallucination/disclaimer rates where applicable).
   \item Conduct targeted manual review to validate correctness, calibration, and citation fidelity.
 \end{itemize}
 
 \section{Scope and Assumptions}
 We prioritise transparent, locally runnable components and retrieval-centric orchestration over large proprietary models. Dense bi-encoder retrieval with FAISS is used throughout; more advanced re-ranking or specialised clinical generators are out of scope for this iteration. Prompts favour concise, evidence-backed clinical style.
+The system also has limited hardware as it is local and it runs on a 16GB RAM CPU
 
 \section{Document Structure}
 The remainder of this document presents related background and prior art, the detailed system design and implementation, empirical evaluation and analyses, a discussion of implications and limitations, and concluding remarks with directions for future work.

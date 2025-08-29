@@ -1,7 +1,7 @@
 \chapter{Background \& Literature Overview}
 \section{Literature Review}
 
-Retrieval-Augmented Generation (RAG) systems are emerging as a pivotal advancement in the field of Artificial Intelligence (AI), particularly within the clinical domain. These systems integrate Large Language Models (LLMs) with external know\-ledge sources to produce more accurate, contextually relevant, and reliable responses, addressing critical limitations inherent in standalone LLMs. The high-stakes nature of healthcare necessitates precise, up-to-date, and verifiable information, making RAG a particularly valuable tool for improving diagnostic accuracy, clinical decision support, and patient care.
+Retrieval-Augmented Generation (RAG) systems are emerging as a pivotal advancement in the field of Artificial Intelligence (AI), particularly within the clinical domain. These systems integrate Large Language Models (LLMs) with external knowledge sources to produce more accurate, contextually relevant, and reliable responses, addressing critical limitations inherent in standalone LLMs. The high stakes nature of healthcare requires precise, up-to-date, and verifiable information, making RAG a particularly valuable tool to improve diagnostic precision, clinical decision support, and patient care.
 
 This literature review comprehensively explores the application of RAG within clinical settings, building upon existing foundational work and considering various RAG methodologies, datasets, and ethical implications.
 
@@ -60,7 +60,6 @@ Vector databases are a critical infrastructure for RAG systems, with different s
 
 \subsubsection{Clinical Embedding Models}
 The choice of embedding model significantly impacts RAG performance in clinical contexts. \textbf{BioBERT} (\citep{lee2020biobert}) and \textbf{ClinicalBERT} (\citep{alsentzer2019clinicalbert}) are domain-specific transformers pre-trained on biomedical literature and clinical notes, respectively, showing superior performance on medical NER and relation extraction. \textbf{PubMedBERT} (\citep{gu2021pubmedbert}) is trained exclusively on PubMed abstracts, achieving state-of-the-art results on biomedical language understanding tasks. General-purpose models like \textbf{all-MiniLM-L6-v2} and \textbf{multi-qa-mpnet-base-dot-v1} (\citep{reimers2019sentencebert}) offer computational efficiency but may lack clinical domain specificity. \textbf{SapBERT} (\citep{liu2021sapbert}) specializes in biomedical entity representation, while \textbf{BlueBERT} (\citep{peng2019bluebert}) combines clinical and biomedical pre-training. Recent work on \textbf{clinical sentence transformers} fine-tuned on medical question-answering pairs shows promise for improving retrieval relevance in clinical RAG systems (\citep{zhang2023clinical}).
-
 This allows factuality without retraining, making RAG especially attractive in healthcare.
 
 \subsection{Clinical RAG System Implementations}
@@ -83,7 +82,6 @@ Several RAG systems have moved beyond research to clinical deployment. \textbf{M
 \subsection{Datasets in Clinical RAG Systems}
 
 RAG relies on curated datasets. Frequently used corpora include PubMed, UMLS, MedDialog (\citep{chen2020meddialog}), MedDG (\citep{li2020meddg}), and imaging-text datasets such as MIMIC-CXR (\citep{johnson2019mimiccxr}). Benchmarks include BioASQ, MedMCQA, PubMedQA (\citep{jin2019pubmedqa}), MedQA (\citep{jin2021medqa}), MultiMedQA (\citep{singhal2023multimedqa}), ClinicalQA (\citep{abacha2021nlmclinicalqa}), and MIRAGE (\citep{zhu2023mirage}). Synthetic datasets such as DDXPlus (\citep{liu2023ddxplus}) and CPDD (\citep{zhao2025medrag}) test diagnostic QA.
-
 Most datasets are English-only, limiting multilingual evaluation. This bias restricts fairness and highlights the need for broader language coverage.
 
 \subsection{Ethical Considerations and Safety Challenges}
