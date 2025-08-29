@@ -38,6 +38,10 @@
 \usepackage[defaultsans]{lato}		 % Sans font to use
 \usepackage[printonlyused,withpage]{acronym}
 
+% Fix Lato font warnings for missing bold small caps
+\DeclareFontShape{T1}{lato-TLF}{b}{sc}{<->sub*lato-TLF/b/n}{}
+\DeclareFontShape{T1}{lato-TLF}{bx}{sc}{<->sub*lato-TLF/bx/n}{}
+
 %% ****************** Packages (End) *********************
 
 
