@@ -382,3 +382,71 @@ Performance varies with document retrieval complexity, suggesting different opti
   \caption{Pass rate vs. F1 score by LLM. Highlights model pairs that achieve both reliability and high performance.}
   \label{fig:pass_rate_vs_score}
 \end{figure}
+
+
+
+This extensive evaluation of clinical RAG systems provides unprecedented insights into model selection and optimization strategies for healthcare AI deployment:
+
+\subsection{Key Performance Insights}
+
+\begin{enumerate}
+    \item \textbf{Precision-Recall Trade-offs}: Medical domain embeddings consistently achieve clinical-grade precision (0.87-0.98) essential for patient safety, while question-answering specialized models optimize for comprehensive information retrieval (higher recall).
+
+    \item \textbf{Category-Specific Performance}: Laboratory queries benefit from structured data handling (0.68 \u00b1 0.31 F1), diagnostic queries require balanced precision-recall (0.63 \u00b1 0.34 F1), and general queries show highest optimization potential (0.58 \u00b1 0.41 F1).
+
+    \item \textbf{Reliability Patterns}: Model consistency varies dramatically (CV: 15-85\%), with medical domain combinations providing most reliable performance for critical clinical applications.
+
+    \item \textbf{Efficiency Frontiers}: Only 2 of 54 configurations achieve Pareto optimality, emphasizing the critical importance of systematic empirical evaluation rather than theoretical model selection.
+
+    \item \textbf{Failure Mode Analysis}: Systematic error patterns indicate that retrieval depth optimization (6-10 documents optimal) and precision-recall balance are more critical than individual model capabilities.
+\end{enumerate}
+
+\subsection{Clinical Deployment Framework}
+
+Based on comprehensive statistical analysis, we propose a evidence-based framework for clinical RAG deployment:
+
+\textbf{Critical Care Applications} (Maximum Safety Required):
+\begin{itemize}
+    \item Configuration: biomedbert + tinyllama
+    \item Performance: 0.980 precision, 0.721 F1-score
+    \item Rationale: Highest precision ensures minimal false information
+\end{itemize}
+
+\textbf{Diagnostic Support} (Balanced Accuracy and Completeness):
+\begin{itemize}
+    \item Configuration: multi-qa + phi3
+    \item Performance: 0.758 F1-score, 0.971 precision, 0.674 recall
+    \item Rationale: Peak overall performance with strong precision
+\end{itemize}
+
+\textbf{General Clinical Information} (Reliability and Consistency):
+\begin{itemize}
+    \item Configuration: biomedbert + llama
+    \item Performance: 0.722 F1-score, 0.966 precision, 95\% reliability
+    \item Rationale: Optimal balance of accuracy, consistency, and efficiency
+\end{itemize}
+
+\textbf{High-Throughput Applications} (Speed and Volume):
+\begin{itemize}
+    \item Configuration: biomedbert + gemma
+    \item Performance: 0.669 F1-score, 56s response time, 18.2 QPM
+    \item Rationale: Fastest reliable configuration for high-volume environments
+\end{itemize}
+
+\subsection{Future Research Directions}
+
+The comprehensive analysis reveals specific optimization opportunities:
+
+\begin{enumerate}
+    \item \textbf{Category-Specific Optimization}: Develop specialized retrieval strategies for laboratory data (table-aware chunking), diagnostic queries (ontology-linked indexing), and medication information (structured data extraction).
+
+    \item \textbf{Adaptive Model Selection}: Implement dynamic model switching based on query type and complexity, leveraging the identified performance patterns across clinical categories.
+
+    \item \textbf{Reliability Enhancement}: Focus on reducing coefficient of variation through ensemble methods or uncertainty quantification, particularly for high-stakes clinical applications.
+
+    \item \textbf{Efficiency Optimization}: Investigate retrieval depth optimization and document filtering strategies to improve the weak correlation between document count and performance quality.
+
+    \item \textbf{Clinical Validation}: Conduct physician-in-the-loop studies to validate the precision-focused configurations in real clinical workflows and patient safety scenarios.
+\end{enumerate}
+
+The results establish a comprehensive foundation for evidence-based clinical RAG system deployment, providing healthcare organizations with clear guidance for model selection based on specific use cases, performance requirements, and safety considerations.

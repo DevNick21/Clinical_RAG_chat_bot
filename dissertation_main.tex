@@ -35,6 +35,7 @@
 \usepackage{float}      %% for [H] float placement
 \usepackage{caption}    %% for captionof in non-floating figures
 \usepackage[printonlyused]{acronym}
+\usepackage{fontaxes}
 
 %% ***************** (Your) Packages (End) *******************
 
@@ -104,11 +105,7 @@
     \input{chap4_results/results_and_discussion_main}
     \input{chap5_conclusions/conclusions_main}
     \appendix
-        \input{appA_code/appendix_a_main}
-        \input{appB_dataset/appendix_b_main}
-        \input{appC_evaluation/appendix_c_main}
-        \input{appD_ui_screenshots/appendix_d_main}
-        \input{appE_setup_guide/appendix_e_main}
+        \input{appA_setup_guide/appendix_a_main}
 
 {\backmatter
     % Bibliography
@@ -119,5 +116,4 @@
 }
 
 \end{document}
-
 %%% The End %%%

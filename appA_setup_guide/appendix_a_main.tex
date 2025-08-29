@@ -1,0 +1,469 @@
+\chapter{Installation and Setup Guide}
+\label{appendix:setup}
+
+This appendix provides comprehensive instructions for installing, configuring, and running the Clinical RAG Chatbot system developed in this research project.
+
+\section{System Requirements}
+
+\subsection{Hardware Requirements}
+
+\textbf{Minimum Requirements:}
+\begin{itemize}
+    \item \textbf{RAM}: 8GB (16GB recommended for optimal performance)
+    \item \textbf{Storage}: 50GB free disk space for models and data
+    \item \textbf{CPU}: Multi-core processor (4+ cores recommended)
+    \item \textbf{GPU}: Optional but recommended for embedding model inference
+\end{itemize}
+
+\textbf{Recommended Specifications:}
+\begin{itemize}
+    \item \textbf{RAM}: 16GB or higher
+    \item \textbf{Storage}: 100GB+ SSD storage
+    \item \textbf{GPU}: NVIDIA GPU with 6GB+ VRAM (for faster model processing)
+    \item \textbf{Network}: Stable internet connection for model downloads (5-10GB total)
+\end{itemize}
+
+\subsection{Software Requirements}
+
+\textbf{Core Dependencies:}
+\begin{itemize}
+    \item \textbf{Python}: 3.10 or higher (3.11 recommended)
+    \item \textbf{Node.js}: 16+ (v18+ recommended for frontend)
+    \item \textbf{Git}: Latest version for repository management
+    \item \textbf{Ollama}: For local LLM hosting and management
+\end{itemize}
+
+\textbf{Operating System Support:}
+\begin{itemize}
+    \item \textbf{Windows}: 10/11 (64-bit)
+    \item \textbf{macOS}: 10.15+ (Catalina and newer)
+    \item \textbf{Linux}: Ubuntu 20.04+, CentOS 8+, or equivalent distributions
+\end{itemize}
+
+\section{Installation Steps}
+
+\subsection{Step 1: Install Prerequisites}
+
+\textbf{Python Installation:}
+\begin{itemize}
+    \item Download Python 3.11 from \texttt{https://python.org}
+    \item Ensure \texttt{pip} is included and \texttt{python} is added to PATH
+    \item Verify installation: \texttt{python --version}
+\end{itemize}
+
+\textbf{Node.js Installation:}
+\begin{itemize}
+    \item Download Node.js 18+ from \texttt{https://nodejs.org}
+    \item Verify installation: \texttt{node --version} and \texttt{npm --version}
+\end{itemize}
+
+\textbf{Ollama Installation:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Visit https://ollama.ai and follow platform-specific instructions
+# For Windows: Download installer from website
+# For macOS: brew install ollama
+# For Linux: curl -fsSL https://ollama.ai/install.sh | sh
+
+# Verify installation
+ollama --version
+\end{minted}
+
+\subsection{Step 2: Clone Repository and Setup Environment}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Clone the repository
+git clone https://github.com/DevNick21/msc_project.git
+cd msc_project
+
+# Create Python virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+
+# macOS/Linux:
+source venv/bin/activate
+\end{minted}
+
+\subsection{Step 3: Install Python Dependencies}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Install project in development mode
+pip install -e .
+
+# Verify core dependencies
+pip list | grep -E "langchain|torch|sentence-transformers"
+\end{minted}
+
+Key Python packages installed include:
+\begin{itemize}
+    \item \textbf{LangChain Framework}: v0.3.25 (Core RAG pipeline)
+    \item \textbf{PyTorch}: v2.7.1 (Deep learning backend)
+    \item \textbf{Sentence Transformers}: v4.1.0 (Embedding models)
+    \item \textbf{FAISS}: v1.11.0 (Vector similarity search)
+    \item \textbf{Flask}: v3.0.2 (API server)
+    \item \textbf{Pandas}: v2.3.0 (Data processing)
+    \item \textbf{Ollama}: v0.5.1 (LLM integration)
+\end{itemize}
+
+\subsection{Step 4: Install LLM Models via Ollama}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Pull required LLM models (choose based on your needs)
+ollama pull deepseek-r1:1.5b    # Reasoning-focused (default)
+ollama pull qwen3:1.7b          # Multilingual capabilities
+ollama pull llama3.2:1b         # Meta's efficient model
+ollama pull gemma:2b            # Google's lightweight model
+ollama pull phi3:3.8b           # Microsoft's instruction model
+ollama pull tinyllama:1.1b      # Most compact model
+
+# Verify models are installed
+ollama list
+\end{minted}
+
+\textbf{Model Size Requirements:}
+\begin{itemize}
+    \item DeepSeek-R1 (1.5B): ~900MB
+    \item Qwen3 (1.7B): ~1.0GB
+    \item Llama3.2 (1B): ~670MB
+    \item Gemma (2B): ~1.4GB
+    \item Phi3 (3.8B): ~2.2GB
+    \item TinyLlama (1.1B): ~600MB
+\end{itemize}
+
+\subsection{Step 5: Install Frontend Dependencies (Optional)}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Navigate to frontend directory
+cd frontend
+
+# Install Node.js dependencies
+npm install
+
+# Verify installation
+npm list --depth=0
+\end{minted}
+
+Key frontend packages include:
+\begin{itemize}
+    \item \textbf{React}: v18.2.0 (UI framework)
+    \item \textbf{Material-UI}: v5.15.0 (Component library)
+    \item \textbf{Emotion}: v11.11.0 (CSS-in-JS styling)
+\end{itemize}
+
+\section{Configuration}
+
+\subsection{Model Configuration}
+
+Edit \texttt{RAG\_chat\_pipeline/config/config.py} to customize model selection:
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{python}
+# Default embedding model selection
+model_in_use = "biomedbert"  # Options: biomedbert, mini-lm, 
+                             # ms-marco, multi-qa, e5-base, 
+                             # BioLORD, BioBERT, MedQuAD
+
+# Default LLM model selection  
+LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama,
+                              # gemma, phi3, tinyllama
+\end{minted}
+
+\textbf{Available Embedding Models:}
+\begin{itemize}
+    \item \textbf{biomedbert}: Medical domain-optimized (recommended for clinical data)
+    \item \textbf{multi-qa}: Question-answering specialized
+    \item \textbf{mini-lm}: Lightweight general-purpose
+    \item \textbf{ms-marco}: Search-optimized
+    \item \textbf{e5-base}: Efficient general embeddings
+    \item \textbf{BioLORD}: Biomedical language representation
+    \item \textbf{BioBERT}: Biomedical BERT variant
+    \item \textbf{MedQuAD}: Medical QA specialized
+\end{itemize}
+
+\subsection{System Performance Configuration}
+
+Key performance parameters in \texttt{config.py}:
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{python}
+# Retrieval settings
+DEFAULT_K = 5                    # Documents retrieved per query
+RETRIEVAL_MAX_K = 5              # Max docs for focused searches
+GLOBAL_SEARCH_MAX_K = 20         # Max docs for global searches
+CANDIDATE_DOC_LIMIT = 20         # Max candidates after filtering
+
+# Chat history management
+MAX_CHAT_HISTORY = 60            # Max conversation messages
+
+# Feature flags for optimization
+ENABLE_REPHRASING = False        # Query rephrasing (slower)
+ENABLE_ENTITY_EXTRACTION = False # Auto parameter extraction
+LOG_LEVEL = "quiet"              # Logging verbosity
+\end{minted}
+
+\subsection{Data Configuration}
+
+The system automatically selects between real MIMIC-IV data and synthetic data:
+
+\textbf{Synthetic Data (Default):}
+\begin{itemize}
+    \item Automatically generated if real MIMIC-IV data unavailable
+    \item Contains 100 fictional patients with 150 admissions
+    \item Includes all clinical data types (diagnoses, labs, procedures, etc.)
+    \item Safe for public distribution and demonstration
+\end{itemize}
+
+\textbf{Real MIMIC-IV Data (Optional):}
+\begin{itemize}
+    \item Requires credentialed access to MIMIC-IV dataset
+    \item Place sample data in \texttt{mimic\_sample\_1000/} directory
+    \item Run data processing notebooks in \texttt{data\_handling/}
+\end{itemize}
+
+\section{Running the System}
+
+\subsection{Automated Startup (Recommended)}
+
+\textbf{Windows Users:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Double-click or execute:
+start_app.bat
+\end{minted}
+
+\textbf{macOS/Linux Users:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Make executable and run:
+chmod +x start_app.sh
+./start_app.sh
+\end{minted}
+
+This automated script will:
+\begin{enumerate}
+    \item Create virtual environment if needed
+    \item Activate virtual environment
+    \item Install/update dependencies
+    \item Start Flask API server (port 5000)
+    \item Start React frontend (port 3000)
+    \item Open web browser automatically
+\end{enumerate}
+
+\subsection{Manual Startup}
+
+\textbf{Backend API Server:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Ensure virtual environment is activated
+# Windows: venv\Scripts\activate
+# macOS/Linux: source venv/bin/activate
+
+# Start Flask API server
+python api/app.py
+
+# Server will start on http://localhost:5000
+\end{minted}
+
+\textbf{Frontend Web Interface:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# In a new terminal, navigate to frontend directory
+cd frontend
+
+# Start React development server
+npm start
+
+# Interface will open at http://localhost:3000
+\end{minted}
+
+\textbf{Command Line Interface:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Interactive CLI chat interface
+python cli_chat.py chat
+
+# Direct query mode
+python -m RAG_chat_pipeline.core.main
+\end{minted}
+
+\subsection{System Evaluation and Testing}
+
+\textbf{Quick System Test:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Test with specific model combination
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner \
+    single mini-lm deepseek --type quick
+
+# Quick evaluation with 3 questions
+python -m RAG_chat_pipeline.benchmarks.rag_evaluator quick
+\end{minted}
+
+\textbf{Short Evaluation:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Evaluate specific model combination (5 questions)
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner \
+    single biomedbert deepseek --type short
+
+# Short evaluation across all models
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner \
+    all --type short
+\end{minted}
+
+\textbf{Full Model Comparison:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Complete evaluation of all 54 model combinations
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner \
+    all --type full
+
+# Generate comprehensive report
+python -m RAG_chat_pipeline.benchmarks.model_evaluation_runner report
+\end{minted}
+
+\section{Accessing the System}
+
+\subsection{Web Interface Usage}
+
+Navigate to \texttt{http://localhost:3000} after startup:
+
+\begin{enumerate}
+    \item \textbf{Chat Interface}: Type natural language questions about clinical data
+    \item \textbf{Model Selection}: Choose embedding and LLM model combinations
+    \item \textbf{Session Management}: View conversation history and clear sessions
+    \item \textbf{Sample Questions}: Use provided examples to explore functionality
+\end{enumerate}
+
+\textbf{Example Queries:}
+\begin{itemize}
+    \item "What diagnoses does admission 25282710 have?"
+    \item "Show abnormal lab values for patient 12345"
+    \item "What medications was the patient prescribed?"
+    \item "Were any cultures positive for infections?"
+\end{itemize}
+
+\subsection{API Endpoints}
+
+The Flask API provides programmatic access:
+
+\textbf{Chat Endpoint:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+POST http://localhost:5000/api/chat
+Content-Type: application/json
+
+{
+  "query": "What lab values were abnormal?",
+  "hadm_id": 25282710,
+  "history": []
+}
+\end{minted}
+
+\textbf{Models Endpoint:}
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+GET http://localhost:5000/api/models
+
+# Returns available embedding models and vector stores
+\end{minted}
+
+\section{Troubleshooting}
+
+\subsection{Common Issues and Solutions}
+
+\textbf{Python Environment Issues:}
+\begin{itemize}
+    \item \textbf{Issue}: Import errors or module not found
+    \item \textbf{Solution}: Ensure virtual environment is activated and run \texttt{pip install -e .}
+\end{itemize}
+
+\textbf{Ollama Model Issues:}
+\begin{itemize}
+    \item \textbf{Issue}: LLM model not responding or connection errors
+    \item \textbf{Solution}: Verify Ollama is running (\texttt{ollama serve}) and models are pulled
+\end{itemize}
+
+\textbf{Port Conflicts:}
+\begin{itemize}
+    \item \textbf{Issue}: Port 5000 or 3000 already in use
+    \item \textbf{Solution}: Modify ports in \texttt{api/app.py} and \texttt{frontend/package.json}
+\end{itemize}
+
+\textbf{Memory Issues:}
+\begin{itemize}
+    \item \textbf{Issue}: Out of memory during model loading
+    \item \textbf{Solution}: Use smaller models (tinyllama, mini-lm) or increase system RAM
+\end{itemize}
+
+\textbf{Frontend Build Issues:}
+\begin{itemize}
+    \item \textbf{Issue}: npm install fails or React won't start
+    \item \textbf{Solution}: Clear npm cache (\texttt{npm cache clean --force}) and reinstall
+\end{itemize}
+
+\subsection{Performance Optimization}
+
+\textbf{For Low-Resource Systems:}
+\begin{itemize}
+    \item Use \texttt{tinyllama} or \texttt{mini-lm} models
+    \item Reduce \texttt{DEFAULT\_K} to 3 in configuration
+    \item Set \texttt{LOG\_LEVEL} to "quiet"
+    \item Disable entity extraction and rephrasing features
+\end{itemize}
+
+\textbf{For High-Performance Systems:}
+\begin{itemize}
+    \item Use \texttt{phi3} or \texttt{biomedbert} models
+    \item Increase \texttt{DEFAULT\_K} to 10 for better recall
+    \item Enable GPU acceleration for PyTorch
+    \item Use multiple embedding models simultaneously
+\end{itemize}
+
+\section{Data Management}
+
+\subsection{Synthetic Data Generation}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Generate fresh synthetic data
+python -m synthetic_data.synthetic_data_generator
+
+# Process synthetic data into vector stores
+# (Run notebooks in data_handling/)
+\end{minted}
+
+\subsection{MIMIC-IV Data Processing}
+
+If using real MIMIC-IV data:
+\begin{enumerate}
+    \item Place CSV files in \texttt{mimic\_sample\_1000/}
+    \item Run \texttt{data\_handling/creating\_docs.ipynb}
+    \item Execute all cells to create chunked documents
+    \item Vector stores will be automatically generated
+\end{enumerate}
+
+\section{System Validation}
+
+\subsection{Installation Verification Checklist}
+
+\begin{itemize}
+    \item[$\square$] Python 3.10+ installed and accessible
+    \item[$\square$] Virtual environment created and activated
+    \item[$\square$] All pip dependencies installed without errors
+    \item[$\square$] Ollama installed and running
+    \item[$\square$] At least one LLM model pulled via Ollama
+    \item[$\square$] Node.js and npm installed (if using frontend)
+    \item[$\square$] Frontend dependencies installed (if using web interface)
+    \item[$\square$] Flask API server starts without errors
+    \item[$\square$] React frontend compiles and serves (if using web interface)
+    \item[$\square$] Quick evaluation test completes successfully
+\end{itemize}
+
+\subsection{Final Verification Commands}
+
+\begin{minted}[fontsize=\footnotesize, breaklines]{bash}
+# Verify Python environment
+python --version
+pip list | grep langchain
+
+# Verify Ollama
+ollama list
+
+# Verify system functionality
+python -m RAG_chat_pipeline.benchmarks.rag_evaluator quick
+
+# Test API endpoint (if server running)
+curl http://localhost:5000/api/models
+\end{minted}
+
+Upon successful completion of this setup guide, the Clinical RAG system will be fully operational and ready for clinical data querying, evaluation, and research applications as described in this dissertation.
