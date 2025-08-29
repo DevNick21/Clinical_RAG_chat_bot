@@ -194,9 +194,7 @@ Based on comprehensive performance analysis, we provide evidence-based recommend
 
 \section{Statistical Significance and Model Selection}
 
-\input{chap4_results/tables/statistical_significance}
-
-Performance differences between model configurations show interesting statistical patterns:
+\input{chap4_results/tables/statistical_significance} \newline Performance differences between model configurations show interesting statistical patterns:
 
 \textbf{Statistical Analysis Results:}
 \begin{itemize}
@@ -344,9 +342,9 @@ Pareto frontier analysis identifies configurations that offer optimal trade-offs
 
 Failure mode analysis reveals systematic patterns in model errors and identifies configurations with lowest failure rates:
 
-\begin{figure}[!htbp]
+\begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{chap4_results/images/error_pattern_analysis.png}
+  \includegraphics[width=0.7\textwidth]{chap4_results/images/error_pattern_analysis.png}
   \caption{Error pattern and failure mode analysis. Shows failure rates, performance distributions, and error correlations.}
   \label{fig:error_analysis}
 \end{figure}
@@ -354,31 +352,24 @@ Failure mode analysis reveals systematic patterns in model errors and identifies
 \subsection{Domain-Specific Performance}
 Performance varies with document retrieval complexity, suggesting different optimization strategies for different clinical scenarios:
 
-\begin{figure}[!htbp]
+\begin{figure}[h]
   \centering
-  \includegraphics[width=\textwidth]{chap4_results/images/domain_specific_analysis.png}
+  \includegraphics[width=0.7\textwidth]{chap4_results/images/domain_specific_analysis.png}
   \caption{Domain-specific performance analysis by document complexity and clinical data types.}
   \label{fig:domain_analysis}
 \end{figure}
-
+\newpage
 \section{Performance Visualization Summary}
-\begin{figure}[!htbp]
+\begin{figure}[h]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/time_vs_score.png}
   \caption{F1 score vs. average search time across all configurations. Lower time and higher score are better.}
   \label{fig:time_vs_score}
 \end{figure}
 
-\begin{figure}[!htbp]
+\begin{figure}[h]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/quality_vs_throughput.png}
   \caption{F1 score vs. throughput (QPM). Identifies speed-quality efficient frontiers for clinical deployment.}
   \label{fig:quality_vs_throughput}
-\end{figure}
-
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=\textwidh]{chap4_results/images/pass_rate_vs_score.png}
-  \caption{Pass rate vs. F1 score by LLM. Highlights model pairs that achieve both reliability and high performance.}
-  \label{fig:pass_rate_vs_score}
 \end{figure}
