@@ -56,7 +56,7 @@ Experiments were executed on Microsoft Windows (user environment), Python 3.11, 
   \item FAISS CPU: 1.11.0; sentence-transformers: 4.1.0
   \item Torch: 2.7.1; Transformers: 4.52.4
   \item Flask: 3.0.2; Flask-CORS: 4.0.1
-  \item Ollama: 0.5.1 (models pulled locally)
+  \item Ollama: 0.5.1 (models pulled locally and were pre-download)
 \end{itemize}
 
 % ========================
@@ -122,7 +122,7 @@ For each embedding configuration, a FAISS vector store is created from the chunk
 % ========================
 \section{RAG Pipeline and Inference}
 
-\subsection{Custom Retrieval in brief steps}
+\subsection{The Custom Retrieval}
 1) Parse identifiers/section from the query and recent history (regex).\\
 2) Build a candidate set using in-memory indices if hints exist; otherwise, consider the full corpus.\\
 3) Rank candidates with FAISS vector similarity.\\
@@ -186,7 +186,7 @@ Answers are generated using an Ollama-hosted model through LangChain's \newline\
 \end{itemize}
 
 \subsection{Entity Extraction and Conversational Context}
-A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}) to control context length.
+A deterministic regex-based extractor (\texttt{helper/entity\_extraction.py}) identifies \texttt{hadm\_id}, \texttt{subject\_id}, and \texttt{section} hints from the current query and recent chat messages. For follow-ups in the chat, an LLM-powered rephrasing step condenses the question into a standalone form while preserving identifiers. Chat history is truncated to a configurable maximum (\textbf{60 messages}) to control context length as local models have smaller context windows.
 
 \subsection{RAG Core Emphasis and Design Evolution}
 The initial blueprint used a straightforward vector index + chat engine with strict context mode:
