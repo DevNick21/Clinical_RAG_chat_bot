@@ -173,7 +173,7 @@ class ClinicalRAGBot:
             model=LLM_MODEL,
             temperature=0.1,  # Slight randomness for better responses
             repeat_penalty=1.1,  # Standard repeat penalty
-            streaming=True  # Enable streaming responses by default
+            streaming=False
         )
 
         # Embedding cache
@@ -208,7 +208,7 @@ If no relevant context exists, return the original question unchanged."""),
         ])
 
         # Create base clinical prompt template - SIMPLIFIED FOR SPEED
-        self.base_clinical_qa_prompt = """Analyze the MIMIC-IV medical records and provide a concise, accurate response.
+        self.base_clinical_qa_prompt = """Analyze these medical records and provide a concise, accurate response.
 
 {context_instruction}
 
@@ -320,10 +320,19 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
         """Centralized document filtering logic"""
         if hadm_id is not None:
+            ClinicalLogger.info(f"Filtering documents for hadm_id: {hadm_id} (type: {type(hadm_id)})")
             candidate_indices = self.hadm_id_index.get(hadm_id, [])
+            ClinicalLogger.info(f"Found {len(candidate_indices)} documents for hadm_id {hadm_id}")
+            
+            # Debug: Show available keys if no documents found
+            if len(candidate_indices) == 0:
+                available_keys = list(self.hadm_id_index.keys())[:10]
+                ClinicalLogger.warning(f"No documents found for hadm_id {hadm_id}. Available keys (first 10): {available_keys}")
+            
             if section is not None:
                 key = (hadm_id, section)
                 candidate_indices = self.hadm_section_index.get(key, [])
+                ClinicalLogger.info(f"With section filter '{section}': {len(candidate_indices)} documents")
 
             # Apply limit to prevent excessive document processing
             if len(candidate_indices) > limit:

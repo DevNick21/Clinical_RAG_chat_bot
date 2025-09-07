@@ -10,9 +10,9 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
-def clean_deepseek_response(response):
+def clean_llm_response(response):
     """
-    Clean DeepSeek R1 responses by removing <think> tags and content
+    Clean LLM responses by removing <think> tags and content
     """
     if not isinstance(response, str):
         return response
@@ -33,7 +33,7 @@ def clean_deepseek_response(response):
 
 def safe_llm_invoke(chain_or_llm, input_data, fallback_message="Error generating response", context="LLM operation"):
     """
-    Centralized LLM invocation with error handling and DeepSeek response cleaning
+    Centralized LLM invocation with error handling and response cleaning
     """
     try:
         if hasattr(chain_or_llm, 'invoke'):
@@ -42,9 +42,8 @@ def safe_llm_invoke(chain_or_llm, input_data, fallback_message="Error generating
             # Direct LLM call
             response = chain_or_llm(input_data)
 
-        # Auto-clean DeepSeek responses
-        if "deepseek" in LLM_MODEL.lower():
-            response = clean_deepseek_response(response)
+        # Auto-clean all model responses (remove think tags)
+        response = clean_llm_response(response)
 
         return response
 

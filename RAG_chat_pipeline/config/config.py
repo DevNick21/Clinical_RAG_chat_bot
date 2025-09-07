@@ -38,8 +38,8 @@ MODELS_DIR = BASE / "models"
 
 # Path where the model will be saved locally or existing model will be loaded from
 LOCAL_MODEL_PATH = MODELS_DIR / model_names[model_in_use][0]
-# Changed to fastest model for better performance
-LLM_MODEL = llms["tinyllama"]
+
+LLM_MODEL = llms["llama"]
 
 # Embedding model for vector embeddings
 EMBEDDING_MODEL = model_names[model_in_use][0]
@@ -73,7 +73,7 @@ ENABLE_REPHRASING = False  # disabled for performance and to avoid validation is
 ENABLE_ENTITY_EXTRACTION = False  # disabled for performance
 
 # Logging (set to quiet for max evaluation speed)
-LOG_LEVEL = "quiet"  # options: quiet, error, warning, info, debug
+LOG_LEVEL = "info"  # options: quiet, error, warning, info, debug
 
 # Maximum number of chat history messages to keep (reduced for performance)
 # This is used to limit the context size for the LLM
@@ -188,6 +188,6 @@ def get_config_summary():
 # Initialize with defaults (this happens when config is imported)
 # This ensures the config is always in a valid state
 try:
-    set_models()
+    set_models("biomedbert", "llama")
 except Exception:
     pass  # Fallback to original static values if something goes wrong
