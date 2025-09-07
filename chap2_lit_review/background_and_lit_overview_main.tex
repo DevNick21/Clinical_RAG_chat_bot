@@ -47,8 +47,7 @@ These limitations are especially concerning in medicine, where accuracy, recency
 \subsection{Emergence and Mechanics of Retrieval-Augmented Generation (RAG)}
 
 RAG addresses LLM limitations by combining strong generative capabilities with \textbf{external memory retrieval}. Early work, such as REALM integrated retrieval into pre-training (\citep{guu2020realm}). Lewis et al. (\citeyear{lewis2020rag}) introduced RAG, pairing a neural retriever with a seq2seq generator: top-k passages are retrieved and used to ground output. Variants such as Fusion-in-Decoder (\citep{izacard2021leveraging}) and RETRO (\citep{borgeaud2022retro}) expanded retrieval to larger corpora. Frameworks like LangChain (\citep{langchain2023}) and LlamaIndex (\citep{llamaindex2023}) operationalised RAG pipelines.
-\newpage
-The typical RAG pipeline has three steps:
+\newline The typical RAG pipeline has three steps:
 \begin{itemize}
   \item \textbf{Indexing:} Documents segmented into chunks, embedded with encoders, and stored in vector databases (e.g., FAISS, Pinecone, Weaviate).
   \item \textbf{Retrieval:} Queries embedded, top-k chunks retrieved via similarity search.
