@@ -1,7 +1,7 @@
 \chapter{Introduction}
 
 \section{Motivation}
-Electronic Health Records (EHRs) contain structured tables and unstructured \mbox{narratives} that chronicle patient encounters across time. Clinicians and analysts routinely need \mbox{targeted} answers that span medications, labs, procedures, microbiology, and admin \mbox{details}. Traditional keyword search or isolated SQL queries struggle to synthesise \mbox{evidence} across modalities and context. \newline Retrieval-Augmented Generation (RAG) has emerged as a practical approach: \newline It retrieves relevant documents and asks a language model to compose grounded \mbox{answers} with citations. This project delivers a clinical RAG system aligned with MIMIC-IV style data, designed to be modular, reproducible, and usable through both an API and a simple web interface.
+Electronic Health Records (EHRs) contain structured tables and unstructured \mbox{narratives} that chronicle patient encounters across time. Clinicians, medical professionals and analysts routinely need \mbox{targeted} answers that span medications, labs, procedures, microbiology, and admin \mbox{details}. Traditional keyword search or isolated SQL queries struggle to synthesise \mbox{evidence} across modalities and context. \newline Retrieval-Augmented Generation (RAG) has emerged as a practical approach: \newline It retrieves relevant documents and asks a language model to compose grounded \mbox{answers} with citations. This project delivers a clinical RAG system aligned with MIMIC-IV data, designed to be modular, reproducible, and usable through both an API and a simple web interface.
 
 \section{Aims \& Objectives}
 This project designs and implements a Retrieval-Augmented Generation (RAG) chat system for clinical settings. The aim is to develop and assess a chatbot that integrates a locally hosted Large Language Model (LLM) with external medical records \mbox{(MIMIC-IV)} so that responses are grounded in real patient data, improving factual accuracy and contextual relevance.
@@ -11,7 +11,7 @@ This project designs and implements a Retrieval-Augmented Generation (RAG) chat 
   \item Develop a RAG architecture that dynamically retrieves relevant clinical documents from the MIMIC-IV dataset during user interactions.
   \item Enhance factual correctness and minimise hallucinations by augmenting a local LLM with retrieved medical records.
   \item Implement multi-turn conversation capabilities that maintain context and memory across turns.
-  \item Evaluate performance via a mix of manual review, logical reasoning, and quantitative metrics.
+  \item Evaluate performance via a mix of manual review and quantitative metrics.
 \end{itemize}
 
 \section{System Overview}
@@ -24,7 +24,7 @@ The system follows four layers that mirror practical deployment needs:
 \end{enumerate}
 
 \section{Data and Ethical Considerations}
-To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mirrors realistic distributions without reproducing real patients. The main MIMIC-IV dataset is also de-identified and credentialed by PhysioNet. The software is intended for research and educational purposes only.
+To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mimics realistic distributions without reproducing actual patient data. The main MIMIC-IV dataset is also de-identified and credentialed by PhysioNet. The software is intended for research and educational purposes only.
 \newpage
 \section{Project Description}
 This system improves the factual accuracy and contextual reliability of answers from a local LLM by retrieving supporting evidence from MIMIC-IV at query time. Unlike traditional chatbots that depend on online APIs, the full stack runs locally to safeguard sensitive data. The pipeline covers data preparation, embedding and indexing, retrieval-augmented answer generation, and practical access via a Flask API and React front-end.
@@ -55,6 +55,36 @@ A custom retriever returns top-$k$ semantically similar chunks for a user query.
 \subsection{Evaluation and Iteration}
 We compare RAG-augmented outputs to a standalone LLM baseline. Quantitative signals include average answer score, pass rate, retrieval latency, and topic-wise breakdowns; qualitative review examines fidelity to evidence and clinical style. Iterative improvements consider richer metadata, chunking strategies, re-prompting, and model choices.
 \newpage
+
+\section{Activity Schedule}
+\begin{table}[H]
+\centering
+\caption{Project Activity Schedule}
+\begin{tabular}{@{}p{4cm}p{6cm}p{2.2cm}p{2.2cm}p{1.5cm}@{}}
+\toprule
+\textbf{Task} & \textbf{Description} & \textbf{Start Date} & \textbf{End Date} & \textbf{Duration} \\ 
+\midrule
+Project Planning & Define scope, aims, and methodology. Draft Terms of Reference. & 01 Jun 2025 & 07 Jun 2025 & 7 days \\\\
+Literature Review & Explore RAG architecture, Ollama, vector stores, and evaluation methods. & 08 Jun 2025 & 15 Jun 2025 & 8 days \\\\
+Dataset Preparation & Explore MIMIC-IV structure, extract and preprocess relevant clinical documents. & 16 Jun 2025 & 23 Jun 2025 & 8 days \\\\
+RAG System Setup & Set up retrieval pipeline, local LLM, and interface plan. & 24 Jun 2025 & 30 Jun 2025 & 7 days \\\\
+Backend Development & Implement document store, retriever, and LLM integration (via Ollama). & 01 Jul 2025 & 14 Jul 2025 & 14 days \\\\
+Frontend \& Chat UI & Build multi-turn chat interface with contextual memory. & 15 Jul 2025 & 22 Jul 2025 & 8 days \\\\
+System Testing & Test data retrieval, response quality, and memory management. & 23 Jul 2025 & 30 Jul 2025 & 8 days \\\\
+Evaluation Phase & Run experiments. & 31 Jul 2025 & 07 Aug 2025 & 8 days \\\\
+Final Report Writing & Document implementation, evaluation, and future improvements. & 08 Aug 2025 & 20 Aug 2025 & 13 days \\\\
+Review \& Submission & Final checks, proofing, and submission of the report. & 21 Aug 2025 & 25 Aug 2025 & 5 days \\\\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{activity_schedule.png}
+    \caption{ Project Activity Schedule (Gantt Chart)}
+    \label{fig:placeholder}
+\end{figure}
+
+
 \section{Evaluation Plan}
 We will:
 \begin{itemize}
@@ -69,3 +99,4 @@ The system also has limited hardware as it is local and it runs on a 16GB RAM CP
 
 \section{Document Structure}
 The remainder of this document presents related background and prior art, the detailed system design and implementation, empirical evaluation and analyses, a discussion of implications and limitations, and concluding remarks with directions for future work.
+

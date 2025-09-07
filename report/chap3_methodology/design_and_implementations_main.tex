@@ -1,4 +1,4 @@
-\chapter{Materials \& Methods}
+\chapter{Design \& Implementation}
 
 \section{Process overview}
 This chapter describes the materials, datasets, software, and methods used to design, build, and evaluate the clinical Retrieval-Augmented Generation (RAG) system. It documents data sources and governance, preprocessing and chunking procedures, embedding and indexing choices, the retrieval and LLM orchestration pipeline, interfaces for access (API, frontend, CLI), and the evaluation protocol.
@@ -116,7 +116,6 @@ The embedding manager (\texttt{RAG\_chat\_pipeline/core/embeddings\_manager.py})
 
 \subsection{FAISS Indexing}
 For each embedding configuration, a FAISS vector store is created from the chunked documents and saved under \texttt{vector\_stores/<store-name>/}. When the system starts, it first tries to load the existing store. If the store is not there, it creates a new one and saves both the index and the chunked corpus.
-\newpage
 % ========================
 % 3.7 RAG Pipeline and Inference
 % ========================
@@ -274,7 +273,7 @@ A React UI (\texttt{frontend/}) provides a chat interface, model introspection, 
 % 3.10 Evaluation Protocol
 % ========================
 \section{Evaluation Protocol}
-Detailed metrics and comparisons are in Results.
+Detailed metrics and comparisons are in the Results chapter.
 The evaluator generates category-specific gold questions and computes precision, recall and F1 score and summary statistics per model combination. We validate against structured signals (ICD patterns, dosages, units) and measure retrieval latency; full scoring details are in Results.
 
 \subsection{Gold Questions and Categories}

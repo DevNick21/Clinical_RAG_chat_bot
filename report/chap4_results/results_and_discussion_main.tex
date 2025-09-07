@@ -12,7 +12,6 @@
   \item \textbf{Total Question-Answer Pairs}: 1,080 clinical evaluations
   \item \textbf{Evaluation Duration}: Comprehensive automated testing across 54 model combinations
 \end{itemize}
-\newpage
 \section{Overall Performance}
 Aggregate results across all 1,080 evaluations show:
 \begin{itemize}
@@ -21,13 +20,12 @@ Aggregate results across all 1,080 evaluations show:
   \item Average F1-score: 0.632 $\pm$ 0.326.
   \item Average search time: 81.9s $\pm$ 208.9s.
 \end{itemize}
-
+\newpage
 Best-performing configurations:
 \begin{itemize}
   \item Highest F1-score: multi-qa + phi3 (F1-score 0.758, precision 0.971).
   \item Fastest good performer: biomedbert + gemma (avg. search time 56.1s, F1-score 0.669).
 \end{itemize}
-\newpage
 \subsection{Statistical Performance Overview}
 The performance distribution shows substantial variability around the mean (0.632), with a standard deviation of 0.326 indicating moderate quality consistency across configurations. Key statistical insights include:
 \input{chap4_results/tables/enhanced_system_statistics}
@@ -39,6 +37,7 @@ The performance distribution shows substantial variability around the mean (0.63
     \item \textbf{Coefficient of Variation}: F1-score consistency (51.6\%) vs. efficiency variability (255.2\%)
 \end{itemize}
 
+\newpage
 \section{Comparison Heatmaps}
 Figures~\ref{fig:heatmap_f1_score}, \ref{fig:heatmap_precision}, and \ref{fig:heatmap_recall} provide comprehensive model-by-model comparison heatmaps showing F1 scores, precision, and recall across all embedding-LLM combinations.
 
@@ -264,18 +263,10 @@ Our semantic evaluation methodology uses BioBERT embeddings to compute similarit
 \text{Recall} = \frac{\text{Expected concepts found in response}}{\text{Total expected concepts}}
 \end{equation}
 
-This approach provides objective, reproducible assessment of clinical content quality while accounting for medical domain expertise embedded in BioBERT's pre-training.
-
-\textbf{Disclaimer Rate:}
-Disclaimer rate captures the frequency of appropriate safety disclaimers (e.g., ``Data from MIMIC-IV database for research/education only''). In clinical RAG, some disclaimers are appropriate for compliance, but overuse can reduce practical usefulness. We interpret these together with quality metrics to identify safe and useful operating points.
-
-The combination of factual accuracy scoring and disclaimer tracking provides a comprehensive safety assessment framework suitable for clinical AI system evaluation.
-
-\subsection{Per-Question Analysis}
-Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down into failure modes (e.g., missing lab values, incorrect medication dosages) and success cases. These analyses inform targeted improvements (schema-aware chunking, ontology-linked retrieval, citation prompting).
+This approach provides objective, reproducible assessment of clinical content quality while accounting for medical domain expertise embedded in BioBERT's pretraining.
 
 % A compact summary table for quick reference
-\begin{table}[h]
+\begin{table}[H]
 \centering
 {\footnotesize
 \renewcommand\arraystretch{0.95}
@@ -298,6 +289,10 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
 \label{tab:metrics_summary}
 \end{table}
 
+\subsection{Per-Question Analysis}
+Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down into failure modes (e.g., missing lab values, incorrect medication dosages) and success cases. These analyses inform targeted improvements (schema-aware chunking, ontology-linked retrieval, citation prompting).
+
+
 
 \section{Advanced Performance Analysis}
 
@@ -306,7 +301,7 @@ Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down 
 
 Performance varies meaningfully across clinical query categories, with laboratory and diagnostic queries showing different optimization requirements:
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{chap4_results/images/category_performance_analysis.png}
   \caption{Performance analysis across clinical query categories. Shows F1 scores, precision, recall, and search times by clinical domain.}
