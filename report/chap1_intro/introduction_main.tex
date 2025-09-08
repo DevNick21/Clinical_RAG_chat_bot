@@ -23,8 +23,82 @@ The system follows four layers that mirror practical deployment needs:
   \item \textbf{Interfaces}: Provide a Flask REST API consumed by a React front-end for interactive exploration.
 \end{enumerate}
 
-\section{Data and Ethical Considerations}
-To enable open demonstrations, the system includes support for synthetic, non-identifiable clinical data that mimics realistic distributions without reproducing actual patient data. The main MIMIC-IV dataset is also de-identified and credentialed by PhysioNet. The software is intended for research and educational purposes only.
+\section{Legal, Social, Ethical, and Professional Issues}
+
+This project engages with multiple considerations beyond technical implementation, addressing the responsible development and deployment of AI systems in healthcare contexts.
+
+\subsection{Legal Considerations}
+
+The project adheres to relevant data protection regulations and legal frameworks:
+
+\begin{itemize}
+    \item \textbf{GDPR Compliance}: The project follows General Data Protection Regulation principles by exclusively using de-identified MIMIC-IV data and synthetic records. No personally identifiable patient data was processed, stored, or transmitted during system development or evaluation.
+    
+    \item \textbf{Data Licensing}: Access to MIMIC-IV was obtained through proper PhysioNet credentialing processes, ensuring compliance with dataset licensing terms and conditions for research use.
+    
+    \item \textbf{Regulatory Framework}: The system was designed with awareness that clinical deployment would require validation through relevant regulatory processes, including potential FDA approval for clinical decision support tools in the United States or CE marking in Europe.
+\end{itemize}
+
+\subsection{Ethical Considerations}
+
+Several ethical principles guided system design and evaluation:
+
+\begin{itemize}
+    \item \textbf{Patient Privacy}: All system components were designed to operate on de-identified data only. Synthetic data generation methods were employed for demonstrations to prevent any risk of patient re-identification or data misuse.
+    
+    \item \textbf{Beneficence and Non-maleficence}: The system was explicitly designed for research purposes and includes clear disclaimers about its unsuitability for clinical deployment without proper validation. This prevents potential harm from inappropriate use in patient care contexts.
+    
+    \item \textbf{Transparency and Explainability}: System outputs include citations and evidence backing, enabling users to trace information sources and supporting the principle of explainable AI in healthcare applications.
+    
+    \item \textbf{Research Integrity}: All limitations, biases, and potential failure modes have been transparently documented to support informed decision-making about system capabilities and appropriate use contexts.
+\end{itemize}
+
+\subsection{Social Implications}
+
+The development of clinical AI systems carries broader social responsibilities:
+
+\begin{itemize}
+    \item \textbf{Bias Mitigation}: Clinical AI systems risk introducing or amplifying biases present in training data, potentially leading to disparate health outcomes across different patient populations. This was addressed through diverse evaluation scenarios and explicit bias monitoring in system design.
+    
+    \item \textbf{Information Quality}: There is significant social risk from misinformation or inaccurate clinical advice. This was mitigated by designing outputs to be explicitly evidence-backed and including robust hallucination detection mechanisms.
+    
+    \item \textbf{Healthcare Accessibility}: While AI systems can potentially improve healthcare accessibility, they must not replace human clinical judgment or create over-reliance on automated tools. The system design emphasizes decision support rather than autonomous decision-making.
+    
+    \item \textbf{Digital Divide}: Considerations were given to ensuring that AI healthcare tools do not exacerbate existing inequalities in healthcare access or quality.
+\end{itemize}
+
+\subsection{Professional Standards}
+
+As a future AI practitioner, this project adhered to established professional codes of conduct:
+
+\begin{itemize}
+    \item \textbf{BCS Code of Conduct}: The project followed the British Computer Society's principles including:
+    \begin{itemize}
+        \item \textit{Public Interest}: Prioritizing patient safety and healthcare quality over technical novelty
+        \item \textit{Professional Competence}: Acknowledging system limitations and avoiding overclaiming capabilities
+        \item \textit{Duty of Care}: Ensuring thorough testing and validation before any potential clinical application
+        \item \textit{Integrity}: Transparent reporting of results, including negative findings and system failures
+    \end{itemize}
+    
+    \item \textbf{Reproducibility}: System design prioritized reproducible research practices, including comprehensive documentation, version control, and standardized evaluation frameworks that enable peer review and validation.
+    
+    \item \textbf{Continuing Professional Development}: The project incorporated current best practices from medical AI literature and regulatory guidance, demonstrating commitment to staying current with evolving professional standards.
+    
+    \item \textbf{Interdisciplinary Collaboration}: Recognition that healthcare AI requires collaboration between technologists, clinicians, ethicists, and regulators, with appropriate humility about the limits of purely technical perspectives.
+\end{itemize}
+
+\subsection{Risk Assessment and Mitigation}
+
+The project identified and addressed several key risks:
+
+\begin{itemize}
+    \item \textbf{Clinical Misuse}: Mitigated through clear documentation of research-only status and explicit warnings about clinical deployment requirements
+    \item \textbf{Data Breaches}: Addressed through local-only processing and use of de-identified datasets
+    \item \textbf{Algorithmic Bias}: Monitored through diverse evaluation scenarios and transparent reporting of system limitations
+    \item \textbf{Overconfidence}: Managed through inclusion of uncertainty quantification and explicit acknowledgment of system boundaries
+\end{itemize}
+
+This comprehensive approach to legal, social, ethical, and professional considerations ensures that the project contributes responsibly to the field of healthcare AI while maintaining the highest standards of research integrity and social responsibility.
 \newpage
 \section{Project Description}
 This system improves the factual accuracy and contextual reliability of answers from a local LLM by retrieving supporting evidence from MIMIC-IV at query time. Unlike traditional chatbots that depend on online APIs, the full stack runs locally to safeguard sensitive data. The pipeline covers data preparation, embedding and indexing, retrieval-augmented answer generation, and practical access via a Flask API and React front-end.
