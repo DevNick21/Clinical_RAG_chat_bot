@@ -62,6 +62,52 @@ While the results demonstrate strong performance across multiple metrics, severa
     \item \textbf{Ethical Considerations}: The balance between AI assistance and human clinical judgment requires careful consideration in practice.
 \end{itemize}
 
+\subsection{Critical Evaluation of Project Process}
+
+Beyond the technical evaluation of results, the project process itself highlighted several strengths and weaknesses that provide valuable insights for future clinical AI research endeavours.
+
+\subsubsection{Project Strengths}
+
+Several strategic decisions proved beneficial throughout the implementation:
+
+\begin{itemize}
+    \item \textbf{Data Subset Strategy}: The early decision to work with a smaller, manageable subset of MIMIC-IV enabled faster iteration cycles and avoided excessive preprocessing overhead. This approach allowed for more comprehensive model comparisons within time constraints while maintaining data quality and clinical relevance.
+    
+    \item \textbf{Systematic Evaluation Framework}: The structured approach to evaluating 54 model configurations provided comprehensive coverage of the embedding-LLM combination space, yielding robust comparative insights that would have been impossible with ad-hoc testing.
+    
+    \item \textbf{Multi-metric Assessment}: The combination of F1-score, precision, recall, and response time metrics provided a holistic view of system performance, essential for clinical applications where both accuracy and efficiency matter.
+\end{itemize}
+
+\subsubsection{Process Limitations and Challenges}
+
+Several challenges emerged that impacted project execution and could be addressed in future work:
+
+\begin{itemize}
+    \item \textbf{Late Metric Refinement}: The evaluation metrics framework was refined relatively late in the project lifecycle, causing some rework in data collection and analysis phases. Earlier establishment of evaluation criteria would have streamlined the implementation process.
+    
+    \item \textbf{Time Management Balance}: Balancing implementation complexity with comprehensive documentation proved challenging, particularly when integrating multiple AI frameworks and ensuring reproducible evaluation pipelines.
+    
+    \item \textbf{Hardware Constraints Impact}: Working within CPU-only processing limitations and 16GB RAM constraints significantly shaped design choices, forcing trade-offs between evaluation comprehensiveness and computational feasibility. These constraints may limit the generalizability of findings to production environments with superior hardware resources.
+    
+    \item \textbf{Limited Re-ranking Exploration}: Time constraints prevented deeper exploration of advanced re-ranking methods and ensemble approaches that could have enhanced retrieval quality.
+\end{itemize}
+
+\subsubsection{Lessons Learned and Future Improvements}
+
+Reflecting on the project process reveals several areas for improvement in future clinical AI research:
+
+\begin{itemize}
+    \item \textbf{Earlier Evaluation Planning}: Beginning with a comprehensive evaluation framework design would prevent later rework and ensure all metrics align with clinical requirements from project inception.
+    
+    \item \textbf{Resource Allocation Strategy}: Allocating more time for experimentation with advanced retrieval techniques, particularly re-ranking methods and hybrid embedding approaches, could yield additional performance improvements.
+    
+    \item \textbf{Structured Project Management}: Implementing more formal project management approaches, including regular milestone reviews and risk assessment, would help balance technical implementation with documentation requirements.
+    
+    \item \textbf{Hardware Planning}: Future projects would benefit from early assessment of computational requirements and securing appropriate resources, as hardware constraints significantly impact both methodology and results interpretation.
+\end{itemize}
+
+Despite these limitations, the project successfully achieved its primary aims within the given constraints, demonstrating that clinical RAG systems can be effectively evaluated and deployed even under resource limitations. The systematic approach developed provides a template for future clinical AI evaluations, while the identified process improvements offer concrete guidance for more efficient project execution in similar research contexts.
+
 \section{Future Work}
 
 The comprehensive analysis reveals specific optimization opportunities and research directions:

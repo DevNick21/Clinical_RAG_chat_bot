@@ -70,6 +70,8 @@
 % The document type, e.g. a dissertation or a thesis
 \def\doctype#1{\gdef\@doctype{#1}}
 \def\authorID#1{\gdef\@authorID{#1}}
+% The EthOS number
+\def\Ethos#1{\gdef\@Ethos{#1}}
 
 %% ************* MMU Definitions (End) ******************
 
