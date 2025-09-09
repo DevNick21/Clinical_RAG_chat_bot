@@ -293,7 +293,7 @@ This approach provides objective, reproducible assessment of clinical content qu
 Per-question results (in \texttt{per\_question\_results.csv}) enable drill-down into failure modes (e.g., missing lab values, incorrect medication dosages) and success cases. These analyses inform targeted improvements (schema-aware chunking, ontology-linked retrieval, citation prompting).
 
 
-
+\newpage
 \section{Advanced Performance Analysis}
 
 \subsection{Clinical Category Performance}
@@ -337,9 +337,9 @@ Pareto frontier analysis identifies configurations that offer optimal trade-offs
 
 Failure mode analysis reveals systematic patterns in model errors and identifies configurations with lowest failure rates:
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=0.7\textwidth]{chap4_results/images/error_pattern_analysis.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/error_pattern_analysis.png}
   \caption{Error pattern and failure mode analysis. Shows failure rates, performance distributions, and error correlations.}
   \label{fig:error_analysis}
 \end{figure}
@@ -347,9 +347,9 @@ Failure mode analysis reveals systematic patterns in model errors and identifies
 \subsection{Domain-Specific Performance}
 Performance varies with document retrieval complexity, suggesting different optimization strategies for different clinical scenarios:
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
-  \includegraphics[width=0.7\textwidth]{chap4_results/images/domain_specific_analysis.png}
+  \includegraphics[width=\textwidth]{chap4_results/images/domain_specific_analysis.png}
   \caption{Domain-specific performance analysis by document complexity and clinical data types.}
   \label{fig:domain_analysis}
 \end{figure}

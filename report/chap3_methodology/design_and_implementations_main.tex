@@ -28,6 +28,7 @@ This design follows a clear separation of responsibilities: a data creation and 
 % ========================
 % 3.2 Data Sources and Governance
 % ========================
+\newpage
 \section{Data Sources and Governance}
 
 \subsection{Datasets}
@@ -67,7 +68,7 @@ Central configuration is defined in "\texttt{RAG\_chat\_pipeline/config/config.p
 
 \noindent Embedding model nicknames map to HuggingFace model IDs and vector-store directories. The LLM model set is managed via Ollama. Unless otherwise specified, the session-level defaults set by \texttt{set\_models()} select \texttt{all-MiniLM-L6-v2} embeddings and \texttt{qwen3:1.7b} as the LLM. 
 
-Alternative combinations are supported for evaluation: \texttt{S-PubMedBert-MS-MARCO}, \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Deepseek-r1, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
+Alternative combinations are supported for evaluation: \texttt{S-PubMedBert-MS-MARCO}, \newline \texttt{multi-qa-mpnet-base-cos-v1}, \texttt{BiomedNLP-PubMedBERT}, \texttt{e5-base-v2}, \texttt{BioLORD-2023-C}, \texttt{BioBERT}, \texttt{S-PubMedBert-MedQuAD}; and LLMs such as Deepseek-r1, Llama 3.2, Gemma 2B, Phi-3, TinyLlama).
 
 % ========================
 % 3.5 Data Processing and Document Construction
@@ -220,11 +221,10 @@ chain = create_stuff_documents_chain(self.llm, prompt)
 answer = safe_llm_invoke(chain, {"input": question, "context": [Document(page_content=structured)]})
 \end{minted}
 
-% Consolidated hallucination mitigation earlier; avoid repetition here.
-
 % ========================
 % 3.8 Interfaces
 % ========================
+\newpage
 \section{Interfaces}
 
 \subsection{API}
