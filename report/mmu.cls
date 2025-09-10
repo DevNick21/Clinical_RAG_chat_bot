@@ -227,7 +227,7 @@ I understand that Manchester Metropolitan University may retain copies of this w
 {\bfseries Title}  & \removelinebreaks{\@title} \\	
 {\bfseries EthOS Number}  & \removelinebreaks{\@Ethos} \\	
 {\bfseries Student Name \@ifundefined{@authorID}{}{(Student ID)}} & \@author\ \@ifundefined{@authorID}{}{(\@authorID)} \\[0.7in]	
-{\bfseries Student Signature} & \makebox[2in]{\hrulefill} \\
+{\bfseries Student Signature} & \textit{Ekenedirichukwu Iheanacho} \\
 {\bfseries Date} & \today \\
 \end{tabular}\\[1cm]
 \egroup
