@@ -147,9 +147,10 @@ class ClinicalRAGBot:
         self.chunked_docs = chunked_docs
 
         # Initialize LLM from Azure AI Foundry (deployment/key/endpoint via .env).
-        # Temperature deliberately not set: reasoning models (gpt-5-nano, o-series)
-        # only accept the default value of 1.
-        self.llm = get_llm(streaming=False)
+        # Reasoning effort, model, and credentials all come from .env via the
+        # factory. Streaming is decided per-call in the Responses API, not at
+        # client construction.
+        self.llm = get_llm()
 
         # Embedding cache
         self._emb_cache = _EmbCache(self.clinical_emb, max_items=512)
@@ -1086,6 +1087,10 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             if len(retrieved_docs) > STREAMING_FINAL_DOCS_LIMIT:  # Reduced for speed
                 retrieved_docs = retrieved_docs[:STREAMING_FINAL_DOCS_LIMIT]
 
+            # Keep the unstructured docs for audit/claim-check; the merged
+            # structured_doc loses per-source citations.
+            audit_source_docs = list(retrieved_docs)
+
             # Extract clinical content
             if retrieved_docs:
                 extracted_content = self._extract_clinical_content(
@@ -1125,6 +1130,42 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             final_answer = self._validate_and_fix_response(
                 full_response, retrieved_docs, hadm_id)
 
+            # Audit layer (same flow as clinical_search). Best-effort: any
+            # failure logs a warning but never blocks the streamed answer.
+            reasoning_summaries = getattr(
+                self.llm, "last_reasoning_summaries", []) or []
+            response_id = getattr(self.llm, "last_response_id", None)
+            try:
+                unsupported_claims = check_claims(
+                    final_answer, audit_source_docs)
+            except Exception as claim_err:
+                ClinicalLogger.warning(
+                    f"Claim check failed: {claim_err}")
+                unsupported_claims = []
+            try:
+                audit_id = log_request(
+                    question=search_question,
+                    retrieved_docs=audit_source_docs,
+                    reasoning_summaries=reasoning_summaries,
+                    answer=final_answer,
+                    unsupported_claims=unsupported_claims,
+                    response_id=response_id,
+                    metadata={
+                        "hadm_id": hadm_id,
+                        "subject_id": subject_id,
+                        "section": section,
+                        "k": k,
+                        "streaming": True,
+                    },
+                )
+            except Exception as audit_err:
+                ClinicalLogger.warning(
+                    f"Audit log write failed: {audit_err}")
+                audit_id = None
+            if unsupported_claims:
+                ClinicalLogger.warning(
+                    f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
+
             # Update chat history
             if chat_history_processed:
                 chat_history_processed.extend(
@@ -1140,6 +1181,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     "search_time": total_time,
                     "documents_found": len(retrieved_docs),
                     "citations": [{"hadm_id": doc.metadata.get('hadm_id'), "section": doc.metadata.get('section')} for doc in retrieved_docs],
+                    "audit_id": audit_id,
+                    "unsupported_claims": unsupported_claims,
+                    "reasoning_summaries": reasoning_summaries,
                     "final_answer": final_answer
                 }
             }
