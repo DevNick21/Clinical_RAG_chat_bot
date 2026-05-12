@@ -136,3 +136,6 @@ htmlcov/
 # Leading slash anchors to repo root so the RAG_chat_pipeline/audit/
 # module code stays tracked while runtime request logs do not.
 /audit/
+
+# ----- Session-only status snapshots -----
+/STATUS.md

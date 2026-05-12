@@ -42,6 +42,10 @@ sqlalchemy==2.0.41
 # ---- LLM Integration ----
 ollama==0.5.1
 
+# ---- Azure (storage + identity for seed upload, future Blob-backed DataProvider) ----
+azure-storage-blob==12.28.0
+azure-identity==1.25.3
+
 # ---- Web Requests & HTTP ----
 requests==2.32.3
 requests-toolbelt==1.0.0
