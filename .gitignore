@@ -131,3 +131,8 @@ htmlcov/
 # Uncomment if you prefer not to track generated artifacts (ensure CI/build runs the generator script)
 # report/chap4_results/tables/*.tex
 # report/chap4_results/images/*.png
+
+# ----- Audit logs (per-request JSON records) -----
+# Leading slash anchors to repo root so the RAG_chat_pipeline/audit/
+# module code stays tracked while runtime request logs do not.
+/audit/

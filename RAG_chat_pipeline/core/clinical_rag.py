@@ -4,13 +4,12 @@ import re
 import time
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_ollama import OllamaLLM as Ollama
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
+from RAG_chat_pipeline.inference.azure_client import get_llm
 from RAG_chat_pipeline.config.config import (
-    LLM_MODEL,
     DEFAULT_K,
     MAX_CHAT_HISTORY,
     SECTION_KEYWORDS,
@@ -27,6 +26,8 @@ from RAG_chat_pipeline.config.config import (
 )
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
+from RAG_chat_pipeline.audit.audit_log import log_request
+from RAG_chat_pipeline.audit.claim_checker import check_claims
 from collections import defaultdict
 
 # Robust import for logger with fallback
@@ -145,13 +146,10 @@ class ClinicalRAGBot:
         self.clinical_emb = clinical_emb
         self.chunked_docs = chunked_docs
 
-        # Initialize LLM with proper local configuration
-        self.llm = Ollama(
-            model=LLM_MODEL,
-            temperature=0.1,  # Slight randomness for better responses
-            repeat_penalty=1.1,  # Standard repeat penalty
-            streaming=False
-        )
+        # Initialize LLM from Azure AI Foundry (deployment/key/endpoint via .env).
+        # Temperature deliberately not set: reasoning models (gpt-5-nano, o-series)
+        # only accept the default value of 1.
+        self.llm = get_llm(streaming=False)
 
         # Embedding cache
         self._emb_cache = _EmbCache(self.clinical_emb, max_items=512)
@@ -553,6 +551,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get(
                 'section')) for doc in retrieved_docs]
             original_doc_count = len(retrieved_docs)
+            # Keep a reference to the unstructured docs for audit/claim-check;
+            # `retrieved_docs` is about to be replaced with a single merged doc.
+            audit_source_docs = list(retrieved_docs)
             if len(retrieved_docs) > 0:
                 ClinicalLogger.debug(
                     f"Extracting clinical content from {len(retrieved_docs)} documents...")
@@ -583,7 +584,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                         "context": retrieved_docs,
                         "chat_history": chat_history
                     },
-                    fallback_message="Unable to generate clinical response due to system error (Ollama).",
+                    fallback_message="Unable to generate clinical response due to system error.",
                     context="Clinical QA"
                 )
             except Exception as llm_error:
@@ -595,8 +596,42 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             answer = self._validate_and_fix_response(
                 answer, retrieved_docs, hadm_id)
 
-            # Prepare result with comprehensive metadata (preserve true counts/citations)
+            # Audit layer: capture reasoning summaries and flag any unsupported
+            # specific claims (numbers, dosages, codes) against the retrieved docs.
+            # Both steps are best-effort — never block the answer on audit failure.
+            reasoning_summaries = getattr(
+                self.llm, "last_reasoning_summaries", []) or []
+            response_id = getattr(self.llm, "last_response_id", None)
+            try:
+                unsupported_claims = check_claims(answer, audit_source_docs)
+            except Exception as claim_err:
+                ClinicalLogger.warning(f"Claim check failed: {claim_err}")
+                unsupported_claims = []
             search_time = time.time() - start_time
+            try:
+                audit_id = log_request(
+                    question=question,
+                    retrieved_docs=audit_source_docs,
+                    reasoning_summaries=reasoning_summaries,
+                    answer=answer,
+                    unsupported_claims=unsupported_claims,
+                    response_id=response_id,
+                    metadata={
+                        "hadm_id": hadm_id,
+                        "subject_id": subject_id,
+                        "section": section,
+                        "k": k,
+                        "search_time": search_time,
+                    },
+                )
+            except Exception as audit_err:
+                ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
+                audit_id = None
+            if unsupported_claims:
+                ClinicalLogger.warning(
+                    f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
+
+            # Prepare result with comprehensive metadata (preserve true counts/citations)
             result = {
                 "answer": answer,
                 "source_documents": retrieved_docs,
@@ -604,7 +639,10 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 "search_time": search_time,
                 "documents_found": original_doc_count,
                 "search_method": "filtered" if hadm_id is not None or subject_id is not None else "global_semantic",
-                "performance_optimized": True
+                "performance_optimized": True,
+                "audit_id": audit_id,
+                "unsupported_claims": unsupported_claims,
+                "reasoning_summaries": reasoning_summaries,
             }
 
             ClinicalLogger.info(f"Search completed in {search_time:.3f}s")
