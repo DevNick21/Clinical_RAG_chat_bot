@@ -4,17 +4,12 @@ CLI Chat Interface for Clinical RAG System
 Provides interactive chat functionality with history support
 """
 
-from RAG_chat_pipeline import ClinicalLogger
-from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 import sys
 import json
-from pathlib import Path
 from datetime import datetime
 
-# Add project root to Python path BEFORE project imports
-project_root = Path(__file__).resolve().parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+from RAG_chat_pipeline import ClinicalLogger
+from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 
 
 class CLIChatInterface:

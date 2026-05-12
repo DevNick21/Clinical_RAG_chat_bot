@@ -1,13 +1,4 @@
-from RAG_chat_pipeline.config.config import LLM_MODEL
 import re
-from RAG_chat_pipeline.config.config import LLM_MODEL
-
-import sys
-from pathlib import Path
-
-# Add the project root to the path to import from RAG_chat_pipeline
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
 
 
 def clean_llm_response(response):

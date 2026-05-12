@@ -28,7 +28,6 @@ from RAG_chat_pipeline.config.config import (
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from collections import defaultdict
-from functools import lru_cache
 
 # Robust import for logger with fallback
 try:
@@ -75,28 +74,6 @@ except Exception:  # pragma: no cover
 
 # Initialize logger level from config
 ClinicalLogger.set_level(LOG_LEVEL)
-
-# Common medical term fragments for hallucination detection
-MEDICAL_KEYWORDS = [
-    'cardio', 'neuro', 'hepat', 'renal', 'pulmon', 'gastro', 'endo', 'immuno',
-    'oncol', 'hemat', 'psych', 'ortho', 'derm', 'ophthalm', 'oto', 'gyneco',
-    'obste', 'urolog', 'nephro', 'ather', 'ischemi', 'infarc', 'stenosis',
-    'arteri', 'ventric', 'systolic', 'diastol', 'hypertensi', 'fibrill',
-    'tachyc', 'bradyc', 'thromb', 'embol', 'aneurysm', 'failure', 'insuffic',
-    'pneumonia', 'diabetes', 'hypertension', 'sepsis', 'myocardial', 'cerebral',
-    'respiratory', 'cardiac', 'acute', 'chronic', 'syndrome', 'disease'
-]
-
-
-class ErrorHandler:
-    """Centralized error handling utility"""
-    @staticmethod
-    def safe_operation(func, *args, fallback=None, error_msg="Operation failed", **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            ClinicalLogger.warning(f"{error_msg}: {type(e).__name__}: {e}")
-            return fallback
 
 
 class _EmbCache:
@@ -320,19 +297,23 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
         """Centralized document filtering logic"""
         if hadm_id is not None:
-            ClinicalLogger.info(f"Filtering documents for hadm_id: {hadm_id} (type: {type(hadm_id)})")
+            ClinicalLogger.info(
+                f"Filtering documents for hadm_id: {hadm_id} (type: {type(hadm_id)})")
             candidate_indices = self.hadm_id_index.get(hadm_id, [])
-            ClinicalLogger.info(f"Found {len(candidate_indices)} documents for hadm_id {hadm_id}")
-            
+            ClinicalLogger.info(
+                f"Found {len(candidate_indices)} documents for hadm_id {hadm_id}")
+
             # Debug: Show available keys if no documents found
             if len(candidate_indices) == 0:
                 available_keys = list(self.hadm_id_index.keys())[:10]
-                ClinicalLogger.warning(f"No documents found for hadm_id {hadm_id}. Available keys (first 10): {available_keys}")
-            
+                ClinicalLogger.warning(
+                    f"No documents found for hadm_id {hadm_id}. Available keys (first 10): {available_keys}")
+
             if section is not None:
                 key = (hadm_id, section)
                 candidate_indices = self.hadm_section_index.get(key, [])
-                ClinicalLogger.info(f"With section filter '{section}': {len(candidate_indices)} documents")
+                ClinicalLogger.info(
+                    f"With section filter '{section}': {len(candidate_indices)} documents")
 
             # Apply limit to prevent excessive document processing
             if len(candidate_indices) > limit:
@@ -736,12 +717,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 '', rephrased, flags=re.IGNORECASE
             ).strip('" \t\n\'')
 
-            # Check for hallucinations
-            if self._has_hallucination(rephrased):
-                ClinicalLogger.warning(
-                    "Hallucination detected, using template-based approach")
-                return self._create_template_question(hadm_id, original_question)
-
             # Validate rephrasing quality
             if self._is_rephrasing_valid(rephrased, original_question, chat_history):
                 return rephrased
@@ -751,10 +726,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         except Exception as e:
             ClinicalLogger.warning(f"Rephrasing failed: {e}")
             return question
-
-    def _has_hallucination(self, text):
-        """Disabled - was causing false positives on legitimate medical terms"""
-        return False  # Disabled to prevent filtering of legitimate medical content
 
     def _is_rephrasing_valid(self, rephrased, original, chat_history):
         """Simplified rephrasing validation - only check extreme cases"""
@@ -964,8 +935,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
         except Exception as e:
             return self._handle_search_fallback(question, hadm_id, section, k, str(e))
-
-    # Removed redundant methods - use ask_question() directly
 
     def chat(self, message, chat_history=None):
         """Main chat interface for API - handles chat history format conversion"""
