@@ -69,7 +69,7 @@ graph TB
    - Supports public distribution and demo capabilities
    - Automatically integrated when real data is unavailable
 
-3. **Data Processing Pipeline** (`data_handling/`)
+3. **Data Processing Pipeline** (`notebooks/`)
    - Converts MIMIC-IV CSV data to structured documents
    - Creates semantic chunks optimized for clinical queries
    - Supports multiple vector stores with different embedding models
@@ -313,7 +313,7 @@ This demonstration notebook guides you through:
 #### Option 2: Use Real MIMIC-IV Data (Requires credentialed access)
 
 1. **Prepare MIMIC-IV Data**: Place sample data in `mimic_sample_1000/`
-2. **Process Data**: Run `data_handling/creating_docs.ipynb` to:
+2. **Process Data**: Run `notebooks/creating_docs.ipynb` to:
    - Load and merge MIMIC-IV tables
    - Create semantic document chunks
    - Generate vector stores for all embedding models
@@ -434,7 +434,7 @@ msc_project/
 │   ├── api/                       # Flask API
 │   ├── frontend/                  # React UI
 │   └── cli_chat.py                # Command-line chat interface
-├── data_handling/                 # Data processing notebooks
+├── notebooks/                 # Data processing notebooks
 │   ├── creating_docs.ipynb        # Main data processing pipeline
 │   ├── creating_samples.ipynb     # Sample data creation
 │   └── converting_to_sql.ipynb    # Database conversion utilities
