@@ -17,7 +17,7 @@ pip install -e .
 
 # Start the backend API server
 echo "Starting Flask API server..."
-(python api/app.py &) &
+(python platform/api/app.py &) &
 
 # Wait for the API server to initialize
 echo "Waiting for API server to initialize..."
@@ -25,7 +25,7 @@ sleep 5
 
 # Start the frontend
 echo "Starting React frontend..."
-cd frontend
+cd platform/frontend
 echo "Checking frontend dependencies..."
 npm install
 npm start

@@ -110,10 +110,10 @@ graph TB
    - Time series and efficiency plots
    - CSV exports for further analysis
 
-9. **Multi-Interface Support**
-   - **React Frontend** (`frontend/`): Modern web interface with Material-UI
-   - **Flask API Server** (`api/`): RESTful API endpoints
-   - **CLI Interface** (`cli_chat.py`): Command-line interaction
+9. **Multi-Interface Support** (all under `platform/`)
+   - **React Frontend** (`platform/frontend/`): Modern web interface with Material-UI
+   - **Flask API Server** (`platform/api/`): RESTful API endpoints
+   - **CLI Interface** (`platform/cli_chat.py`): Command-line interaction
    - **Jupyter Integration**: Notebook-friendly API
 
 ## Supported Models
@@ -189,9 +189,9 @@ ollama pull tinyllama:1.1b
 4. Install frontend dependencies (optional - only needed if using the web interface):
 
    ```bash
-   cd frontend
+   cd platform/frontend
    npm install
-   cd ..
+   cd ../..
    ```
 
 ### Running the Clinical RAG System
@@ -240,10 +240,10 @@ Or start them separately:
 
 ```bash
 # Start API server
-python api/app.py
+python platform/api/app.py
 
 # In a separate terminal, start React frontend
-cd frontend
+cd platform/frontend
 npm start
 ```
 
@@ -427,10 +427,13 @@ msc_project/
 ├── .hintrc                        # Code hint configuration
 ├── setup.py                       # Python package setup
 ├── requirements.txt               # Python dependencies
-├── cli_chat.py                    # Command-line chat interface
 ├── synthetic_data_demo.ipynb      # Demonstration notebook for synthetic data
 ├── start_app.bat                  # Windows startup script
 ├── start_app.sh                   # Linux/Mac startup script
+├── platform/                      # Delivery surfaces (interfaces)
+│   ├── api/                       # Flask API
+│   ├── frontend/                  # React UI
+│   └── cli_chat.py                # Command-line chat interface
 ├── data_handling/                 # Data processing notebooks
 │   ├── creating_docs.ipynb        # Main data processing pipeline
 │   ├── creating_samples.ipynb     # Sample data creation

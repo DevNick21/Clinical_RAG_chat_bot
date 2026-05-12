@@ -1079,14 +1079,14 @@ This evaluation uses BioBERT-based semantic similarity for medical concept match
             f.write(report)
 
         if not self.quiet:
-            print(f"📄 Summary report saved to: {report_file}")
+            print(f" Summary report saved to: {report_file}")
         return report
 
     def list_model_combinations(self) -> None:
         """List all possible model combinations"""
         if self.quiet:
             return
-        print("🔄 Available Model Combinations:")
+        print(" Available Model Combinations:")
         print("=" * 50)
         for i, config in enumerate(self.model_configs, 1):
             print(f"{i:2d}. {config.model_nickname} + {config.llm_nickname}")
@@ -1284,7 +1284,7 @@ Examples:
             manager.summary_stats = manager._generate_summary_statistics()
 
         report_paths = manager._generate_all_reports()
-        print(f"✅ Generated {len(report_paths)} report files")
+        print(f" Generated {len(report_paths)} report files")
         for file_type, path in report_paths.items():
             print(f"   {file_type:20s}: {path}")
         return 0
@@ -1298,7 +1298,7 @@ Examples:
         # Validate models
         invalid = [m for m in embedding_models if m not in model_names]
         if invalid:
-            print(f"❌ Invalid embedding models: {invalid}")
+            print(f" Invalid embedding models: {invalid}")
             return 1
 
     if args.llm:
@@ -1306,17 +1306,17 @@ Examples:
         # Validate models
         invalid = [m for m in llm_models if m not in llms]
         if invalid:
-            print(f"❌ Invalid LLM models: {invalid}")
+            print(f" Invalid LLM models: {invalid}")
             return 1
 
     # Use defaults if not specified: all keys from config
     if not embedding_models:
         embedding_models = list(model_names.keys())
-        print(f"📋 Using all embedding models from config: {embedding_models}")
+        print(f" Using all embedding models from config: {embedding_models}")
 
     if not llm_models:
         llm_models = list(llms.keys())
-        print(f"📋 Using all LLM models from config: {llm_models}")
+        print(f" Using all LLM models from config: {llm_models}")
 
     # Show configuration
     print(f"\nEvaluation Configuration:")
@@ -1327,7 +1327,7 @@ Examples:
     print()
 
     try:
-        print("🚀 Starting evaluation pipeline...\n")
+        print(" Starting evaluation pipeline...\n")
 
         # Run the complete evaluation
         results = manager.run_complete_evaluation(
@@ -1338,13 +1338,13 @@ Examples:
 
         # Print summary
         print("\n" + "=" * 70)
-        print("    ✅ EVALUATION COMPLETE")
+        print("     EVALUATION COMPLETE")
         print("=" * 70)
 
         # Results summary
         if 'summary_stats' in results:
             stats = results['summary_stats']['overall']
-            print(f"📊 Results Summary:")
+            print(f" Results Summary:")
             print(f"   Total Evaluations: {stats['total_evaluations']}")
             print(
                 f"   Model Combinations: {stats['unique_model_combinations']}")
@@ -1359,32 +1359,32 @@ Examples:
                 top_model = list(results['summary_stats']
                                  ['model_rankings'].keys())[0]
                 top_f1 = results['summary_stats']['model_rankings'][top_model]['f1_score']
-                print(f"   🏆 Best Model: {top_model} (F1: {top_f1:.3f})")
+                print(f"    Best Model: {top_model} (F1: {top_f1:.3f})")
 
         # Generated files
         if 'file_paths' in results:
-            print(f"\n📁 Generated Files ({len(results['file_paths'])}):")
-            print(f"   📊 Results Data:")
+            print(f"\n Generated Files ({len(results['file_paths'])}):")
+            print(f"    Results Data:")
             for file_type, path in results['file_paths'].items():
                 if file_type.endswith('_csv') or file_type.endswith('_json'):
                     print(f"     {file_type:20s}: {path}")
-            print(f"   📈 Report Assets (LaTeX):")
+            print(f"    Report Assets (LaTeX):")
             for file_type, path in results['file_paths'].items():
                 if file_type.endswith('_plot') or file_type.endswith('_table') or 'heatmap' in file_type:
                     print(f"     {file_type:20s}: {path}")
 
         print(
-            f"\n⏱️  Evaluation completed at: {results.get('timestamp', 'N/A')}")
-        print("\n🎉 All results and reports generated successfully!")
+            f"\n  Evaluation completed at: {results.get('timestamp', 'N/A')}")
+        print("\n All results and reports generated successfully!")
 
         return 0
 
     except KeyboardInterrupt:
-        print("\n❌ Evaluation interrupted by user")
+        print("\n Evaluation interrupted by user")
         return 1
 
     except Exception as e:
-        print(f"\n❌ Evaluation failed: {e}")
+        print(f"\n Evaluation failed: {e}")
         logger.exception("Detailed error:")
         return 1
 

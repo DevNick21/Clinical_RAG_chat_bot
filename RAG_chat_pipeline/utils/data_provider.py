@@ -42,10 +42,10 @@ class DataProvider:
         if self.using_synthetic:
             if self.verbose:
                 print(
-                    "📌 Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
+                    "Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
         else:
             if self.verbose:
-                print("📌 Using real MIMIC-IV data.")
+                print("Using real MIMIC-IV data.")
 
     def _determine_data_source(self):
         """
@@ -71,7 +71,7 @@ class DataProvider:
             synthetic_generator_path = self.synthetic_data_path / "synthetic_data_generator.py"
             if synthetic_generator_path.exists():
                 if self.verbose:
-                    print("🔄 Real data not found. Generating synthetic data...")
+                    print("Real data not found. Generating synthetic data...")
                 import sys
                 sys.path.append(str(self.synthetic_data_path.parent))
                 from synthetic_data.synthetic_data_generator import create_synthetic_data

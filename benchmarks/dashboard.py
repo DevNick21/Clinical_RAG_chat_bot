@@ -157,7 +157,7 @@ class EvaluationDashboard:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏥 Clinical RAG Performance Dashboard</h1>
+            <h1> Clinical RAG Performance Dashboard</h1>
             <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </div>
 
@@ -192,7 +192,7 @@ class EvaluationDashboard:
         </div>
 
         <div class="section">
-            <h2 class="section-title"> 📊 Performance Breakdown</h2>
+            <h2 class="section-title">  Performance Breakdown</h2>
             <div class="category-breakdown">
 """
 
@@ -233,11 +233,11 @@ class EvaluationDashboard:
         if model_rankings:
             html_content += """
         <div class="section">
-            <h2 class="section-title"> 🏆 Top Model Rankings</h2>
+            <h2 class="section-title">  Top Model Rankings</h2>
             <div class="metrics-grid">
 """
             for i, (model_combo, stats) in enumerate(list(model_rankings.items())[:3], 1):
-                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
+                medal = "" if i == 1 else "" if i == 2 else ""
                 html_content += f"""
                 <div class="metric-card">
                     <div class="metric-label">{medal} #{i} - {model_combo}</div>
@@ -279,7 +279,7 @@ class EvaluationDashboard:
         if report_files or viz_files:
             html_content += """
         <div class="section">
-            <h2 class="section-title">📁 Generated Files</h2>
+            <h2 class="section-title"> Generated Files</h2>
             <div class="file-links">
 """
 
@@ -288,7 +288,7 @@ class EvaluationDashboard:
                 if file_path and Path(file_path).exists():
                     rel_path = Path(file_path).name
                     html_content += f"""
-                <a href="./{rel_path}" class="file-link">📄 {file_type.replace('_', ' ').title()}</a>
+                <a href="./{rel_path}" class="file-link"> {file_type.replace('_', ' ').title()}</a>
 """
 
             html_content += """
@@ -349,7 +349,7 @@ class EvaluationDashboard:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔬 Model Comparison Dashboard</h1>
+            <h1> Model Comparison Dashboard</h1>
             <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </div>
         

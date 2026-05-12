@@ -52,7 +52,7 @@ if __name__ == "__main__":
             print("-" * 50)
 
         except KeyboardInterrupt:
-            print("\n👋 Goodbye!")
+            print("\nGoodbye!")
             break
         except Exception as e:
             print(f" Error: {e}")

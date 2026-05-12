@@ -28,7 +28,7 @@ pip install flask flask-cors
 2. Start the API server:
 
 ```bash
-python api/app.py
+python platform/api/app.py
 ```
 
 ## API Endpoints

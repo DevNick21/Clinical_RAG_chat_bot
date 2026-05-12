@@ -44,7 +44,7 @@ class CLIChatInterface:
             self.session_file = f"chat_session_{timestamp}.json"
 
         ClinicalLogger.info("\n" + "="*60)
-        ClinicalLogger.info("🏥 Clinical RAG Chat Interface")
+        ClinicalLogger.info("Clinical RAG Chat Interface")
         ClinicalLogger.info("="*60)
         ClinicalLogger.info("Commands:")
         ClinicalLogger.info("  /help     - Show this help message")
@@ -131,7 +131,7 @@ class CLIChatInterface:
     def _clear_history(self):
         """Clear chat history"""
         self.chat_history = []
-        ClinicalLogger.info("🗑 Chat history cleared.")
+        ClinicalLogger.info("Chat history cleared.")
 
     def _show_history(self):
         """Show chat history"""
@@ -140,7 +140,7 @@ class CLIChatInterface:
             return
 
         ClinicalLogger.info(
-            f"\n📜 Chat History ({len(self.chat_history)//2} exchanges):")
+            f"\nChat History ({len(self.chat_history)//2} exchanges):")
         ClinicalLogger.info("-" * 40)
 
         for i in range(0, len(self.chat_history), 2):
@@ -188,7 +188,7 @@ class CLIChatInterface:
                 self._save_session()
 
         ClinicalLogger.info(
-            "👋 Thank you for using Clinical RAG Chat Interface!")
+            "Thank you for using Clinical RAG Chat Interface!")
 
     def load_session(self, session_file: str):
         """Load a previous chat session"""
@@ -201,7 +201,7 @@ class CLIChatInterface:
 
             exchange_count = len(self.chat_history) // 2
             ClinicalLogger.info(
-                f"📂 Loaded session with {exchange_count} exchanges from: {session_file}")
+                f"Loaded session with {exchange_count} exchanges from: {session_file}")
             return True
 
         except Exception as e:
@@ -216,7 +216,7 @@ def main():
  Clinical RAG CLI Chat Interface
 
  Usage:
-     python cli_chat.py <command> [options]
+     python platform/cli_chat.py <command> [options]
 
  Commands:
      chat                    - Start interactive chat session
@@ -224,9 +224,9 @@ def main():
      load <session_file>    - Load and continue previous session
 
  Examples:
-     python cli_chat.py chat
-     python cli_chat.py chat --no-save
-     python cli_chat.py load chat_session_20250722_143022.json
+     python platform/cli_chat.py chat
+     python platform/cli_chat.py chat --no-save
+     python platform/cli_chat.py load chat_session_20250722_143022.json
         """)
         return
 

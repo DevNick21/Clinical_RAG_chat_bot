@@ -17,7 +17,7 @@ pip install -e .
 
 REM Start the backend API server
 echo Starting Flask API server...
-start cmd /k "title RAG API Server && python api/app.py"
+start cmd /k "title RAG API Server && python platform/api/app.py"
 
 REM Wait for the API server to initialize
 echo Waiting for API server to initialize...
@@ -25,7 +25,7 @@ timeout /t 5 /nobreak
 
 REM Start the frontend
 echo Starting React frontend...
-cd frontend
+cd platform/frontend
 echo Checking frontend dependencies...
 call npm install
 start cmd /k "title RAG Frontend && npm start"
