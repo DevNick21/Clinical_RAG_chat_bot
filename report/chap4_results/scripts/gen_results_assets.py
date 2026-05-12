@@ -8,7 +8,7 @@ sns.set(style="whitegrid")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "RAG_chat_pipeline", "results")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "report", "results")
 TABLES_DIR = os.path.join(PROJECT_ROOT, "report", "chap4_results", "tables")
 IMAGES_DIR = os.path.join(PROJECT_ROOT, "report", "chap4_results", "images")
 

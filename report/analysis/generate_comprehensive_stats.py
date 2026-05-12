@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 def load_results():
     """Load the results dataframe"""
-    results_path = Path("results/results_dataframe.csv")
+    results_path = Path("report/results/results_dataframe.csv")
     if not results_path.exists():
         print(f"Results file not found at {results_path}")
         return None

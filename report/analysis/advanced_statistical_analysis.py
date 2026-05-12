@@ -23,7 +23,7 @@ sns.set_palette("tab10")
 plt.rcParams.update({'font.size': 10, 'figure.autolayout': True})
 
 class AdvancedClinicalRAGAnalysis:
-    def __init__(self, results_path="results/results_dataframe.csv", output_dir="report/chap4_results"):
+    def __init__(self, results_path="report/results/results_dataframe.csv", output_dir="report/chap4_results"):
         self.results_path = Path(results_path)
         self.output_dir = Path(output_dir)
         self.images_dir = self.output_dir / "images"

@@ -145,7 +145,7 @@ class EvaluationResultsManager:
             self.base_dir = results_dir.resolve() if not results_dir.is_absolute() else results_dir
 
         # Results directory (for JSON/CSV data)
-        self.results_dir = self.base_dir / "results"
+        self.results_dir = self.base_dir / "report" / "results"
 
         # Report directories (for images/tables used in LaTeX)
         self.report_dir = self.base_dir / "report" / "chap4_results"
@@ -1198,13 +1198,13 @@ def main():
         epilog="""
 Examples:
   # Full evaluation with default models
-  python -m RAG_chat_pipeline.benchmarks.evaluation_results_manager
+  python -m report.benchmarks.evaluation_results_manager
 
   # Quick test with specific models
-  python -m RAG_chat_pipeline.benchmarks.evaluation_results_manager --quick --embedding mini-lm,biomedbert --llm tinyllama,qwen
+  python -m report.benchmarks.evaluation_results_manager --quick --embedding mini-lm,biomedbert --llm tinyllama,qwen
 
   # Generate reports only from existing data
-  python -m RAG_chat_pipeline.benchmarks.evaluation_results_manager --reports-only
+  python -m report.benchmarks.evaluation_results_manager --reports-only
         """
     )
 

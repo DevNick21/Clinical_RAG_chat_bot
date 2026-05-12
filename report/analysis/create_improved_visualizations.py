@@ -18,7 +18,7 @@ plt.rcParams.update({'font.size': 10, 'figure.autolayout': True})
 
 def load_and_process_data():
     """Load and process the results data"""
-    results_path = Path("results/results_dataframe.csv")
+    results_path = Path("report/results/results_dataframe.csv")
     if not results_path.exists():
         print(f"Results file not found at {results_path}")
         return None
