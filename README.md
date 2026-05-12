@@ -207,13 +207,13 @@ venv\Scripts\activate  # CMD
 source venv/Scripts/activate  # Bash/Git Bash
 
 # Quick test for a specific model combination
-python -m report.benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
+python -m benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
 
 # Run full evaluation for all model combinations
-python -m report.benchmarks.model_evaluation_runner all --type full
+python -m benchmarks.model_evaluation_runner all --type full
 
 # Generate a report from existing evaluations
-python -m report.benchmarks.model_evaluation_runner report
+python -m benchmarks.model_evaluation_runner report
 ```
 
 #### Web Interface
@@ -340,20 +340,20 @@ print(response['answer'])
 
 ```bash
 # Run all model combinations
-python -m report.benchmarks.model_evaluation_runner all --type short
+python -m benchmarks.model_evaluation_runner all --type short
 
 # Generate comparison report
-python -m report.benchmarks.model_evaluation_runner report
+python -m benchmarks.model_evaluation_runner report
 ```
 
 #### Single Model Evaluation
 
 ```bash
 # Evaluate specific combination
-python -m report.benchmarks.model_evaluation_runner single ms-marco deepseek --type short
+python -m benchmarks.model_evaluation_runner single ms-marco deepseek --type short
 
 # Quick test
-python -m report.benchmarks.rag_evaluator quick
+python -m benchmarks.rag_evaluator quick
 ##  Clinical Data Structure
 
 The system processes six types of medical records:
@@ -393,10 +393,10 @@ The evaluation framework uses **BioBERT-based semantic similarity** for clinical
 
 ```bash
 # Full evaluation suite
-python -m report.benchmarks.rag_evaluator full
+python -m benchmarks.rag_evaluator full
 
 # Short evaluation (10 questions)
-python -m report.benchmarks.rag_evaluator short
+python -m benchmarks.rag_evaluator short
 ```
 
 ## Performance Analysis

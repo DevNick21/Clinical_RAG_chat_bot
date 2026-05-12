@@ -130,17 +130,18 @@ class EvaluationResultsManager:
         self.quiet = quiet
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Directory structure
+        # Directory structure: walk up from this file looking for the repo
+        # root, identified by the RAG_chat_pipeline/ package directory. Works
+        # regardless of whether this module lives at benchmarks/ or any other
+        # depth within the repo.
         if results_dir is None:
-            current_dir = Path(__file__).resolve().parent
-            # Prefer repository root (which contains top-level 'report') when available
-            repo_root = current_dir.parent.parent.parent
-            candidate_report_dir = repo_root / "report"
-            if candidate_report_dir.exists():
-                self.base_dir = repo_root
-            else:
-                # Fallback to package root
-                self.base_dir = current_dir.parent.parent
+            self.base_dir = next(
+                (
+                    p for p in [Path(__file__).resolve().parent, *Path(__file__).resolve().parents]
+                    if (p / "RAG_chat_pipeline").is_dir()
+                ),
+                Path(__file__).resolve().parent,  # last-resort fallback
+            )
         else:
             self.base_dir = results_dir.resolve() if not results_dir.is_absolute() else results_dir
 
@@ -1198,13 +1199,13 @@ def main():
         epilog="""
 Examples:
   # Full evaluation with default models
-  python -m report.benchmarks.evaluation_results_manager
+  python -m benchmarks.evaluation_results_manager
 
   # Quick test with specific models
-  python -m report.benchmarks.evaluation_results_manager --quick --embedding mini-lm,biomedbert --llm tinyllama,qwen
+  python -m benchmarks.evaluation_results_manager --quick --embedding mini-lm,biomedbert --llm tinyllama,qwen
 
   # Generate reports only from existing data
-  python -m report.benchmarks.evaluation_results_manager --reports-only
+  python -m benchmarks.evaluation_results_manager --reports-only
         """
     )
 
