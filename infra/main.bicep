@@ -60,6 +60,11 @@ param modelDeploymentName string
 ])
 param reasoningEffort string = 'low'
 
+@description('Token budget covering reasoning + visible output combined. medium effort can spend 5k-10k just on reasoning; 16384 is the safe default. Bump to 32768+ for high effort or complex multi-step queries.')
+@minValue(2048)
+@maxValue(100000)
+param maxOutputTokens int = 16384
+
 @description('Comma-separated list of CORS origins allowed by the API. Empty = no cross-origin browser access.')
 param allowedOrigins string = ''
 
@@ -321,6 +326,7 @@ resource acaApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'TARGET_URL', value: foundryEndpoint }
             { name: 'MODEL_DEPLOYMENT_NAME', value: modelDeploymentName }
             { name: 'REASONING_EFFORT', value: reasoningEffort }
+            { name: 'MAX_OUTPUT_TOKENS', value: string(maxOutputTokens) }
             { name: 'AZURE_STORAGE_ACCOUNT', value: existingStorageAccount }
             { name: 'AZURE_BLOB_CONTAINER', value: blobContainer }
             { name: 'USE_BLOB_DATA', value: 'true' }

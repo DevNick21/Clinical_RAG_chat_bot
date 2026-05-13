@@ -26,7 +26,14 @@ class ResponsesAPIChatModel(BaseChatModel):
     client: Any
     model: str
     reasoning_effort: str = "low"
-    max_output_tokens: int = 2048
+    # Token budget covers BOTH reasoning + visible output combined.
+    # At reasoning_effort=medium, gpt-5-nano can spend 5k-10k tokens on
+    # internal reasoning alone for a non-trivial question; a 2048 budget
+    # exhausts before any output is emitted, the stream finishes with
+    # zero chunks, and LangChain raises "No generation chunks were
+    # returned". 16384 covers medium comfortably; bump to 32768+ for
+    # high effort or complex multi-step queries.
+    max_output_tokens: int = 16384
 
     # Populated after each `_generate` call so callers can read the latest
     # reasoning trace for audit logging. Not thread-safe across concurrent
@@ -150,11 +157,27 @@ class ResponsesAPIChatModel(BaseChatModel):
                     reasoning_buffer.append(current_reasoning)
                     current_reasoning = ""
 
-            # Final event — capture the response id for audit cross-ref.
+            # Final event — capture the response id for audit cross-ref,
+            # and surface truncation as a visible warning chunk so the
+            # caller doesn't end up with a zero-chunk stream that
+            # LangChain rejects as "No generation chunks were returned".
             elif event_type == "response.completed":
                 resp = getattr(event, "response", None)
                 if resp is not None:
                     response_id = getattr(resp, "id", None)
+
+                    status = getattr(resp, "status", None)
+                    if status == "incomplete":
+                        details = getattr(resp, "incomplete_details", None)
+                        reason = getattr(details, "reason", "unknown") if details else "unknown"
+                        warning = (
+                            f"\n\n[Response truncated by Foundry: {reason}. "
+                            f"Reasoning at effort='{self.reasoning_effort}' consumed the "
+                            f"max_output_tokens budget ({self.max_output_tokens}). "
+                            f"Increase MAX_OUTPUT_TOKENS or drop REASONING_EFFORT.]"
+                        )
+                        yield ChatGenerationChunk(message=AIMessageChunk(content=warning))
+
                     # Belt-and-braces: if the streamed reasoning items
                     # weren't captured via deltas (older SDK behaviour),
                     # extract them from the final response payload.
