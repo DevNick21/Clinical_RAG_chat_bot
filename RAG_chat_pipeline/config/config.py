@@ -98,7 +98,11 @@ SECTION_KEYWORDS = {
     "labs": ["labs", "laboratory", "test results", "lab results", "tests", "lab", "laboratory results", "lab tests"],
     "prescriptions": ["medications", "drugs", "prescriptions", "meds", "orders", "emars", "poe", "pharmacy", "medication"],
     "microbiology": ["microbiology", "cultures", "infections", "micro"],
-    "header": ["header", "admission", "discharge", "admit", "admittime", "dischtime", "admission type"]
+    # NOTE: bare "admission" and "admit" intentionally NOT here - they
+    # appear in almost every clinical query as ID-prefix words and would
+    # false-trigger the header-section filter. "admission type" stays
+    # because it's specific enough to be a section signal.
+    "header": ["header", "discharge", "admittime", "dischtime", "admission type"]
 }
 
 # =============================================

@@ -219,13 +219,25 @@ Context:
         self.question_answer_chain = None
 
     def _create_clinical_prompt(self, hadm_id=None, subject_id=None):
-        """Create dynamic clinical prompt with admission/patient context"""
-        if hadm_id:
-            context_instruction = f"""You are analyzing documents specifically for admission ID {hadm_id}. The provided documents are filtered for this admission, so they ARE relevant to the query about this admission.
+        """Create dynamic clinical prompt with admission/patient context.
 
-IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the admission ID. Never state "Source Citations: None provided" unless no documents were found. Each document contains relevant information for this admission."""
-        elif subject_id:
-            context_instruction = f"""You are analyzing documents specifically for patient/subject ID {subject_id}. The provided documents are filtered for this patient, so they ARE relevant to the query about this patient.
+        `hadm_id` and `subject_id` may be int OR list[int] (multi-ID
+        comparison query). The list is rendered into the instruction
+        text so the model knows the full scope of the filter.
+        """
+        hadm_ids = self._to_id_list(hadm_id)
+        subject_ids = self._to_id_list(subject_id)
+
+        if hadm_ids:
+            ids_str = ", ".join(str(i) for i in hadm_ids)
+            label = "admission IDs" if len(hadm_ids) > 1 else "admission ID"
+            context_instruction = f"""You are analyzing documents specifically for {label} {ids_str}. The provided documents are filtered for {"these admissions" if len(hadm_ids) > 1 else "this admission"}, so they ARE relevant to the query.
+
+IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the admission ID. Never state "Source Citations: None provided" unless no documents were found."""
+        elif subject_ids:
+            ids_str = ", ".join(str(i) for i in subject_ids)
+            label = "patient/subject IDs" if len(subject_ids) > 1 else "patient/subject ID"
+            context_instruction = f"""You are analyzing documents specifically for {label} {ids_str}. The provided documents are filtered for {"these patients" if len(subject_ids) > 1 else "this patient"}, so they ARE relevant to the query.
 
 IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the patient ID. Never state "Source Citations: None provided" unless no documents were found."""
         else:
@@ -312,28 +324,48 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         ClinicalLogger.info(
             f"Index stats: {len(self.hadm_id_index)} admissions, {len(self.subject_id_index)} subjects, {len(self.section_index)} sections")
 
+    @staticmethod
+    def _to_id_list(value):
+        """Normalise int | list | tuple | set | None to a list of ints (or [])."""
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [int(v) for v in value if v is not None]
+        return [int(value)]
+
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
-        """Centralized document filtering logic"""
-        if hadm_id is not None:
+        """Centralized document filtering logic.
+
+        `hadm_id` and `subject_id` accept int | list[int] | None. When a
+        list is supplied (multi-ID query like "compare admissions A and B")
+        we union the candidate indices across all IDs, dedupe, and apply
+        the limit across the merged set.
+        """
+        hadm_ids = self._to_id_list(hadm_id)
+        subject_ids = self._to_id_list(subject_id)
+
+        if hadm_ids:
             ClinicalLogger.info(
-                f"Filtering documents for hadm_id: {hadm_id} (type: {type(hadm_id)})")
-            candidate_indices = self.hadm_id_index.get(hadm_id, [])
-            ClinicalLogger.info(
-                f"Found {len(candidate_indices)} documents for hadm_id {hadm_id}")
+                f"Filtering documents for hadm_id(s): {hadm_ids}")
+            candidate_indices = []
+            for hid in hadm_ids:
+                if section is not None:
+                    indices = self.hadm_section_index.get((hid, section), [])
+                    ClinicalLogger.info(
+                        f"  hadm_id {hid} + section '{section}': {len(indices)} documents")
+                else:
+                    indices = self.hadm_id_index.get(hid, [])
+                    ClinicalLogger.info(
+                        f"  hadm_id {hid}: {len(indices)} documents")
+                if not indices:
+                    available_keys = list(self.hadm_id_index.keys())[:10]
+                    ClinicalLogger.warning(
+                        f"No documents for hadm_id {hid}. Available keys (first 10): {available_keys}")
+                candidate_indices.extend(indices)
 
-            # Debug: Show available keys if no documents found
-            if len(candidate_indices) == 0:
-                available_keys = list(self.hadm_id_index.keys())[:10]
-                ClinicalLogger.warning(
-                    f"No documents found for hadm_id {hadm_id}. Available keys (first 10): {available_keys}")
+            # Dedupe while preserving first-seen order
+            candidate_indices = list(dict.fromkeys(candidate_indices))
 
-            if section is not None:
-                key = (hadm_id, section)
-                candidate_indices = self.hadm_section_index.get(key, [])
-                ClinicalLogger.info(
-                    f"With section filter '{section}': {len(candidate_indices)} documents")
-
-            # Apply limit to prevent excessive document processing
             if len(candidate_indices) > limit:
                 ClinicalLogger.info(
                     f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
@@ -341,10 +373,17 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             return [self.chunked_docs[i] for i in candidate_indices]
 
-        elif subject_id is not None:
-            candidate_indices = self.subject_id_index.get(subject_id, [])
+        elif subject_ids:
+            ClinicalLogger.info(
+                f"Filtering documents for subject_id(s): {subject_ids}")
+            candidate_indices = []
+            for sid in subject_ids:
+                indices = self.subject_id_index.get(sid, [])
+                ClinicalLogger.info(f"  subject_id {sid}: {len(indices)} documents")
+                candidate_indices.extend(indices)
 
-            # Apply limit early to reduce processing
+            candidate_indices = list(dict.fromkeys(candidate_indices))
+
             if len(candidate_indices) > limit:
                 ClinicalLogger.info(
                     f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
@@ -359,10 +398,21 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         return None  # Indicates global search needed
 
     def _no_documents_result(self, entity_type, entity_id, section, start_time):
-        """Helper method for no documents found result"""
+        """Helper method for no documents found result.
+
+        `entity_id` may be int or list[int] (multi-ID query). The message is
+        pluralised accordingly.
+        """
         section_msg = f" in section '{section}'" if section else ""
+        ids = self._to_id_list(entity_id)
+        if len(ids) > 1:
+            label = f"{entity_type}s"
+            id_str = ", ".join(str(i) for i in ids)
+        else:
+            label = entity_type
+            id_str = str(ids[0]) if ids else "unknown"
         return {
-            "answer": f"No records found for {entity_type} {entity_id}{section_msg}",
+            "answer": f"No records found for {label} {id_str}{section_msg}",
             "source_documents": [],
             "citations": [],
             "search_time": time.time() - start_time,
@@ -777,16 +827,32 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         hadm_id, subject_id, section, k = self._validate_parameters(
             hadm_id, subject_id, section, k)
 
-        # Extract entities if needed
+        # Extract entities if needed. When the user mentions multiple
+        # admission/subject IDs (e.g., "compare admissions A and B"),
+        # surface the FULL list as the hadm_id / subject_id parameter so
+        # the downstream filter retrieves docs for any of them. The filter
+        # accepts both int and list[int]; downstream prompt + output code
+        # paths normalise the list when they need a scalar.
         extracted_entities = None
         if ENABLE_ENTITY_EXTRACTION and hadm_id is None and subject_id is None and section is None:
             try:
                 extracted_entities = extract_entities(
                     question, use_llm_fallback=True, llm=self.llm)
                 if extracted_entities["confidence"] in ["high", "medium"]:
-                    hadm_id = extracted_entities.get("hadm_id") or hadm_id
-                    subject_id = extracted_entities.get(
-                        "subject_id") or subject_id
+                    extracted_hadm_ids = extracted_entities.get("hadm_ids") or []
+                    extracted_subject_ids = extracted_entities.get("subject_ids") or []
+                    if len(extracted_hadm_ids) > 1:
+                        hadm_id = extracted_hadm_ids
+                    elif extracted_hadm_ids:
+                        hadm_id = extracted_hadm_ids[0]
+                    elif extracted_entities.get("hadm_id") is not None:
+                        hadm_id = extracted_entities["hadm_id"]
+                    if len(extracted_subject_ids) > 1:
+                        subject_id = extracted_subject_ids
+                    elif extracted_subject_ids:
+                        subject_id = extracted_subject_ids[0]
+                    elif extracted_entities.get("subject_id") is not None:
+                        subject_id = extracted_entities["subject_id"]
                     section = extracted_entities.get("section") or section
                     ClinicalLogger.info(
                         f"Auto-extracted - hadm_id: {hadm_id}, subject_id: {subject_id}, section: {section}")
@@ -1186,7 +1252,14 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             if candidate_docs is not None:
                 if not candidate_docs:
-                    yield {"error": f"No records found for {'admission' if hadm_id else 'patient/subject'} {hadm_id or subject_id}"}
+                    # Format the missing-IDs message the same way as
+                    # _no_documents_result, supporting list IDs.
+                    _ids = self._to_id_list(hadm_id) or self._to_id_list(subject_id)
+                    _label = "admission" if hadm_id else "patient/subject"
+                    if len(_ids) > 1:
+                        _label += "s"
+                    _id_str = ", ".join(str(i) for i in _ids) if _ids else "unknown"
+                    yield {"error": f"No records found for {_label} {_id_str}"}
                     return
 
                 retrieved_docs = self._semantic_search_on_docs(

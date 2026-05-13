@@ -101,7 +101,9 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
 
     result = {
         "hadm_id": None,
+        "hadm_ids": [],         # ALL hadm_ids found, in order. hadm_id is hadm_ids[0] when present.
         "subject_id": None,
+        "subject_ids": [],
         "section": None,
         "confidence": "low",
         "reasoning": "",
@@ -118,39 +120,66 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
         result["confidence"] = "medium"
         result["reasoning"] = "Query appears to request patient-level information"
 
-    # Extract subject_id if explicitly mentioned
+    # Extract ALL subject_ids mentioned (not just the last). Handles
+    # plural / multi-ID queries like "compare patient X and patient Y".
+    # `admissions?\s*` (with optional s) catches "admission 123" and
+    # "admissions 123 and 456".
     subj_matches = re.findall(
-        r'subject[_\s]*(\d+)|patient[_\s]*(\d+)|subject_id[:\s]*(\d+)', query_lower)
-    if subj_matches:
-        for match_group in subj_matches:
-            for match in match_group:
-                if match:
-                    try:
-                        result["subject_id"] = int(match)
-                        result["confidence"] = "high"
-                        result["reasoning"] += f" Found explicit subject_id {match}"
-                        result["query_type"] = "patient_history"
-                        print(
-                            f" Regex found subject_id: {result['subject_id']}")
-                        break
-                    except (ValueError, TypeError):
-                        continue
+        r'subjects?\s*(\d+)|patients?\s*(\d+)|subject_id[:\s]*(\d+)', query_lower)
+    for match_group in subj_matches:
+        for match in match_group:
+            if not match:
+                continue
+            try:
+                sid = int(match)
+                if sid not in result["subject_ids"]:
+                    result["subject_ids"].append(sid)
+            except (ValueError, TypeError):
+                continue
+    if result["subject_ids"]:
+        result["subject_id"] = result["subject_ids"][0]  # backward compat: first
+        result["confidence"] = "high"
+        result["reasoning"] += f" Found {len(result['subject_ids'])} subject_id(s): {result['subject_ids']}"
+        result["query_type"] = "patient_history"
+        print(f" Regex found {len(result['subject_ids'])} subject_id(s): {result['subject_ids']}")
 
-    # Regex extraction for hadm_id
+    # Extract ALL hadm_ids mentioned. Same multi-ID treatment as above
+    # so a comparison query like "admissions 21342515 and 22240591"
+    # captures BOTH instead of just the last (which was the original
+    # behaviour and caused filter misses).
     hadm_matches = re.findall(
-        r'admission\s*(\d+)|hadm_id[:\s]*(\d+)|\b(\d{8})\b', query_lower)
-    if hadm_matches:
-        for match_group in hadm_matches:
-            for match in match_group:
-                if match and len(match) >= 8:  # Reasonable hadm_id length
-                    try:
-                        result["hadm_id"] = int(match)
-                        result["confidence"] = "high"
-                        result["reasoning"] += f" Found explicit hadm_id {match}"
-                        print(f" Regex found hadm_id: {result['hadm_id']}")
-                        break
-                    except (ValueError, TypeError):
-                        continue
+        r'admissions?\s*(\d+)|hadm_id[:\s]*(\d+)|\b(\d{8})\b', query_lower)
+    for match_group in hadm_matches:
+        for match in match_group:
+            if not match or len(match) < 8:  # MIMIC hadm_ids are 8+ digits
+                continue
+            try:
+                hid = int(match)
+                if hid not in result["hadm_ids"]:
+                    result["hadm_ids"].append(hid)
+            except (ValueError, TypeError):
+                continue
+    # If a number was already captured as subject_id from an explicit
+    # "patient"/"subject" prefix, drop it from hadm_ids — the explicit
+    # prefix wins over the generic \b\d{8}\b fallback. Avoids the false
+    # positive where "Show me labs for patient 10006508" would otherwise
+    # set BOTH subject_id=10006508 AND hadm_id=10006508.
+    if result["subject_ids"]:
+        result["hadm_ids"] = [
+            hid for hid in result["hadm_ids"] if hid not in result["subject_ids"]
+        ]
+
+    if result["hadm_ids"]:
+        result["hadm_id"] = result["hadm_ids"][0]  # backward compat: first
+        result["confidence"] = "high"
+        result["reasoning"] += f" Found {len(result['hadm_ids'])} hadm_id(s): {result['hadm_ids']}"
+        print(f" Regex found {len(result['hadm_ids'])} hadm_id(s): {result['hadm_ids']}")
+    else:
+        # If subject_ids consumed all the 8-digit numbers, clear hadm_id
+        # too (we previously set it to the first number, but that number
+        # is now known to be a subject_id, not an hadm_id).
+        if result["subject_ids"]:
+            result["hadm_id"] = None
 
     # Keyword matching for sections
     for section, keywords in SECTION_KEYWORDS.items():
