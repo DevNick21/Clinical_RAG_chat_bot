@@ -1,5 +1,4 @@
 """Main clinical RAG chatbot"""
-import sys
 import re
 import time
 from threading import Lock
@@ -281,6 +280,45 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             return [int(v) for v in value if v is not None]
         return [int(value)]
 
+    # Standard "no records found" disclaimer string. Used both in the
+    # filter-miss path (we asked the index, got nothing) and the
+    # preflight rejection path (post-retrieval ID mismatch). Centralised
+    # so all four sites pluralise + format consistently.
+    _DISCLAIMER = "ℹ️ Data from MIMIC-IV database for research/education only."
+
+    def _no_records_text(self, entity_type, entity_id, section=None):
+        """Filter-miss message: index returned no docs for the requested IDs.
+
+        `entity_type` is "admission" / "patient/subject" (singular form);
+        `entity_id` is int OR list[int]; `section` is an optional string.
+        """
+        ids = self._to_id_list(entity_id)
+        section_msg = f" in section '{section}'" if section else ""
+        if len(ids) > 1:
+            label = f"{entity_type}s"
+            id_str = ", ".join(str(i) for i in ids)
+        elif ids:
+            label = entity_type
+            id_str = str(ids[0])
+        else:
+            return f"No records found{section_msg}"
+        return f"No records found for {label} {id_str}{section_msg}"
+
+    def _preflight_rejection_text(self, missing_ids):
+        """Post-retrieval rejection: docs came back but for different IDs.
+
+        Different from the filter-miss path because here the user asked
+        about specific IDs and global / mixed retrieval gave back unrelated
+        admissions; we want to be explicit about why we're not answering.
+        """
+        ids_str = ", ".join(str(i) for i in sorted(missing_ids))
+        return (
+            f"No records were found for admission/subject ID(s): {ids_str}. "
+            "The retrieved documents are about different admissions, so I "
+            "can't answer this question reliably. Please verify the ID(s) "
+            f"or rephrase the question.\n\n{self._DISCLAIMER}"
+        )
+
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
         """Centralized document filtering logic.
 
@@ -346,21 +384,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         return None  # Indicates global search needed
 
     def _no_documents_result(self, entity_type, entity_id, section, start_time):
-        """Helper method for no documents found result.
-
-        `entity_id` may be int or list[int] (multi-ID query). The message is
-        pluralised accordingly.
-        """
-        section_msg = f" in section '{section}'" if section else ""
-        ids = self._to_id_list(entity_id)
-        if len(ids) > 1:
-            label = f"{entity_type}s"
-            id_str = ", ".join(str(i) for i in ids)
-        else:
-            label = entity_type
-            id_str = str(ids[0]) if ids else "unknown"
+        """Filter-miss result dict; message text delegated to _no_records_text."""
         return {
-            "answer": f"No records found for {label} {id_str}{section_msg}",
+            "answer": self._no_records_text(entity_type, entity_id, section),
             "source_documents": [],
             "citations": [],
             "search_time": time.time() - start_time,
@@ -550,9 +576,13 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         start_time = time.time()
 
         if original_question and original_question != question:
-            ClinicalLogger.debug(f"Original query: '{original_question}'")
+            ClinicalLogger.debug("Original query differs from processed query")
         ClinicalLogger.info(
-            f"Query: '{question}' | hadm_id: {hadm_id} | subject_id: {subject_id} | section: {section}")
+            "Query received",
+            hadm_id=hadm_id,
+            subject_id=subject_id,
+            section=section,
+        )
 
         if chat_history is None:
             chat_history = []
@@ -623,13 +653,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 ClinicalLogger.info(
                     f"Pre-flight: asked IDs {ids_str} not in retrieved docs; "
                     f"short-circuiting before LLM call.")
-                preflight_answer = (
-                    f"No records were found for admission/subject ID(s): "
-                    f"{ids_str}. The retrieved documents are about different "
-                    f"admissions, so I can't answer this question reliably. "
-                    f"Please verify the ID(s) or rephrase the question.\n\n"
-                    "ℹ️ Data from MIMIC-IV database for research/education only."
-                )
+                preflight_answer = self._preflight_rejection_text(missing_ids)
                 try:
                     audit_id = log_request(
                         question=question,
@@ -1034,7 +1058,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         """Unified question method - handles both single and conversational queries with performance optimization"""
         is_conversational = chat_history is not None
 
-        is_from_chat = False
+        is_from_chat = chat_history is not None
 
         # Log differently based on context
         if is_from_chat:
@@ -1193,14 +1217,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             if candidate_docs is not None:
                 if not candidate_docs:
-                    # Format the missing-IDs message the same way as
-                    # _no_documents_result, supporting list IDs.
-                    _ids = self._to_id_list(hadm_id) or self._to_id_list(subject_id)
-                    _label = "admission" if hadm_id else "patient/subject"
-                    if len(_ids) > 1:
-                        _label += "s"
-                    _id_str = ", ".join(str(i) for i in _ids) if _ids else "unknown"
-                    yield {"error": f"No records found for {_label} {_id_str}"}
+                    _entity_type = "admission" if hadm_id else "patient/subject"
+                    _entity_id = hadm_id if hadm_id else subject_id
+                    yield {"error": self._no_records_text(_entity_type, _entity_id)}
                     return
 
                 retrieved_docs = self._semantic_search_on_docs(
@@ -1227,13 +1246,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 ClinicalLogger.info(
                     f"Pre-flight (stream): asked IDs {ids_str} not in retrieved docs; "
                     f"short-circuiting before LLM call.")
-                preflight_answer = (
-                    f"No records were found for admission/subject ID(s): "
-                    f"{ids_str}. The retrieved documents are about different "
-                    f"admissions, so I can't answer this question reliably. "
-                    f"Please verify the ID(s) or rephrase the question.\n\n"
-                    "ℹ️ Data from MIMIC-IV database for research/education only."
-                )
+                preflight_answer = self._preflight_rejection_text(missing_ids)
                 # Stream the rejection as a single content chunk so SSE
                 # clients see consistent event shape.
                 yield {"content": preflight_answer, "done": False}
