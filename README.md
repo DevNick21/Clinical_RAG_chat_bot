@@ -1,628 +1,354 @@
 # Clinical RAG System for MIMIC-IV Data Analysis
 
-A comprehensive Retrieval-Augmented Generation (RAG) system designed for analyzing clinical data from the MIMIC-IV dataset. This system enables natural language querying of patient medical records and provides a robust evaluation framework for comparing different language models and embedding approaches.
+A production-deployed Retrieval-Augmented Generation (RAG) system over MIMIC-IV clinical data. Started as an MSc dissertation that compared 54 model combinations (9 embeddings × 6 LLMs) on real patient records; the **v2** branch in this repo is the post-dissertation refactor that ships the winning configuration as an authenticated, observable, Azure-hosted service with a per-request audit trail.
 
-## 🏥 Project Overview
+Live endpoint: `https://msc-rag-v2-api.ashyplant-95cd2fd0.uksouth.azurecontainerapps.io`
 
-This project implements a production-ready clinical RAG system that:
+For a commit-by-commit log of the v2 refactor and the running cloud topology, see [STATUS.md](STATUS.md).
 
-- **Processes MIMIC-IV hospital data** into structured, searchable documents
-- **Supports multiple embedding models** for optimal medical text representation
-- **Enables conversational interaction** with patient medical records
-- **Provides comprehensive evaluation metrics** for system performance assessment
-- **Compares different LLM and embedding combinations** systematically
-- **Includes a React-based web interface** for easy clinical data querying
+## What v2 is
 
-## System Architecture
+| Concern | v1 (dissertation) | v2 (this branch) |
+| --- | --- | --- |
+| LLM | 6 local models via Ollama | `gpt-5-nano` via Azure AI Foundry Responses API (with reasoning summaries) |
+| Streaming | Pseudo-stream (full response chunked) | True token-by-token SSE over Responses API |
+| Web framework | Flask, no auth, open CORS, `debug=True` | Flask + gunicorn, Bearer auth, restricted CORS, flask-limiter, fail-closed |
+| Data | Local pickles + FAISS on disk | Parquet + FAISS in Azure Blob, downloaded on cold start |
+| Secrets | `.env` only | Key Vault → Managed Identity → ACA secret refs |
+| Observability | `print()` | structlog + Azure Monitor OpenTelemetry distro → App Insights |
+| Trust / safety | None | Per-request JSON audit log + claim checker flags ungrounded sentences |
+| Deploy | `python app.py` | Single-file Bicep (ACR + MI + KV + LA + AI + ACA env + ACA app) + `deploy.sh` |
+
+## System architecture
 
 ```mermaid
 graph TB
-   %% Data creation & handling
-   subgraph "Data Creation & Handling"
-      A[MIMIC-IV Data]
-      B[Synthetic Data]
-      C[Processing & Chunking]
-      D[Embeddings -> FAISS Stores]
-      A --> C
-      B --> C
-      C --> D
+   subgraph "Client"
+      U[Browser / curl / React UI]
    end
 
-   %% Core RAG
-   subgraph "RAG Core"
-      E[Clinical RAG Bot]
-      F[Entity Extraction]
-      G[Conversation Memory]
-      D --> E
-      E --> F
-      E --> G
+   subgraph "Azure Container Apps"
+      ING[ACA Ingress - TLS]
+      GUN[gunicorn 1w / 4t / 180s]
+      FL[Flask app.py<br/>Bearer auth + rate limit]
+      RAG[clinical_rag.chat_stream]
+      RET[Retriever<br/>FAISS similarity]
+      LLM[ResponsesAPIChatModel<br/>SSE token stream]
+      AUD[audit_log + claim_checker]
    end
 
-   %% Models
-   subgraph "Models"
-      H[Embedding Models]
-      I[LLM via Ollama]
-      D <---> H
-      E <---> I
+   subgraph "Azure Foundry"
+      GPT[gpt-5-nano<br/>Responses API]
    end
 
-   %% Interfaces
-   subgraph "Interfaces"
-      J[React Frontend]
-      K[Flask API]
-      J --> K
-      K --> E
+   subgraph "Azure Blob v2-seed"
+      PARQ[gold/silver Parquet]
+      FAISS[prod-index/faiss_winner/]
    end
+
+   subgraph "Identity + Secrets"
+      KV[Key Vault: API-KEY / MODEL-API-KEY]
+      MI[Managed Identity]
+   end
+
+   subgraph "Telemetry"
+      AI[App Insights]
+   end
+
+   U -->|POST /api/chat<br/>Authorization: Bearer| ING
+   ING --> GUN --> FL --> RAG
+   RAG --> RET --> FAISS
+   RAG --> LLM --> GPT
+   RAG --> AUD
+   MI --> KV
+   MI --> PARQ
+   MI --> FAISS
+   FL -.-> AI
+   LLM -.-> AI
 ```
 
-### Core Components
+For the full end-to-end request walkthrough, see [STATUS.md § End-to-end flow](STATUS.md).
 
-1. **Data Abstraction Layer** (`RAG_chat_pipeline/utils/data_provider.py`)
-   - Automatic selection between real MIMIC-IV and synthetic data
-   - Seamless switching without configuration changes
-   - Backward compatibility with existing data loading functions
-   - Handles data format differences transparently
-
-2. **Synthetic Data Generation** (`synthetic_data/`)
-   - Creates realistic fictional medical data matching MIMIC-IV structure
-   - Generates 100 patients with 150 admissions and full clinical records
-   - Supports public distribution and demo capabilities
-   - Automatically integrated when real data is unavailable
-
-3. **Data Processing Pipeline** (`notebooks/`)
-   - Converts MIMIC-IV CSV data to structured documents
-   - Creates semantic chunks optimized for clinical queries
-   - Supports multiple vector stores with different embedding models
-   - Processes both real and synthetic data uniformly
-
-4. **Clinical RAG Bot** (`RAG_chat_pipeline/core/clinical_rag.py`)
-   - Handles both single questions and conversational interactions
-   - Supports admission-specific and global semantic search
-   - Includes entity extraction for automatic parameter detection
-   - Maintains conversation history and context
-
-5. **Model Management System** (`RAG_chat_pipeline/config/` & `core/embeddings_manager.py`)
-   - Centralized configuration for 9 embedding models and 6 LLMs
-   - Dynamic model switching without system restart
-   - Automatic model downloading and caching
-   - Support for both general-purpose and medical-specific models
-
-6. **Comprehensive Evaluation Framework** (`RAG_chat_pipeline/benchmarks/`)
-   - **Semantic Precision/Recall/F1 Scoring**: BioBERT-based evaluation using clinical domain embeddings
-   - **Precision**: Average semantic similarity of matched expected keywords
-   - **Recall**: Proportion of expected keywords found in responses
-   - **F1-Score**: Harmonic mean of precision and recall for overall performance
-   - Category-specific validation for different medical question types
-   - Automated gold question generation from real patient data
-   - Both single-turn and conversational evaluation capabilities
-   - Statistical analysis and visualization of results
-
-7. **Model Comparison System** (`RAG_chat_pipeline/benchmarks/model_evaluation_runner.py`)
-   - Systematic evaluation across 54 model combinations (9×6)
-   - Automated results collection and analysis
-   - Performance visualization with heatmaps and charts
-   - Efficiency and safety metrics tracking
-
-8. **Results Management & Visualization** (`RAG_chat_pipeline/benchmarks/visualization.py`)
-   - Comprehensive performance dashboards
-   - Interactive heatmaps and comparison charts
-   - Category breakdown analysis
-   - Time series and efficiency plots
-   - CSV exports for further analysis
-
-9. **Multi-Interface Support** (all under `platform/`)
-   - **React Frontend** (`platform/frontend/`): Modern web interface with Material-UI
-   - **Flask API Server** (`platform/api/`): RESTful API endpoints
-   - **CLI Interface** (`platform/cli_chat.py`): Command-line interaction
-   - **Jupyter Integration**: Notebook-friendly API
-
-## Supported Models
-
-### Embedding Models
-
-- **All-MiniLM-L6-v2** - General-purpose lightweight model (default)
-- **S-PubMedBert-MS-MARCO** - Medical domain-optimized model
-- **Multi-QA-MPNet** - Multi-domain question-answering model
-- **BiomedNLP-PubMedBERT** - Biomedical NLP model
-- **All-MPNet-Base-v2** - Powerful general-purpose model
-- **E5-Base-v2** - Efficient sentence embedding model
-- **BioLORD-2023-C** - Specialized biomedical language model
-- **BioBERT** - Biomedical text mining model
-- **S-PubMedBert-MedQuAD** - Medical QA specialized model
-
-### Language Models (via Ollama)
-
-- **DeepSeek-R1** (1.5B) - Reasoning-focused model (default)
-- **Qwen3** (1.7B) - Multilingual capabilities
-- **Llama3.2** - Meta's efficient language model
-- **Gemma** (2B) - Google's lightweight model
-- **Phi3** (3.8B) - Microsoft's instruction-following model
-- **TinyLlama** (1.1B) - Compact and efficient model
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- Node.js 16+ (for frontend, v18+ recommended for all dependencies)
-- MIMIC-IV dataset access (optional - synthetic data available for demo purposes)
-- GPU recommended but not required
-- Ollama for local LLM support
-
-```bash
-# Install Ollama: https://ollama.ai/
-# Pull required LLM models
-ollama pull deepseek-r1:1.5b
-ollama pull qwen3:1.7b
-ollama pull llama3.2:latest
-ollama pull gemma:2b
-ollama pull phi3:3.8b
-ollama pull tinyllama:1.1b
-```
-
-### Installation
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/DevNick21/msc_project.git
-   cd msc_project
-   ```
-
-2. Create and activate a virtual environment:
-
-   ```bash
-   python -m venv venv
-   # Windows:
-   venv\Scripts\activate
-   # Linux/macOS:
-   source venv/bin/activate
-   ```
-
-3. Install the project in development mode (makes imports work correctly):
-
-   ```bash
-   # This installs the project in development mode
-   pip install -e .
-   ```
-
-4. Install frontend dependencies (optional - only needed if using the web interface):
-
-   ```bash
-   cd platform/frontend
-   npm install
-   cd ../..
-   ```
-
-### Running the Clinical RAG System
-
-#### Model Evaluation Framework
-
-Run evaluations to compare different model combinations (make sure your virtual environment is activated):
-
-```bash
-# Activate virtual environment (Windows)
-venv\Scripts\activate  # CMD
-# OR
-source venv/Scripts/activate  # Bash/Git Bash
-
-# Quick test for a specific model combination
-python -m benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
-
-# Run full evaluation for all model combinations
-python -m benchmarks.model_evaluation_runner all --type full
-
-# Generate a report from existing evaluations
-python -m benchmarks.model_evaluation_runner report
-```
-
-#### Web Interface
-
-You can start both the Flask API server and React frontend with the provided convenience scripts:
-
-**Windows:**
-
-```bash
-# Just double-click or run:
-start_app.bat
-```
-
-**macOS/Linux:**
-
-```bash
-# Make executable first:
-chmod +x start_app.sh
-# Then run:
-./start_app.sh
-```
-
-Or start them separately:
-
-```bash
-# Start API server
-python platform/api/app.py
-
-# In a separate terminal, start React frontend
-cd platform/frontend
-npm start
-```
-
-Then visit [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Data Setup
-
-You have two options for data:
-
-#### Option 1: Use Synthetic Data (No MIMIC-IV access required)
-
-The system will automatically generate and use synthetic medical data if MIMIC-IV data is not found. This is great for:
-
-- Trying out the system without MIMIC-IV credentials
-- Development and testing
-- Public demos and sharing
-
-The synthetic data system:
-
-- Creates realistic fictional medical data matching MIMIC-IV structure
-- Automatically generates patient records, diagnoses, and lab values
-- Works seamlessly with the existing RAG pipeline through the DataProvider abstraction
-- Can be committed to Git for easy sharing (unlike the real MIMIC-IV data)
-
-Simply run the system and it will create synthetic data automatically, or generate it manually:
-
-```bash
-# Generate synthetic data
-python -m RAG_chat_pipeline.utils.synthetic_data.synthetic_data_generator
-
-# Or use it automatically in the RAG system (no special command needed)
-python -m RAG_chat_pipeline.main
-```
-
-For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
-
-```bash
-# Open the synthetic data demo notebook
-jupyter notebook synthetic_data_demo.ipynb
-```
-
-This demonstration notebook guides you through:
-
-- Generating and customizing synthetic medical data
-- Processing data into document chunks
-- Creating vector stores with embeddings
-- Initializing and using the RAG pipeline with synthetic data
-- Comparing synthetic data behavior with real data (if available)
-- Querying the system with various clinical questions
-
-For a detailed walkthrough of the synthetic data system, check out the included Jupyter notebook:
-
-```bash
-# Open the synthetic data demo notebook
-jupyter notebook synthetic_data_demo.ipynb
-```
-
-This demonstration notebook guides you through:
-
-- Generating and customizing synthetic medical data
-- Processing data into document chunks
-- Creating vector stores with embeddings
-- Initializing and using the RAG pipeline with synthetic data
-- Comparing synthetic data behavior with real data (if available)
-- Querying the system with various clinical questions
-
-#### Option 2: Use Real MIMIC-IV Data (Requires credentialed access)
-
-1. **Prepare MIMIC-IV Data**: Place sample data in `mimic_sample_1000/`
-2. **Process Data**: Run `notebooks/creating_docs.ipynb` to:
-   - Load and merge MIMIC-IV tables
-   - Create semantic document chunks
-   - Generate vector stores for all embedding models
-
-### Usage Examples
-
-#### Interactive Chatbot
-
-```python
-from RAG_chat_pipeline.core.main import main
-
-# Initialize system
-chatbot = main()
-
-# Ask questions
-response = chatbot.ask_question(
-    "What lab values were abnormal for admission 25282710?",
-    k=5
-)
-print(response['answer'])
-```
-
-#### Batch Evaluation
-
-```bash
-# Run all model combinations
-python -m benchmarks.model_evaluation_runner all --type short
-
-# Generate comparison report
-python -m benchmarks.model_evaluation_runner report
-```
-
-#### Single Model Evaluation
-
-```bash
-# Evaluate specific combination
-python -m benchmarks.model_evaluation_runner single ms-marco deepseek --type short
-
-# Quick test
-python -m benchmarks.rag_evaluator quick
-##  Clinical Data Structure
-
-The system processes six types of medical records:
-
-| Section | Content | Example Queries |
-|---------|---------|-----------------|
-| **Header** | Admission info, dates, types | "When was patient admitted?" |
-| **Diagnoses** | ICD codes, conditions | "What diagnoses does admission X have?" |
-| **Procedures** | Operations, interventions | "What procedures were performed?" |
-| **Labs** | Test results, values, flags | "Show abnormal lab values" |
-| **Microbiology** | Cultures, infections | "Were any cultures positive?" |
-| **Prescriptions** | Medications, dosages | "What medications was patient on?" |
-
-##  Evaluation Framework
-
-### Semantic Scoring Methodology
-
-The evaluation framework uses **BioBERT-based semantic similarity** for clinical domain accuracy:
-
-- **Precision**: Average semantic similarity of matched expected keywords (how accurate the matches are)
-- **Recall**: Proportion of expected keywords semantically found in responses (how complete the response is)  
-- **F1-Score**: Harmonic mean of precision and recall providing balanced overall performance measure
-- **Similarity Threshold**: 0.60 for clinical domain semantic matching
-- **Hybrid Matching**: Combines direct substring matching with BioBERT embeddings for robust evaluation
-
-### Question Categories
-
-- **Header Questions**: Admission details and administrative info
-- **Diagnostic Questions**: Disease conditions and ICD codes
-- **Procedural Questions**: Medical interventions and operations
-- **Laboratory Questions**: Test results and abnormal values
-- **Microbiology Questions**: Culture results and infections
-- **Prescription Questions**: Medications and dosing information
-
-
-### Automated Evaluation
-
-```bash
-# Full evaluation suite
-python -m benchmarks.rag_evaluator full
-
-# Short evaluation (10 questions)
-python -m benchmarks.rag_evaluator short
-```
-
-## Performance Analysis
-
-### Results Dashboard
-
-The system generates comprehensive performance reports including:
-
-- **F1-Score rankings by model combination**
-- **Precision/Recall trade-off analysis**
-- **Category-specific performance breakdowns**
-- **Semantic similarity score distributions**
-- **Search time and efficiency metrics**
-- **BioBERT-based semantic matching statistics**
-
-### Visualization
-
-- F1-Score heatmaps comparing model combinations
-- Precision vs Recall scatter plots
-- Category breakdown charts with semantic similarity scores
-- Time series analysis of evaluation results
-
-## 🗂 Project Structure
+## Repository layout
 
 ```text
 msc_project/
-├── .gitignore                     # Git ignore rules
-├── .hintrc                        # Code hint configuration
-├── setup.py                       # Python package setup
-├── requirements.txt               # Python dependencies
-├── synthetic_data_demo.ipynb      # Demonstration notebook for synthetic data
-├── start_app.bat                  # Windows startup script
-├── start_app.sh                   # Linux/Mac startup script
-├── platform/                      # Delivery surfaces (interfaces)
-│   ├── api/                       # Flask API
-│   ├── frontend/                  # React UI
-│   └── cli_chat.py                # Command-line chat interface
-├── notebooks/                 # Data processing notebooks
-│   ├── creating_docs.ipynb        # Main data processing pipeline
-│   ├── creating_samples.ipynb     # Sample data creation
-│   └── converting_to_sql.ipynb    # Database conversion utilities
-├── synthetic_data/                # Synthetic data generation (standalone)
-├── RAG_chat_pipeline/             # Core RAG system
-│   ├── __init__.py
-│   ├── config/                    # Configuration management
-│   │   ├── __init__.py
-│   │   └── config.py              # System configuration and model settings
-│   ├── core/                      # Core RAG functionality
-│   │   ├── __init__.py
-│   │   ├── main.py                # System entry point
-│   │   ├── clinical_rag.py        # Main RAG chatbot implementation
-│   │   └── embeddings_manager.py  # Embedding model management
-│   ├── helper/                    # Utility modules
-│   │   ├── __init__.py
-│   │   ├── data_loader.py         # Data loading utilities
-│   │   ├── entity_extraction.py   # Parameter extraction from queries
-│   │   └── invoke.py              # System invocation helpers
-│   ├── utils/                     # Core utilities
-│   │   ├── __init__.py
-│   │   └── data_provider.py       # Data source abstraction (real/synthetic)
-│   ├── benchmarks/                # Evaluation framework
-│   │   ├── __init__.py
-│   │   ├── rag_evaluator.py       # Single-turn evaluation
-│   │   ├── chat_history_evaluator.py # Conversational evaluation
-│   │   ├── model_evaluation_runner.py # Automated model comparison
-│   │   ├── evaluation_results_manager.py # Results analysis and storage
-│   │   ├── gold_questions.py      # Test question generation
-│   │   └── results/               # Evaluation results storage
-│   └── results/                   # System-wide results and outputs
-├── frontend/                      # React frontend
-│   ├── package.json               # Node.js dependencies
-│   ├── package-lock.json          # Locked dependency versions
-│   ├── .env                       # Frontend environment variables
-│   ├── .gitignore                 # Frontend-specific git ignore
-│   ├── README.md                  # Frontend documentation
-│   ├── public/                    # Static assets
-│   └── src/                       # Frontend source code
-└── api/                           # Flask API server
-    ├── app.py                     # API endpoints and server
-    └── README.md                  # API documentation
+├── RAG_chat_pipeline/          # Engine
+│   ├── core/                   #   clinical_rag, retriever, content_processor,
+│   │                           #   conversation_manager, embeddings_manager, main
+│   ├── inference/              #   ResponsesAPIChatModel + get_llm() factory (Foundry)
+│   ├── audit/                  #   audit_log writer + claim_checker
+│   ├── observability.py        #   Azure Monitor OTel distro setup
+│   ├── helper/                 #   entity_extraction, invoke
+│   ├── utils/                  #   data_provider (real/synthetic, local/Blob), logger
+│   ├── config/                 #   config + Pydantic settings
+│   └── api/schemas/            #   request/response Pydantic models
+├── platform/                   # Delivery surfaces
+│   ├── api/app.py              #   Flask + gunicorn (Bearer auth, rate limit, /health)
+│   ├── frontend/               #   React UI (sends Bearer header on every /api/* call)
+│   └── cli_chat.py             #   CLI
+├── benchmarks/                 # 54-combo evaluation framework (BioBERT semantic scoring)
+├── data_engineering/           # One-shot ops
+│   ├── seed_upload.py          #   pickles + FAISS + models → Blob
+│   ├── parquet_convert.py      #   silver/gold pickles → Parquet (~10× compression)
+│   └── SEED_MANIFEST.md        #   lineage record
+├── infra/                      # IaC
+│   ├── main.bicep              #   single-file: ACR + MI + KV + LA + AI + ACA env + ACA app
+│   ├── deploy.sh               #   4-stage orchestrator
+│   └── README.md               #   prereqs, cost, gotchas
+├── notebooks/                  # MIMIC-IV → silver/gold pipeline (Jupyter)
+├── synthetic_data/             # Synthetic data generator (fallback when real data absent)
+├── mimic_sample_1000/          # Local bronze + silver + gold (also in Blob)
+├── vector_stores/              # 9 local FAISS indexes (winner also in Blob prod-index/)
+├── models/                     # 9 HF model snapshots (winner baked into image)
+├── audit/                      # Runtime per-request JSON logs (gitignored)
+├── report/                     # Dissertation artifacts
+├── Dockerfile                  # Single-stage; bakes winner sentence-transformer
+└── requirements.txt
 ```
 
-### Excluded from Git (Large/Generated Files)
+## Inference flow
 
-The following directories contain large files, sensitive data, or generated artifacts that are excluded from version control:
+1. **Request enters** `POST /api/chat` with `Authorization: Bearer <API_KEY>`.
+2. **Auth & rate limit** — `@require_api_key` reads `API_KEY` from env (injected from Key Vault via Managed Identity), fail-closed if absent. `flask-limiter` enforces 10/min per IP, exempts `/health`.
+3. **Retrieval** — `Retriever.filter_candidate_documents` runs FAISS similarity over the winner index (loaded once at startup from `/tmp/faiss_winner/`, originally downloaded from Blob `prod-index/faiss_winner/` on cold start).
+4. **Generation** — `ResponsesAPIChatModel._stream()` calls Foundry with `model=gpt-5-nano`, `reasoning={"effort": medium, "summary": "auto"}`, `max_output_tokens=16384`, `stream=True`. SSE deltas yield as `ChatGenerationChunk` content; reasoning summaries are buffered separately.
+5. **Audit** — every request writes `/app/audit/<id>.json` with the question, retrieved docs, reasoning summaries, final answer, and any unsupported claims flagged by `claim_checker` (dosages, ICD codes, IDs that don't appear in retrieved evidence).
+6. **Stream out** — final SSE event carries `audit_id`, `unsupported_claims`, and `reasoning_summaries`.
 
-- `mimic_sample_1000/` - MIMIC-IV sample data (or auto-generated synthetic data)
-- `models/` - Downloaded embedding models (~1-2GB each)
-- `vector_stores/` - FAISS vector databases (~500MB each)
-- `physionet.org/` - Original MIMIC-IV data source
-- `project_files/` - Project documentation (may contain sensitive info)
-- `test_with_sponsor/` - Sponsor-specific test data
-- `venv/` - Python virtual environment
-- `node_modules/` - Node.js dependencies
-- `__pycache__/` - Python bytecode cache
-- `*.pkl` - Pickle files with processed data
-- `*.csv` - Raw data files
-- `*.log` - Log files
+## Data layer
 
-## Configuration
+DataProvider abstracts source selection. Two switches in env:
 
-### Model Selection
+| Switch | Effect |
+| --- | --- |
+| `USE_BLOB_DATA=true` | Read silver + `gold/chunked_docs.parquet` from Blob via fsspec/adlfs + DefaultAzureCredential. 105,371 LangChain Documents are reconstructed in memory. |
+| `USE_BLOB_INDEX=true` | On cold start, download `prod-index/faiss_winner/` (367 MB) into `/tmp/faiss_winner/` and load. |
 
-Edit `RAG_chat_pipeline/config/config.py`:
+With both off, the system falls back to local pickles + on-disk FAISS, or auto-generates synthetic data if no real MIMIC-IV files are present.
 
-```python
-# Default embedding model
-model_in_use = "mini-lm"  # Options: mini-lm, ms-marco, multi-qa, biomedbert, mpnet-v2, e5-base, BioLORD, BioBERT, MedQuAD
+## Models
 
-# Default LLM model
-LLM_MODEL = llms["deepseek"]  # Options: deepseek, qwen, llama, gemma, phi3, tinyllama
+### Winner (production)
+
+| Component | Model | Why |
+| --- | --- | --- |
+| Embedding | `BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext` | Highest F1 across the 54-combo grid on the BioBERT semantic scorer |
+| LLM | `gpt-5-nano` via Azure AI Foundry Responses API | Reasoning summaries + true streaming + no GPU/Ollama dependency |
+
+The winner sentence-transformer is baked into the Docker image to skip a ~400 MB Hugging Face Hub download on cold start.
+
+### Evaluation grid (still in `benchmarks/`)
+
+9 embedding models × 6 LLMs from the dissertation are preserved under `models/` and `vector_stores/`. The benchmark framework (`benchmarks/rag_evaluator.py`, `benchmarks/model_evaluation_runner.py`) still runs against the legacy Ollama path and is used for v3 expansion work — see `memory/project_benchmark_expansion_direction.md`.
+
+## Getting started
+
+### Local development
+
+```bash
+git clone https://github.com/DevNick21/msc_project.git
+cd msc_project
+git checkout v2
+
+python -m venv venv
+venv\Scripts\activate           # Windows
+source venv/bin/activate        # macOS/Linux
+
+pip install -r requirements.txt
 ```
 
-### Evaluation Parameters
+`.env` (gitignored):
 
-```python
-# BioBERT semantic evaluation configuration
-SEMANTIC_EVALUATION_CONFIG = {
-    "biobert_model_path": "models/BioBERT-mnli-snli-scinli-scitail-mednli-stsb",
-    "similarity_threshold": 0.60,  # Clinical domain threshold
-    "batch_size": 32,              # Embedding batch size
-    "max_sequence_length": 512     # Max tokens for BioBERT
-}
+```ini
+# Foundry inference
+TARGET_URL=https://24800041-9760-resource.services.ai.azure.com/openai/v1
+MODEL_API_KEY=<your Foundry key>
+MODEL_DEPLOYMENT_NAME=gpt-5-nano
+REASONING_EFFORT=medium
+MAX_OUTPUT_TOKENS=16384
 
-# Core evaluation parameters
-EVALUATION_DEFAULT_PARAMS = {
-    "default_k": 5,  # Documents retrieved for evaluation
-    "search_strategy": "fast",
-    "short_evaluation_limit": 5,
-    "quick_test_limit": 3
-}
+# Audit log dir
+AUDIT_LOG_DIR=./audit
+
+# Storage / data (leave false for purely local dev)
+AZURE_STORAGE_ACCOUNT=faissprod
+AZURE_BLOB_CONTAINER=v2-seed
+USE_BLOB_DATA=false
+USE_BLOB_INDEX=false
+
+# API hardening
+API_KEY=<your local Bearer token>
+ALLOWED_ORIGINS=http://localhost:3000
+FLASK_DEBUG=
 ```
 
-## 🧪 Evaluation Results
+Start the API:
 
-### Example Performance Summary
+```bash
+python platform/api/app.py
+# or, matching prod:
+gunicorn --workers 1 --threads 4 --timeout 180 --chdir platform/api app:app
+```
 
-```text
- Model Comparison Report
-Generated: 2025-01-16 10:30:15
+Start the React frontend (separate terminal):
 
-## Overview
-- Total Experiments: 48
-- Embedding Models Tested: 8
-- LLM Models Tested: 6
+```bash
+cd platform/frontend
+npm install
+npm start
+# visits http://localhost:3000, sends Bearer API_KEY on every /api/* call
+```
 
-## Best Performing Combinations
-### Highest F1-Score
-- Models: ms-marco + deepseek
-- F1-Score: 0.847
-- Precision: 0.832
-- Recall: 0.863
-## 🔬 Research Applications
+Or use the convenience scripts: `start_app.bat` (Windows) / `start_app.sh` (macOS/Linux).
 
-This system is designed for:
+### Querying the API
 
-- **Clinical Decision Support**: Natural language queries over patient records
-- **Medical Education**: Interactive exploration of clinical cases
-- **RAG System Benchmarking**: Standardized evaluation of clinical NLP models
-- **Healthcare AI Research**: Foundation for medical language model development
+```bash
+export URL=http://localhost:5000
+export API_KEY=<your key>
 
-## 🚦 System Status
+curl $URL/health    # no auth, 200 when ready
 
--  **Data Processing**: Complete MIMIC-IV integration
--  **Synthetic Data**: Automated generation of fictional medical data
--  **RAG Pipeline**: Multi-model support with conversation history
--  **Evaluation Framework**: Comprehensive scoring and comparison
--  **Model Comparison**: Automated evaluation across 12 combinations
--  **Results Analysis**: Performance visualization and reporting
--  **Web Interface**: React frontend with Flask API
+curl -X POST $URL/api/chat \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What diagnoses for admission 22148233?"}'
+```
 
-## 📚 Dependencies
+The streaming endpoint returns Server-Sent Events with `event: content` deltas, followed by a final `event: done` carrying `audit_id`, `unsupported_claims`, and `reasoning_summaries`.
 
-### Core Libraries
+### Docker
 
-- **LangChain**: RAG pipeline framework
-- **FAISS**: Vector similarity search
-- **SentenceTransformers**: Embedding model support
-- **Ollama**: Local LLM hosting
-- **Pandas**: Data manipulation
-- **Matplotlib/Seaborn**: Visualization
-- **Flask**: API server (v3.0.2+)
-- **React**: Frontend framework (v18.2.0+)
-- **Material-UI**: UI component library for React
+```bash
+docker build -t clinical-rag:dev .
+docker run --rm -p 5000:5000 --env-file .env clinical-rag:dev
+```
 
-### Model Requirements
+The image bakes only the winner sentence-transformer. Blob reads use `DefaultAzureCredential`, so on a developer laptop you need `az login` on the host (with `~/.azure` mounted) or a service-principal env trio (`AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`). In ACA, the Managed Identity covers this automatically.
 
-- **Embedding Models**: ~1-2GB each (8 models)
-- **LLM Models**: ~2-4GB each (6 models via Ollama)
-- **Vector Stores**: ~500MB each (9 stores)
+## Deploy to Azure
 
-### Utility Modules
+Prereqs: `az` CLI, an Azure subscription with permission to create resource groups.
 
-- **DataProvider**: Abstraction for data source selection (real or synthetic)
-- **SyntheticDataGenerator**: Creation of fictional medical data
-- **EntityExtractor**: Automatic parameter detection from natural language
+```bash
+az login
+bash infra/deploy.sh
+```
 
-## 🤝 Contributing
+This provisions, in one resource group:
 
-This is an academic research project. For questions or collaboration:
+- ACR (Basic) with `clinical-rag:<git-sha>` image pushed
+- User-Assigned Managed Identity with `AcrPull`, `Key Vault Secrets User`, and `Storage Blob Data Reader` role assignments
+- Key Vault (RBAC mode, 90d soft-delete, purge protection) holding `API-KEY` and `MODEL-API-KEY`
+- Log Analytics workspace + workspace-based Application Insights
+- ACA Environment + Container App (1–4 replicas, 2 vCPU / 4 GiB), Foundry env wired in, KV secrets injected via secret refs
 
-1. Review the evaluation framework in `rag_evaluator.py`
-2. Check model configurations in `config.py`
-3. Run the example evaluations to understand the system
-4. Refer to the data processing notebook for MIMIC-IV integration
+Pause spend (keep deploy, zero compute):
 
-## 📖 Citation
+```bash
+az containerapp update --name msc-rag-v2-api --resource-group msc_project \
+  --min-replicas 0 --max-replicas 1
+```
 
-If you use this system in your research, please cite:
+Full IaC details, cost (~£40–50/mo floor), and ops commands live in [infra/README.md](infra/README.md) and [STATUS.md](STATUS.md).
+
+## Data ingestion (one-shot, run once per dataset refresh)
+
+```bash
+# 1. Lift local bronze/silver/gold + FAISS + models into Blob v2-seed/
+python -m data_engineering.seed_upload
+
+# 2. Convert silver + gold pickles to Parquet inside Blob (~10× smaller)
+python -m data_engineering.parquet_convert
+```
+
+See [data_engineering/SEED_MANIFEST.md](data_engineering/SEED_MANIFEST.md) for the lineage record (sizes, hashes, layer breakdown).
+
+## Synthetic data (no MIMIC-IV credentials needed)
+
+The DataProvider falls back to a synthetic generator when MIMIC-IV files are absent. It produces ~100 fictional patients with realistic admission structure, diagnoses, labs, prescriptions — enough to demo the full RAG pipeline without restricted-access data.
+
+```bash
+python -m RAG_chat_pipeline.utils.synthetic_data.synthetic_data_generator
+```
+
+A walkthrough lives in `synthetic_data_demo.ipynb`.
+
+## Evaluation framework
+
+The dissertation's evaluation suite is preserved under `benchmarks/`. It uses BioBERT-based semantic similarity (threshold 0.60) over six clinical question categories (header, diagnoses, procedures, labs, microbiology, prescriptions) to score precision / recall / F1.
+
+```bash
+# Single combo, quick test
+python -m benchmarks.model_evaluation_runner single mini-lm deepseek --type quick
+
+# Full grid (9 emb × 6 LLM, slow)
+python -m benchmarks.model_evaluation_runner all --type full
+
+# Report from existing runs
+python -m benchmarks.model_evaluation_runner report
+```
+
+The legacy grid runs against Ollama-hosted LLMs; future expansion plans extend the grid via Foundry — see `memory/project_benchmark_expansion_direction.md`.
+
+## Verified in production
+
+| Layer | Evidence |
+| --- | --- |
+| Public ingress | `curl /health` → 200 |
+| Bearer auth, fail-closed | missing `API_KEY` env → 503; wrong key → 401; correct → through |
+| Rate limit | `/health` exempt; 10/min cap on `/api/chat`, 429 from req 11 |
+| Blob-backed data | DataProvider reads `gold/chunked_docs.parquet` via MI; 105,371 Documents reconstructed |
+| Blob-backed FAISS | Cold start downloads 367 MB to `/tmp/faiss_winner/` in ~25s |
+| Responses API + reasoning | Real `gpt-5-nano` answers; 10–20s latency at medium effort |
+| True streaming | 118+ SSE `content` events per response, tokens visible as they arrive |
+| Audit log | JSON per request with `audit_id`, retrieved docs, reasoning, answer, flags |
+| Claim checker | Flags sentences referencing data absent from retrieved evidence |
+| App Insights | Auto-instrumented Flask + httpx traces in `traces` / `requests` tables |
+
+## Known follow-ups (non-blocking)
+
+| Item | Notes |
+| --- | --- |
+| Multi-replica rate limit not coherent | `flask-limiter` in-memory needs Redis if scaling beyond 1 replica |
+| Custom OTel spans around retrieval / audit | Auto-instrumentation gives HTTP traces; richer spans need code |
+| Layer C audit (paraphrased-claim drift) | Current checker catches dosage/code/ID mismatches but not semantic drift |
+| 7.6 GB image | Switching to CPU-only torch wheel saves ~3.5 GB |
+| Bake vs Blob-fetch winner ST | Baking is simpler; Blob fetch would shrink the image |
+
+Full list in [STATUS.md § Known follow-ups](STATUS.md).
+
+## v3 (next, separate effort)
+
+Bicep was deliberately kept single-file so it compares cleanly with CloudFormation/CDK in a v3 AWS deploy. The application code is cloud-agnostic — only IaC + auth flow + Blob/S3 swap matters.
+
+| Azure (v2) | AWS (v3) |
+| --- | --- |
+| Container Apps | ECS Fargate or App Runner |
+| Container Registry | ECR |
+| Managed Identity | IAM Task Role |
+| Key Vault | Secrets Manager |
+| Blob Storage | S3 |
+| App Insights + Log Analytics | CloudWatch + X-Ray |
+| Foundry (gpt-5-nano via Responses API) | Bedrock OR same OpenAI endpoint via direct HTTP |
+| Bicep | CloudFormation or CDK |
+
+## Citation
+
 ```bibtex
 @software{clinical_rag_mimic,
-  title={Clinical RAG System for MIMIC-IV Data Analysis},
-  author={[Ekenedirichukwu Iheanacho]},
-  year={2025},
-  url={[https://github.com/DevNick21/Clinical_RAG_chat_bot]}
+  title  = {Clinical RAG System for MIMIC-IV Data Analysis},
+  author = {Ekenedirichukwu Iheanacho},
+  year   = {2025},
+  url    = {https://github.com/DevNick21/Clinical_RAG_chat_bot}
 }
 ```
 
-## Medical Disclaimer
+## Medical disclaimer
 
-This system is for educational and research purposes only. It should not be used for medical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
+This system is for educational and research purposes only. It must not be used for medical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
 
-## 📄 License
+## License
 
-[MIT]
-
----
-
-**🏥 Ready to explore clinical data with AI? Start with the Quick Start guide above!**
+MIT — see [LICENSE](LICENSE).
