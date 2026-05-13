@@ -201,6 +201,52 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             "documents_found": 0
         }
 
+    @staticmethod
+    def _build_context_doc(retrieved_docs):
+        """Squash retrieved docs into a single structured Document for the LLM.
+
+        Called by both the streaming and non-streaming paths after the
+        preflight check passes. Returns [] for empty input so the LLM
+        gets an empty context list (still answerable with disclaimer-only).
+        """
+        if not retrieved_docs:
+            return []
+        extracted_content = ContentProcessor.extract_clinical_content(retrieved_docs)
+        return [Document(
+            page_content=extracted_content,
+            metadata={"combined": True, "doc_count": len(retrieved_docs)},
+        )]
+
+    def _audit_and_claim_check(self, question, audit_source_docs, answer, metadata):
+        """Run claim-check + audit log; tolerant of failure on either step.
+
+        Pulls reasoning summaries / response_id from the LLM (set by the
+        Responses API client). Used by both clinical_search and chat_stream
+        so the audit shape stays consistent across endpoints.
+
+        Returns (reasoning_summaries, response_id, unsupported_claims, audit_id).
+        """
+        reasoning_summaries = getattr(self.llm, "last_reasoning_summaries", []) or []
+        response_id = getattr(self.llm, "last_response_id", None)
+        try:
+            unsupported_claims = check_claims(answer, audit_source_docs)
+        except Exception as claim_err:
+            ClinicalLogger.warning(f"Claim check failed: {claim_err}")
+            unsupported_claims = []
+        audit_id = self._safe_audit_log(
+            question=question,
+            retrieved_docs=audit_source_docs,
+            reasoning_summaries=reasoning_summaries,
+            answer=answer,
+            unsupported_claims=unsupported_claims,
+            response_id=response_id,
+            metadata=metadata,
+        )
+        if unsupported_claims:
+            ClinicalLogger.warning(
+                f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
+        return reasoning_summaries, response_id, unsupported_claims, audit_id
+
     def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
         """Clinical search function"""
         start_time = time.time()
@@ -284,90 +330,45 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     "reasoning_summaries": [],
                 }
 
-            # INTELLIGENT CONTENT EXTRACTION: Extract structured clinical data
-            original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get(
-                'section')) for doc in retrieved_docs]
+            # Capture per-source citations + count BEFORE we squash docs
+            # into a single structured Document for the LLM.
+            original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get('section'))
+                                  for doc in retrieved_docs]
             original_doc_count = len(retrieved_docs)
-            # Keep a reference to the unstructured docs for audit/claim-check;
-            # `retrieved_docs` is about to be replaced with a single merged doc.
+            # Keep unstructured docs for audit/claim-check (the merged doc loses citations).
             audit_source_docs = list(retrieved_docs)
-            if len(retrieved_docs) > 0:
-                ClinicalLogger.debug(
-                    f"Extracting clinical content from {len(retrieved_docs)} documents...")
-                extracted_content = ContentProcessor.extract_clinical_content(
-                    retrieved_docs)
+            context_docs = self._build_context_doc(retrieved_docs)
 
-                # Create a single document with structured content
-                structured_doc = Document(
-                    page_content=extracted_content,
-                    metadata={"combined": True,
-                              "doc_count": len(retrieved_docs)}
-                )
-                retrieved_docs = [structured_doc]
-
-            # Generate answer with simplified approach
+            # Generate answer
             ClinicalLogger.info("Generating clinical response...")
             try:
-                # Create dynamic prompt with admission/patient context
-                clinical_prompt = self._create_clinical_prompt(
-                    hadm_id, subject_id)
-                dynamic_qa_chain = create_stuff_documents_chain(
-                    self.llm, clinical_prompt)
-
+                clinical_prompt = self._create_clinical_prompt(hadm_id, subject_id)
+                dynamic_qa_chain = create_stuff_documents_chain(self.llm, clinical_prompt)
                 answer = safe_llm_invoke(
                     dynamic_qa_chain,
-                    {
-                        "input": question,
-                        "context": retrieved_docs,
-                        "chat_history": chat_history
-                    },
+                    {"input": question, "context": context_docs, "chat_history": chat_history},
                     fallback_message="Unable to generate clinical response due to system error.",
-                    context="Clinical QA"
+                    context="Clinical QA",
                 )
             except Exception as llm_error:
-                ClinicalLogger.warning(
-                    f"LLM response generation failed: {llm_error}")
+                ClinicalLogger.warning(f"LLM response generation failed: {llm_error}")
                 answer = f"I found relevant medical records but encountered an error generating the response. Please try rephrasing your question. Error: {str(llm_error)}"
 
-            # Post-process response to fix common issues
-            answer = ContentProcessor.validate_and_fix_response(
-                answer, retrieved_docs, hadm_id)
+            answer = ContentProcessor.validate_and_fix_response(answer, context_docs, hadm_id)
 
-            # Audit layer: capture reasoning summaries and flag any unsupported
-            # specific claims (numbers, dosages, codes) against the retrieved docs.
-            # Both steps are best-effort — never block the answer on audit failure.
-            reasoning_summaries = getattr(
-                self.llm, "last_reasoning_summaries", []) or []
-            response_id = getattr(self.llm, "last_response_id", None)
-            try:
-                unsupported_claims = check_claims(answer, audit_source_docs)
-            except Exception as claim_err:
-                ClinicalLogger.warning(f"Claim check failed: {claim_err}")
-                unsupported_claims = []
             search_time = time.time() - start_time
-            audit_id = self._safe_audit_log(
+            reasoning_summaries, _response_id, unsupported_claims, audit_id = self._audit_and_claim_check(
                 question=question,
-                retrieved_docs=audit_source_docs,
-                reasoning_summaries=reasoning_summaries,
+                audit_source_docs=audit_source_docs,
                 answer=answer,
-                unsupported_claims=unsupported_claims,
-                response_id=response_id,
-                metadata={
-                    "hadm_id": hadm_id,
-                    "subject_id": subject_id,
-                    "section": section,
-                    "k": k,
-                    "search_time": search_time,
-                },
+                metadata={"hadm_id": hadm_id, "subject_id": subject_id,
+                          "section": section, "k": k, "search_time": search_time},
             )
-            if unsupported_claims:
-                ClinicalLogger.warning(
-                    f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
 
             # Prepare result with comprehensive metadata (preserve true counts/citations)
             result = {
                 "answer": answer,
-                "source_documents": retrieved_docs,
+                "source_documents": context_docs,
                 "citations": [{"hadm_id": hadm, "section": section} for hadm, section in original_citations],
                 "search_time": search_time,
                 "documents_found": original_doc_count,
@@ -429,21 +430,12 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         }
 
     def ask_question(self, question, chat_history=None, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
-        """Unified question method - handles both single and conversational queries with performance optimization"""
+        """Unified question method - handles both single and conversational queries."""
         is_conversational = chat_history is not None
+        ClinicalLogger.info(
+            f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
 
-        is_from_chat = chat_history is not None
-
-        # Log differently based on context
-        if is_from_chat:
-            source = "API/CLI" if is_conversational else "Direct Query"
-            ClinicalLogger.info(f"=== {source} CONVERSATIONAL MODE ===")
-        else:
-            ClinicalLogger.info(
-                f"=== {'CONVERSATIONAL' if is_conversational else 'SINGLE QUESTION'} MODE ===")
-
-        # Performance optimization: validate k early and set reasonable limits
-        k = min(k, RETRIEVAL_MAX_K)  # Configurable cap
+        k = min(k, RETRIEVAL_MAX_K)
 
         try:
             performance_start = time.time()
@@ -541,10 +533,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 search_question = question
                 chat_context = {}
 
-            # Get relevant documents for context. Streaming uses the same
-            # retrieval limits as non-streaming - the dissertation-era
-            # STREAMING_* constants got collapsed because gpt-5-nano's
-            # latency is reasoning-bound, not prompt-size-bound.
+            # Streaming reuses the non-streaming retrieval limits — gpt-5-nano's
+            # latency is reasoning-bound, not prompt-size-bound, so the
+            # dissertation-era STREAMING_* constants didn't help.
             k = min(k, RETRIEVAL_MAX_K)
             candidate_docs = self.retriever.filter_documents(
                 hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)
@@ -591,36 +582,19 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 }
                 return
 
-            # Keep the unstructured docs for audit/claim-check; the merged
-            # structured_doc loses per-source citations.
+            # Keep unstructured docs for audit/claim-check (the merged doc loses citations).
             audit_source_docs = list(retrieved_docs)
+            context_docs = self._build_context_doc(retrieved_docs)
 
-            # Extract clinical content
-            if retrieved_docs:
-                extracted_content = ContentProcessor.extract_clinical_content(
-                    retrieved_docs)
-                structured_doc = Document(
-                    page_content=extracted_content,
-                    metadata={"combined": True,
-                              "doc_count": len(retrieved_docs)}
-                )
-                context_docs = [structured_doc]
-            else:
-                context_docs = []
-
-            # Create dynamic prompt
             clinical_prompt = self._create_clinical_prompt(hadm_id, subject_id)
-            dynamic_qa_chain = create_stuff_documents_chain(
-                self.llm, clinical_prompt)
+            dynamic_qa_chain = create_stuff_documents_chain(self.llm, clinical_prompt)
 
-            # Stream the response
             ClinicalLogger.info("Starting streaming clinical response...")
-
             full_response = ""
             for chunk in dynamic_qa_chain.stream({
                 "input": search_question,
                 "context": context_docs,
-                "chat_history": chat_history_processed
+                "chat_history": chat_history_processed,
             }):
                 if isinstance(chunk, str):
                     full_response += chunk
@@ -630,40 +604,16 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     full_response += chunk_text
                     yield {"content": chunk_text, "done": False}
 
-            # Post-process and finalize
             final_answer = ContentProcessor.validate_and_fix_response(
                 full_response, retrieved_docs, hadm_id)
 
-            # Audit layer (same flow as clinical_search). Best-effort: any
-            # failure logs a warning but never blocks the streamed answer.
-            reasoning_summaries = getattr(
-                self.llm, "last_reasoning_summaries", []) or []
-            response_id = getattr(self.llm, "last_response_id", None)
-            try:
-                unsupported_claims = check_claims(
-                    final_answer, audit_source_docs)
-            except Exception as claim_err:
-                ClinicalLogger.warning(
-                    f"Claim check failed: {claim_err}")
-                unsupported_claims = []
-            audit_id = self._safe_audit_log(
+            reasoning_summaries, _response_id, unsupported_claims, audit_id = self._audit_and_claim_check(
                 question=search_question,
-                retrieved_docs=audit_source_docs,
-                reasoning_summaries=reasoning_summaries,
+                audit_source_docs=audit_source_docs,
                 answer=final_answer,
-                unsupported_claims=unsupported_claims,
-                response_id=response_id,
-                metadata={
-                    "hadm_id": hadm_id,
-                    "subject_id": subject_id,
-                    "section": section,
-                    "k": k,
-                    "streaming": True,
-                },
+                metadata={"hadm_id": hadm_id, "subject_id": subject_id,
+                          "section": section, "k": k, "streaming": True},
             )
-            if unsupported_claims:
-                ClinicalLogger.warning(
-                    f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
 
             # Update chat history
             if chat_history_processed:
