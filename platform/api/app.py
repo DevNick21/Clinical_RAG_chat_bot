@@ -1,37 +1,88 @@
 """
 API Server for Clinical RAG Chat
-Connects React frontend to the RAG_chat_pipeline backend
+Connects React frontend to the RAG_chat_pipeline backend.
+
+Hardening (Phase E):
+  - Bearer-token auth on /api/* via @require_api_key (key in API_KEY env).
+    /health stays open so orchestrators can probe without credentials.
+  - CORS restricted to ALLOWED_ORIGINS (comma-separated). Default empty
+    -> no cross-origin browser access; same-origin and server-to-server
+    are unaffected.
+  - flask-limiter per-IP rate limits, in-memory backend (sufficient with
+    gunicorn --workers 1; swap to redis when scaling out).
+  - debug mode env-gated. FLASK_DEBUG=true to enable, off by default.
 """
 
 import os
 import json
+from functools import wraps
+
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 from RAG_chat_pipeline.config.config import model_names, vector_stores
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='../frontend/build')
-CORS(app)  # Enable CORS for all routes
+
+# CORS - env-configured. Empty list = no cross-origin requests allowed.
+# Set ALLOWED_ORIGINS=http://localhost:3000,https://my-frontend.example.com
+_allowed_origins = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+CORS(app, origins=_allowed_origins or [], supports_credentials=False)
+
+# Rate limiter. memory:// is fine while we run gunicorn with --workers 1;
+# multi-worker / multi-replica deploys need a shared backend (redis).
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["60 per minute"],
+    storage_uri="memory://",
+)
+
+
+def require_api_key(fn):
+    """Bearer-token auth. Reads expected key from API_KEY env at request time.
+
+    Fail-closed: if API_KEY isn't configured, every protected request
+    returns 503 with a clear reason. Better than silently allowing
+    unauthenticated traffic in a misconfigured deploy.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        expected = os.getenv("API_KEY")
+        if not expected:
+            return jsonify({"error": "API_KEY not configured on server"}), 503
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or auth[len("Bearer "):].strip() != expected:
+            return jsonify({"error": "Unauthorized"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
+
 
 # Initialize RAG system
-print(" Initializing Clinical RAG System...")
+print("Initializing Clinical RAG System...")
 try:
     chatbot = initialize_clinical_rag()
-    print(" Clinical RAG System initialized successfully")
+    print("Clinical RAG System initialized successfully")
 except Exception as e:
-    print(f" Error initializing Clinical RAG System: {e}")
+    print(f"Error initializing Clinical RAG System: {e}")
     chatbot = None
 
 
 @app.route('/health', methods=['GET'])
+@limiter.exempt
 def health():
     """Liveness + readiness probe for ACA / load balancers.
 
     Returns 200 only when the RAG bot finished initialising (embedding
     model + FAISS + chunked docs all loaded). 503 otherwise so the
-    orchestrator holds traffic until we're warm.
+    orchestrator holds traffic until we're warm. Exempt from auth and
+    rate limits so probes can always run.
     """
     if chatbot is None:
         return jsonify({"status": "unready", "reason": "chatbot init failed or in progress"}), 503
@@ -39,6 +90,8 @@ def health():
 
 
 @app.route('/api/chat', methods=['POST'])
+@require_api_key
+@limiter.limit("10 per minute")
 def chat():
     """Handle streaming chat requests (default)"""
     if not chatbot:
@@ -94,18 +147,18 @@ def chat():
 
     return Response(
         generate(),
-        mimetype='text/plain',
+        mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'POST'
+            'X-Accel-Buffering': 'no',
         }
     )
 
 
 @app.route('/api/chat/non-streaming', methods=['POST'])
+@require_api_key
+@limiter.limit("10 per minute")
 def chat_non_streaming():
     """Handle non-streaming chat requests (fallback)"""
     if not chatbot:
@@ -148,6 +201,7 @@ def chat_non_streaming():
 
 
 @app.route('/api/models', methods=['GET'])
+@require_api_key
 def get_models():
     """Return available models"""
     return jsonify({
@@ -157,6 +211,7 @@ def get_models():
 
 
 @app.route('/api/sample-suggestions', methods=['GET'])
+@require_api_key
 def get_sample_suggestions():
     """Return sample query suggestions with real data"""
     try:
@@ -226,5 +281,10 @@ def serve(path):
 
 
 if __name__ == '__main__':
+    # Direct invocation is dev-only; production runs under gunicorn (see
+    # Dockerfile CMD). debug=True is off unless explicitly enabled via
+    # FLASK_DEBUG to avoid the auto-reloader / interactive debugger in
+    # any non-dev context.
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug = os.getenv("FLASK_DEBUG", "").lower() in ("true", "1", "yes")
+    app.run(host='0.0.0.0', port=port, debug=debug)
