@@ -139,3 +139,6 @@ htmlcov/
 
 # ----- Session-only status snapshots -----
 /STATUS.md
+
+# ----- Bicep build outputs (ARM JSON regenerated from infra/main.bicep) -----
+infra/.build/
