@@ -9,6 +9,7 @@ from typing import List
 from RAG_chat_pipeline.inference.azure_client import get_llm
 from RAG_chat_pipeline.config.settings import get_settings
 from RAG_chat_pipeline.core.retriever import Retriever
+from RAG_chat_pipeline.core.content_processor import ContentProcessor
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from RAG_chat_pipeline.audit.audit_log import log_request
@@ -34,40 +35,6 @@ STREAMING_FINAL_DOCS_LIMIT = _settings.streaming_final_docs_limit
 
 
 class ClinicalRAGBot:
-    # Simple, config-like rules for section-aware extraction
-    SECTION_RULES = {
-        "diagnoses": {
-            "title": "ADMISSION {hadm_id} DIAGNOSES:",
-            "keywords": ["icd", "diagnosis", "diagnoses", "condition", "disorder"],
-            "regexes": [r"\b[A-Z]?\d{2,5}(?:\.\d+)?\b"],
-            "max_lines": 12,
-        },
-        "prescriptions": {
-            "title": "ADMISSION {hadm_id} MEDICATIONS:",
-            "keywords": ["medication", "drug", "prescription", "dose", "mg", "tablet", "capsule"],
-            "regexes": [r"\d+\s*(mg|g|ml|units?)"],
-            "max_lines": 10,
-        },
-        "labs": {
-            "title": "ADMISSION {hadm_id} LAB RESULTS:",
-            "keywords": ["lab", "test", "result", "value", "normal", "abnormal", "high", "low"],
-            "regexes": [r"\d+\.?\d*\s*[a-zA-Z/%]*"],
-            "max_lines": 12,
-        },
-        "labevents": {  # alias
-            "title": "ADMISSION {hadm_id} LAB RESULTS:",
-            "keywords": ["lab", "test", "result", "value", "normal", "abnormal", "high", "low"],
-            "regexes": [r"\d+\.?\d*\s*[a-zA-Z/%]*"],
-            "max_lines": 12,
-        },
-        "default": {
-            "title": "ADMISSION {hadm_id} {section}:",
-            "keywords": [],
-            "regexes": [],
-            "max_lines": 8,
-        },
-    }
-
     def __init__(self, vectorstore: FAISS, clinical_emb, chunked_docs: List):
         self.vectorstore = vectorstore
         self.clinical_emb = clinical_emb
@@ -177,45 +144,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             ("human", "{input}")
         ])
 
-    # Standard "no records found" disclaimer string. Used both in the
-    # filter-miss path (we asked the index, got nothing) and the
-    # preflight rejection path (post-retrieval ID mismatch). Centralised
-    # so all four sites pluralise + format consistently.
-    _DISCLAIMER = "ℹ️ Data from MIMIC-IV database for research/education only."
-
-    def _no_records_text(self, entity_type, entity_id, section=None):
-        """Filter-miss message: index returned no docs for the requested IDs.
-
-        `entity_type` is "admission" / "patient/subject" (singular form);
-        `entity_id` is int OR list[int]; `section` is an optional string.
-        """
-        ids = Retriever.to_id_list(entity_id)
-        section_msg = f" in section '{section}'" if section else ""
-        if len(ids) > 1:
-            label = f"{entity_type}s"
-            id_str = ", ".join(str(i) for i in ids)
-        elif ids:
-            label = entity_type
-            id_str = str(ids[0])
-        else:
-            return f"No records found{section_msg}"
-        return f"No records found for {label} {id_str}{section_msg}"
-
-    def _preflight_rejection_text(self, missing_ids):
-        """Post-retrieval rejection: docs came back but for different IDs.
-
-        Different from the filter-miss path because here the user asked
-        about specific IDs and global / mixed retrieval gave back unrelated
-        admissions; we want to be explicit about why we're not answering.
-        """
-        ids_str = ", ".join(str(i) for i in sorted(missing_ids))
-        return (
-            f"No records were found for admission/subject ID(s): {ids_str}. "
-            "The retrieved documents are about different admissions, so I "
-            "can't answer this question reliably. Please verify the ID(s) "
-            f"or rephrase the question.\n\n{self._DISCLAIMER}"
-        )
-
     @staticmethod
     def _safe_audit_log(**kwargs):
         """Best-effort audit log write. Returns audit_id or None on failure.
@@ -256,7 +184,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             f"Pre-flight{' (stream)' if streaming else ''}: asked IDs {ids_str} "
             f"not in retrieved docs; short-circuiting before LLM call.")
 
-        answer = self._preflight_rejection_text(missing_ids)
+        answer = ContentProcessor.preflight_rejection_text(missing_ids)
         metadata = {
             "hadm_id": hadm_id,
             "subject_id": subject_id,
@@ -282,83 +210,14 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         return answer, audit_id
 
     def _no_documents_result(self, entity_type, entity_id, section, start_time):
-        """Filter-miss result dict; message text delegated to _no_records_text."""
+        """Filter-miss result dict; message text delegated to ContentProcessor."""
         return {
-            "answer": self._no_records_text(entity_type, entity_id, section),
+            "answer": ContentProcessor.no_records_text(entity_type, entity_id, section),
             "source_documents": [],
             "citations": [],
             "search_time": time.time() - start_time,
             "documents_found": 0
         }
-
-    def _validate_and_fix_response(self, answer, retrieved_docs, hadm_id=None):
-        """Post-process response to fix common citation and format issues"""
-        # Fix missing disclaimer
-        if "Data from MIMIC-IV database for research/education only" not in answer:
-            answer += "\n\n Data from MIMIC-IV database for research/education only."
-
-        # Fix incorrect citation claims when documents were found
-        if "Source Citations: None provided" in answer and len(retrieved_docs) > 0:
-            if hadm_id:
-                fix_text = f"Source Citations: From {len(retrieved_docs)} documents for admission {hadm_id}"
-            else:
-                fix_text = f"Source Citations: From {len(retrieved_docs)} retrieved documents"
-            answer = answer.replace(
-                "Source Citations: None provided", fix_text)
-        elif "**Source Citations**: None provided" in answer and len(retrieved_docs) > 0:
-            if hadm_id:
-                fix_text = f"**Source Citations**: From {len(retrieved_docs)} documents for admission {hadm_id}"
-            else:
-                fix_text = f"**Source Citations**: From {len(retrieved_docs)} retrieved documents"
-            answer = answer.replace(
-                "**Source Citations**: None provided", fix_text)
-
-        return answer
-
-    def _extract_structured_content(self, section: str, content: str, hadm_id):
-        """Unified, rules-based content extraction for any section"""
-        section_key = (section or "").lower() or "default"
-        rules = self.SECTION_RULES.get(
-            section_key, self.SECTION_RULES["default"])
-
-        lines = [ln.strip() for ln in content.split('\n') if ln.strip()]
-        scored = []
-        for ln in lines:
-            ln_lower = ln.lower()
-            # Highest priority: keyword hit
-            if any(kw in ln_lower for kw in rules["keywords"]):
-                scored.append((2, ln))
-            # Next: regex pattern hit
-            elif any(re.search(rx, ln) for rx in rules["regexes"]):
-                scored.append((1, ln))
-            # Fallback: take a few substantial lines
-            elif len(ln) > 10 and len(scored) < 3:
-                scored.append((0, ln))
-
-        # Sort by priority and keep top-N
-        scored.sort(key=lambda x: (-x[0]))
-        max_lines = rules.get("max_lines", 10)
-        selected = [ln for _, ln in scored[:max_lines]]
-
-        title = rules["title"].format(
-            hadm_id=hadm_id, section=(section or "UNKNOWN").upper())
-        if selected:
-            return f"{title}\n" + "\n".join(selected)
-        else:
-            return f"{title}\n" + content[:600]
-
-    def _extract_clinical_content(self, docs, query_type="general"):
-        """Extract and structure relevant clinical content from documents using unified rules"""
-        extracted_content = []
-        for doc in docs:
-            content = doc.page_content
-            metadata = doc.metadata
-            section = metadata.get('section', '')
-            hadm_id = metadata.get('hadm_id', 'Unknown')
-            structured_content = self._extract_structured_content(
-                section, content, hadm_id)
-            extracted_content.append(structured_content)
-        return "\n\n".join(extracted_content)
 
     def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
         """Clinical search function"""
@@ -453,7 +312,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             if len(retrieved_docs) > 0:
                 ClinicalLogger.debug(
                     f"Extracting clinical content from {len(retrieved_docs)} documents...")
-                extracted_content = self._extract_clinical_content(
+                extracted_content = ContentProcessor.extract_clinical_content(
                     retrieved_docs)
 
                 # Create a single document with structured content
@@ -489,7 +348,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 answer = f"I found relevant medical records but encountered an error generating the response. Please try rephrasing your question. Error: {str(llm_error)}"
 
             # Post-process response to fix common issues
-            answer = self._validate_and_fix_response(
+            answer = ContentProcessor.validate_and_fix_response(
                 answer, retrieved_docs, hadm_id)
 
             # Audit layer: capture reasoning summaries and flag any unsupported
@@ -966,7 +825,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 if not candidate_docs:
                     _entity_type = "admission" if hadm_id else "patient/subject"
                     _entity_id = hadm_id if hadm_id else subject_id
-                    yield {"error": self._no_records_text(_entity_type, _entity_id)}
+                    yield {"error": ContentProcessor.no_records_text(_entity_type, _entity_id)}
                     return
 
                 retrieved_docs = self.retriever.semantic_search(
@@ -1010,7 +869,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             # Extract clinical content
             if retrieved_docs:
-                extracted_content = self._extract_clinical_content(
+                extracted_content = ContentProcessor.extract_clinical_content(
                     retrieved_docs)
                 structured_doc = Document(
                     page_content=extracted_content,
@@ -1044,7 +903,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     yield {"content": chunk_text, "done": False}
 
             # Post-process and finalize
-            final_answer = self._validate_and_fix_response(
+            final_answer = ContentProcessor.validate_and_fix_response(
                 full_response, retrieved_docs, hadm_id)
 
             # Audit layer (same flow as clinical_search). Best-effort: any
