@@ -34,15 +34,25 @@ IMAGE_REF="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Pulls TARGET_URL, MODEL_API_KEY, MODEL_DEPLOYMENT_NAME, REASONING_EFFORT,
 # API_KEY, ALLOWED_ORIGINS from .env at repo root.
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-else
+#
+# Uses python-dotenv (already a project dep) instead of bash `source`
+# because bash chokes on inline comments, `KEY= value` spacing, and
+# any value containing operators or quotes. python-dotenv matches the
+# parser the rest of the codebase uses, so .env behaves identically
+# regardless of who's reading it.
+if [[ ! -f .env ]]; then
   echo "ERROR: .env not found at repo root. Required for TARGET_URL / API_KEY etc." >&2
   exit 2
 fi
+
+eval "$(python <<'PY'
+from dotenv import dotenv_values
+import shlex
+for k, v in dotenv_values(".env").items():
+    if v is not None:
+        print(f"export {k}={shlex.quote(v)}")
+PY
+)"
 
 # Bail loudly if anything mandatory is unset.
 : "${TARGET_URL:?TARGET_URL not set in .env}"
@@ -54,9 +64,13 @@ ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-}"
 
 echo "==> Deploying base=${BASE_NAME} image=${IMAGE_REF}"
 
-# ---- Stage 1: infrastructure ----------------------------------------
+# ---- Stage 1: infrastructure + secrets ------------------------------
+# Secrets live INSIDE the Bicep deploy (as @secure() params -> KV secret
+# resources) so they exist before ACA tries to resolve its secret refs.
+# Pushing secrets via CLI after Bicep used to fail because ACA's first
+# provision attempt looked up secrets that didn't yet exist.
 echo
-echo "==> [1/4] Bicep deploy (idempotent, ~3-5 min on first run)"
+echo "==> [1/3] Bicep deploy (idempotent, ~3-5 min on first run)"
 az deployment group create \
   --resource-group "$RG" \
   --template-file infra/main.bicep \
@@ -67,19 +81,13 @@ az deployment group create \
       modelDeploymentName="$MODEL_DEPLOYMENT_NAME" \
       reasoningEffort="$REASONING_EFFORT" \
       allowedOrigins="$ALLOWED_ORIGINS" \
+      apiKeyValue="$API_KEY" \
+      modelApiKeyValue="$MODEL_API_KEY" \
   --output none
 
-# ---- Stage 2: secrets ------------------------------------------------
+# ---- Stage 2: build & push image ------------------------------------
 echo
-echo "==> [2/4] Pushing secrets to Key Vault"
-# Secrets are passed via stdin instead of --value to avoid showing the
-# secret in process listings / shell history.
-echo -n "$API_KEY"       | az keyvault secret set --vault-name "$KV_NAME" --name "API-KEY"       --file /dev/stdin --output none
-echo -n "$MODEL_API_KEY" | az keyvault secret set --vault-name "$KV_NAME" --name "MODEL-API-KEY" --file /dev/stdin --output none
-
-# ---- Stage 3: build & push image ------------------------------------
-echo
-echo "==> [3/4] Building image"
+echo "==> [2/3] Building image"
 docker build -t "$IMAGE_REF" .
 
 echo "==> Logging into ACR"
@@ -88,9 +96,9 @@ az acr login --name "$ACR_NAME"
 echo "==> Pushing image to ACR"
 docker push "$IMAGE_REF"
 
-# ---- Stage 4: roll the Container App revision -----------------------
+# ---- Stage 3: roll the Container App revision -----------------------
 echo
-echo "==> [4/4] Updating Container App to ${IMAGE_REF}"
+echo "==> [3/3] Updating Container App to ${IMAGE_REF}"
 az containerapp update \
   --name "$APP_NAME" \
   --resource-group "$RG" \

@@ -76,6 +76,14 @@ param minReplicas int = 1
 @maxValue(30)
 param maxReplicas int = 4
 
+@description('Bearer token used for /api/* auth. Generate via secrets.token_urlsafe(32). Stored as a Key Vault secret; never logged.')
+@secure()
+param apiKeyValue string
+
+@description('Foundry deployment key. Stored as a Key Vault secret; never logged.')
+@secure()
+param modelApiKeyValue string
+
 // ---- Derived names ----------------------------------------------------
 // ACR names must be alphanumeric only, 5-50 chars, globally unique.
 var acrName = toLower(replace('${baseName}acr', '-', ''))
@@ -156,6 +164,29 @@ resource kvSecretsAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01
     principalId: mi.properties.principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleKvSecretsUser)
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Secret values themselves. Declared inside Bicep (with @secure() params)
+// so they exist BEFORE the Container App is provisioned. Putting secrets
+// in CLI calls after Bicep failed because ACA evaluated its
+// secret-references at create time and the names didn't exist yet.
+// @secure() values are scrubbed from deployment history by Azure.
+resource apiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'API-KEY'
+  properties: {
+    value: apiKeyValue
+    contentType: 'text/plain'
+  }
+}
+
+resource modelApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'MODEL-API-KEY'
+  properties: {
+    value: modelApiKeyValue
+    contentType: 'text/plain'
   }
 }
 
@@ -323,10 +354,13 @@ resource acaApp 'Microsoft.App/containerApps@2024-03-01' = {
     }
   }
   dependsOn: [
-    // Make sure the role assignments are in place before the app tries
-    // to pull from ACR or read from Key Vault during startup.
+    // Make sure the role assignments AND the actual secret values are
+    // in place before the app tries to resolve its KV secret refs at
+    // provisioning time.
     acrPullAssignment
     kvSecretsAssignment
+    apiKeySecret
+    modelApiKeySecret
   ]
 }
 
