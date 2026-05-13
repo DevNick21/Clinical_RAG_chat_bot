@@ -1,21 +1,18 @@
 """Main clinical RAG chatbot"""
 import re
 import time
-from threading import Lock
-from cachetools import LRUCache
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
-from sklearn.metrics.pairwise import cosine_similarity
 from RAG_chat_pipeline.inference.azure_client import get_llm
 from RAG_chat_pipeline.config.settings import get_settings
+from RAG_chat_pipeline.core.retriever import Retriever
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from RAG_chat_pipeline.audit.audit_log import log_request
 from RAG_chat_pipeline.audit.claim_checker import check_claims
-from collections import defaultdict
 
 from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
@@ -34,25 +31,6 @@ FINAL_DOCS_LIMIT = _settings.final_docs_limit
 STREAMING_CANDIDATE_DOC_LIMIT = _settings.streaming_candidate_doc_limit
 STREAMING_GLOBAL_SEARCH_MAX_K = _settings.streaming_global_search_max_k
 STREAMING_FINAL_DOCS_LIMIT = _settings.streaming_final_docs_limit
-
-
-class _EmbCache:
-    """Thread-safe LRU embedding cache."""
-
-    def __init__(self, embedder, max_items: int = 512):
-        self.embedder = embedder
-        self._cache = LRUCache(maxsize=max_items)
-        self._lock = Lock()
-
-    def get(self, text: str):
-        with self._lock:
-            vec = self._cache.get(text)
-            if vec is not None:
-                return vec
-        vec = self.embedder.embed_query(text)
-        with self._lock:
-            self._cache[text] = vec
-        return vec
 
 
 class ClinicalRAGBot:
@@ -101,12 +79,9 @@ class ClinicalRAGBot:
         # client construction.
         self.llm = get_llm()
 
-        # Embedding cache
-        self._emb_cache = _EmbCache(self.clinical_emb, max_items=512)
-
-        # Performance optimization: Create metadata indices for faster lookups
-        ClinicalLogger.info("Initializing performance optimizations...")
-        self._build_metadata_indices()
+        # Retrieval layer: indices, filter, semantic search, ID preflight, and
+        # the embedding cache all live behind this single object.
+        self.retriever = Retriever(vectorstore, clinical_emb, chunked_docs)
 
         # Setup prompts
         self.condense_q_prompt = ChatPromptTemplate.from_messages([
@@ -174,8 +149,8 @@ Context:
         comparison query). The list is rendered into the instruction
         text so the model knows the full scope of the filter.
         """
-        hadm_ids = self._to_id_list(hadm_id)
-        subject_ids = self._to_id_list(subject_id)
+        hadm_ids = Retriever.to_id_list(hadm_id)
+        subject_ids = Retriever.to_id_list(subject_id)
 
         if hadm_ids:
             ids_str = ", ".join(str(i) for i in hadm_ids)
@@ -202,86 +177,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             ("human", "{input}")
         ])
 
-    def _build_metadata_indices(self):
-        """Optimized indices building for faster metadata-based filtering"""
-        ClinicalLogger.info("Building optimized metadata indices...")
-        start_time = time.time()
-
-        self.hadm_id_index = defaultdict(list)
-        self.subject_id_index = defaultdict(list)
-        self.section_index = defaultdict(list)
-        self.hadm_section_index = defaultdict(list)
-
-        # Process documents in batches for better memory management
-        batch_size = 1000
-        total_docs = len(self.chunked_docs)
-        processed = 0
-
-        for batch_start in range(0, total_docs, batch_size):
-            batch_end = min(batch_start + batch_size, total_docs)
-            batch = self.chunked_docs[batch_start:batch_end]
-
-            for i, doc in enumerate(batch):
-                doc_idx = batch_start + i
-                hadm_id = doc.metadata.get('hadm_id')
-                subject_id = doc.metadata.get('subject_id')
-                section = doc.metadata.get('section')
-
-                # Robust type handling for hadm_id
-                if hadm_id is not None:
-                    try:
-                        hadm_id_int = int(hadm_id)
-                        self.hadm_id_index[hadm_id_int].append(doc_idx)
-
-                        # Handle subject_id
-                        if subject_id is not None:
-                            try:
-                                subject_id_int = int(subject_id)
-                                self.subject_id_index[subject_id_int].append(
-                                    doc_idx)
-                            except (ValueError, TypeError):
-                                if processed < 10:  # Limit warning messages
-                                    ClinicalLogger.warning(
-                                        f"Invalid subject_id in document {doc_idx}: {subject_id}")
-
-                        if section:
-                            section_str = str(section).lower()
-                            self.section_index[section_str].append(doc_idx)
-                            self.hadm_section_index[(
-                                hadm_id_int, section_str)].append(doc_idx)
-
-                    except (ValueError, TypeError):
-                        if processed < 10:  # Limit warning messages
-                            ClinicalLogger.warning(
-                                f"Invalid hadm_id in document {doc_idx}: {hadm_id}")
-                        continue
-
-                elif section:
-                    section_str = str(section).lower()
-                    self.section_index[section_str].append(doc_idx)
-
-                processed += 1
-
-            # Progress indicator for large datasets
-            if total_docs > 5000:
-                progress = (batch_end / total_docs) * 100
-                ClinicalLogger.debug(
-                    f"Index building progress: {progress:.1f}% ({batch_end}/{total_docs})")
-
-        build_time = time.time() - start_time
-        ClinicalLogger.info(f"Metadata indices built in {build_time:.2f}s")
-        ClinicalLogger.info(
-            f"Index stats: {len(self.hadm_id_index)} admissions, {len(self.subject_id_index)} subjects, {len(self.section_index)} sections")
-
-    @staticmethod
-    def _to_id_list(value):
-        """Normalise int | list | tuple | set | None to a list of ints (or [])."""
-        if value is None:
-            return []
-        if isinstance(value, (list, tuple, set)):
-            return [int(v) for v in value if v is not None]
-        return [int(value)]
-
     # Standard "no records found" disclaimer string. Used both in the
     # filter-miss path (we asked the index, got nothing) and the
     # preflight rejection path (post-retrieval ID mismatch). Centralised
@@ -294,7 +189,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         `entity_type` is "admission" / "patient/subject" (singular form);
         `entity_id` is int OR list[int]; `section` is an optional string.
         """
-        ids = self._to_id_list(entity_id)
+        ids = Retriever.to_id_list(entity_id)
         section_msg = f" in section '{section}'" if section else ""
         if len(ids) > 1:
             label = f"{entity_type}s"
@@ -352,7 +247,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         (yield-style); the endpoint-specific differences are confined
         to those two callers' wrapping code.
         """
-        missing_ids = self._preflight_id_mismatch(question_text, retrieved_docs)
+        missing_ids = self.retriever.check_id_mismatch(question_text, retrieved_docs)
         if not missing_ids:
             return None
 
@@ -386,70 +281,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         )
         return answer, audit_id
 
-    def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
-        """Centralized document filtering logic.
-
-        `hadm_id` and `subject_id` accept int | list[int] | None. When a
-        list is supplied (multi-ID query like "compare admissions A and B")
-        we union the candidate indices across all IDs, dedupe, and apply
-        the limit across the merged set.
-        """
-        hadm_ids = self._to_id_list(hadm_id)
-        subject_ids = self._to_id_list(subject_id)
-
-        if hadm_ids:
-            ClinicalLogger.info(
-                f"Filtering documents for hadm_id(s): {hadm_ids}")
-            candidate_indices = []
-            for hid in hadm_ids:
-                if section is not None:
-                    indices = self.hadm_section_index.get((hid, section), [])
-                    ClinicalLogger.info(
-                        f"  hadm_id {hid} + section '{section}': {len(indices)} documents")
-                else:
-                    indices = self.hadm_id_index.get(hid, [])
-                    ClinicalLogger.info(
-                        f"  hadm_id {hid}: {len(indices)} documents")
-                if not indices:
-                    available_keys = list(self.hadm_id_index.keys())[:10]
-                    ClinicalLogger.warning(
-                        f"No documents for hadm_id {hid}. Available keys (first 10): {available_keys}")
-                candidate_indices.extend(indices)
-
-            # Dedupe while preserving first-seen order
-            candidate_indices = list(dict.fromkeys(candidate_indices))
-
-            if len(candidate_indices) > limit:
-                ClinicalLogger.info(
-                    f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
-                candidate_indices = candidate_indices[:limit]
-
-            return [self.chunked_docs[i] for i in candidate_indices]
-
-        elif subject_ids:
-            ClinicalLogger.info(
-                f"Filtering documents for subject_id(s): {subject_ids}")
-            candidate_indices = []
-            for sid in subject_ids:
-                indices = self.subject_id_index.get(sid, [])
-                ClinicalLogger.info(f"  subject_id {sid}: {len(indices)} documents")
-                candidate_indices.extend(indices)
-
-            candidate_indices = list(dict.fromkeys(candidate_indices))
-
-            if len(candidate_indices) > limit:
-                ClinicalLogger.info(
-                    f"Limiting documents from {len(candidate_indices)} to {limit} for performance")
-                candidate_indices = candidate_indices[:limit]
-
-            candidate_docs = [self.chunked_docs[i] for i in candidate_indices]
-            if section is not None:
-                candidate_docs = [doc for doc in candidate_docs
-                                  if doc.metadata.get('section', '').lower() == section.lower()]
-            return candidate_docs
-
-        return None  # Indicates global search needed
-
     def _no_documents_result(self, entity_type, entity_id, section, start_time):
         """Filter-miss result dict; message text delegated to _no_records_text."""
         return {
@@ -459,115 +290,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             "search_time": time.time() - start_time,
             "documents_found": 0
         }
-
-    # Compiled once. Matches 6-10 digit runs as candidate hadm_id / subject_id
-    # mentions in user questions. MIMIC-IV uses 8-digit hadm_ids and 8-digit
-    # subject_ids; widening to 6-10 catches typos and the full ID family.
-    _USER_ID_RE = re.compile(r"\b\d{6,10}\b")
-
-    @classmethod
-    def _extract_user_ids(cls, question: str) -> set:
-        """Pull hadm_id / subject_id - shaped numbers from the user's text."""
-        return {int(m) for m in cls._USER_ID_RE.findall(question or "")}
-
-    def _preflight_id_mismatch(self, question, retrieved_docs):
-        """Pre-flight check: did the user name IDs that aren't in retrieved docs?
-
-        Returns the set of asked-about IDs that are NOT represented in
-        the retrieved docs' metadata. Returns empty set if either:
-          - the user didn't mention any IDs (nothing to validate)
-          - at least one mentioned ID IS in the retrieved set (mixed case;
-            let the prompt handle it)
-
-        A non-empty return value means "all asked-about IDs are missing"
-        and the caller should short-circuit with a clean rejection
-        instead of feeding mismatched docs to the LLM.
-        """
-        user_ids = self._extract_user_ids(question)
-        if not user_ids:
-            return set()
-
-        present = set()
-        for doc in retrieved_docs or []:
-            md = getattr(doc, "metadata", {}) or {}
-            for key in ("hadm_id", "subject_id"):
-                val = md.get(key)
-                if val is None:
-                    continue
-                try:
-                    present.add(int(val))
-                except (TypeError, ValueError):
-                    pass
-
-        missing = user_ids - present
-        # Only return "missing" if ALL asked IDs are missing. If user
-        # asked about A and B but retrieval found A, let the LLM
-        # handle it (the stricter prompt covers that case).
-        return missing if missing == user_ids else set()
-
-    def _semantic_search_on_docs(self, candidate_docs, question, k):
-        """Optimized semantic search using FAISS vectorstore efficiently"""
-        if len(candidate_docs) <= k:
-            ClinicalLogger.debug(
-                f"Returning all {len(candidate_docs)} documents (less than k={k})")
-            return candidate_docs
-
-        try:
-            # For moderate-sized candidate sets, use direct similarity calculation
-            if len(candidate_docs) <= 100:
-                # Get question embedding once (cached)
-                question_embedding = self._emb_cache.get(question)
-
-                # Calculate similarities efficiently
-                scored_docs = []
-                for doc in candidate_docs:
-                    # Use first 500 chars for consistency with vectorstore
-                    doc_text = doc.page_content[:500]
-                    doc_embedding = self._emb_cache.get(doc_text)
-
-                    similarity = cosine_similarity(
-                        [question_embedding], [doc_embedding])[0][0]
-                    scored_docs.append((similarity, doc))
-
-                # Sort and return top k
-                scored_docs.sort(key=lambda x: x[0], reverse=True)
-                top_docs = [doc for _, doc in scored_docs[:k]]
-
-                ClinicalLogger.debug(
-                    f"Selected top {len(top_docs)} documents by direct similarity")
-                return top_docs
-
-            else:
-                # For larger sets, use optimized batch similarity instead of temporary FAISS
-                ClinicalLogger.info(
-                    f"Using batch similarity for {len(candidate_docs)} documents (avoiding temporary FAISS)")
-
-                # Process in smaller batches to avoid memory issues
-                batch_size = 50
-                all_scored_docs = []
-
-                question_embedding = self._emb_cache.get(question)
-                for i in range(0, len(candidate_docs), batch_size):
-                    batch = candidate_docs[i:i + batch_size]
-                    for doc in batch:
-                        doc_text = doc.page_content[:500]
-                        doc_embedding = self._emb_cache.get(doc_text)
-                        similarity = cosine_similarity(
-                            [question_embedding], [doc_embedding])[0][0]
-                        all_scored_docs.append((similarity, doc))
-
-                # Sort and return top k
-                all_scored_docs.sort(key=lambda x: x[0], reverse=True)
-                top_docs = [doc for _, doc in all_scored_docs[:k]]
-
-                ClinicalLogger.debug(
-                    f"Selected top {len(top_docs)} documents via batch similarity")
-                return top_docs
-
-        except Exception as similarity_error:
-            ClinicalLogger.warning(
-                f"Similarity search failed: {similarity_error}, using first {k} documents")
-            return candidate_docs[:k]
 
     def _validate_and_fix_response(self, answer, retrieved_docs, hadm_id=None):
         """Post-process response to fix common citation and format issues"""
@@ -659,7 +381,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             k = min(k, RETRIEVAL_MAX_K)  # Configurable cap
 
             # Get filtered documents with performance limits
-            candidate_docs = self._filter_candidate_documents(
+            candidate_docs = self.retriever.filter_documents(
                 hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)  # Configurable candidate pool
 
             if candidate_docs is not None:
@@ -681,7 +403,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     ClinicalLogger.debug(
                         f"Using all {len(retrieved_docs)} available documents")
                 else:
-                    retrieved_docs = self._semantic_search_on_docs(
+                    retrieved_docs = self.retriever.semantic_search(
                         candidate_docs, question, k)
             else:
                 # Global semantic search with tighter limits
@@ -689,18 +411,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     "Performing optimized semantic search across all records...")
                 # Configurable global cap
                 k_global = min(k, GLOBAL_SEARCH_MAX_K)
-                retrieved_docs = self.vectorstore.similarity_search(
-                    question, k=k_global)
-                ClinicalLogger.debug(
-                    f"Retrieved {len(retrieved_docs)} documents")
-
-                # Post-filter by section if specified
-                if section is not None:
-                    original_count = len(retrieved_docs)
-                    retrieved_docs = [doc for doc in retrieved_docs
-                                      if doc.metadata.get('section', '').lower() == section.lower()]
-                    ClinicalLogger.debug(
-                        f"Section filtering: {original_count} → {len(retrieved_docs)} documents")
+                retrieved_docs = self.retriever.global_semantic_search(
+                    question, k_global, section=section)
 
             # Performance check: limit final docs to configured value
             if len(retrieved_docs) > FINAL_DOCS_LIMIT:
@@ -1052,11 +764,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
         try:
             # Try basic semantic search as fallback
-            retrieved_docs = self.vectorstore.similarity_search(question, k=k)
-
-            if section and retrieved_docs:
-                retrieved_docs = [
-                    doc for doc in retrieved_docs if doc.metadata.get('section') == section]
+            retrieved_docs = self.retriever.global_semantic_search(
+                question, k, section=section)
 
             if retrieved_docs:
                 # Create dynamic prompt for fallback too
@@ -1250,7 +959,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # STREAMING_* constants got collapsed because gpt-5-nano's
             # latency is reasoning-bound, not prompt-size-bound.
             k = min(k, RETRIEVAL_MAX_K)
-            candidate_docs = self._filter_candidate_documents(
+            candidate_docs = self.retriever.filter_documents(
                 hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)
 
             if candidate_docs is not None:
@@ -1260,16 +969,12 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     yield {"error": self._no_records_text(_entity_type, _entity_id)}
                     return
 
-                retrieved_docs = self._semantic_search_on_docs(
+                retrieved_docs = self.retriever.semantic_search(
                     candidate_docs, search_question, k) if len(candidate_docs) > k else candidate_docs
             else:
                 k_global = min(k, GLOBAL_SEARCH_MAX_K)
-                retrieved_docs = self.vectorstore.similarity_search(
-                    search_question, k=k_global)
-
-                if section is not None:
-                    retrieved_docs = [doc for doc in retrieved_docs
-                                      if doc.metadata.get('section', '').lower() == section.lower()]
+                retrieved_docs = self.retriever.global_semantic_search(
+                    search_question, k_global, section=section)
 
             if len(retrieved_docs) > FINAL_DOCS_LIMIT:
                 retrieved_docs = retrieved_docs[:FINAL_DOCS_LIMIT]
