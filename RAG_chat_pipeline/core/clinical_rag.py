@@ -321,6 +321,71 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             f"or rephrase the question.\n\n{self._DISCLAIMER}"
         )
 
+    @staticmethod
+    def _safe_audit_log(**kwargs):
+        """Best-effort audit log write. Returns audit_id or None on failure.
+
+        Audit must never block answering a clinical query — if the disk
+        fill, blob is unreachable, etc., we log a warning and return None
+        so the caller can continue.
+        """
+        try:
+            return log_request(**kwargs)
+        except Exception as exc:
+            ClinicalLogger.warning("Audit log write failed", error=str(exc))
+            return None
+
+    def _try_preflight_short_circuit(self, question_text, retrieved_docs,
+                                     hadm_id, subject_id, section, k,
+                                     elapsed_seconds, *, streaming=False):
+        """Run the preflight ID-mismatch check.
+
+        Returns (answer, audit_id) when all asked-about IDs are absent
+        from the retrieved docs (audit log already written). Caller
+        builds its endpoint-specific response shape and returns/yields.
+
+        Returns None when either no IDs were mentioned in the question
+        or at least one IS present in retrieved_docs — caller continues
+        with the normal LLM flow.
+
+        Used by both clinical_search() (return-style) and chat_stream()
+        (yield-style); the endpoint-specific differences are confined
+        to those two callers' wrapping code.
+        """
+        missing_ids = self._preflight_id_mismatch(question_text, retrieved_docs)
+        if not missing_ids:
+            return None
+
+        ids_str = ", ".join(str(i) for i in sorted(missing_ids))
+        ClinicalLogger.info(
+            f"Pre-flight{' (stream)' if streaming else ''}: asked IDs {ids_str} "
+            f"not in retrieved docs; short-circuiting before LLM call.")
+
+        answer = self._preflight_rejection_text(missing_ids)
+        metadata = {
+            "hadm_id": hadm_id,
+            "subject_id": subject_id,
+            "section": section,
+            "k": k,
+            "preflight": "id_mismatch",
+            "asked_ids": sorted(missing_ids),
+        }
+        if streaming:
+            metadata["streaming"] = True
+        else:
+            metadata["search_time"] = elapsed_seconds
+
+        audit_id = self._safe_audit_log(
+            question=question_text,
+            retrieved_docs=retrieved_docs,
+            reasoning_summaries=[],
+            answer=answer,
+            unsupported_claims=[],
+            response_id=None,
+            metadata=metadata,
+        )
+        return answer, audit_id
+
     def _filter_candidate_documents(self, hadm_id=None, subject_id=None, section=None, limit=50):
         """Centralized document filtering logic.
 
@@ -646,37 +711,13 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Pre-flight: if the user named admission/subject IDs and NONE of
             # the retrieved docs match those IDs, short-circuit with a clean
             # rejection instead of asking the LLM to interpret mismatched
-            # context (which historically produced "the asked IDs aren't
-            # here, but here's unrelated data...").
-            missing_ids = self._preflight_id_mismatch(
-                original_question or question, retrieved_docs)
-            if missing_ids:
-                ids_str = ", ".join(str(i) for i in sorted(missing_ids))
-                ClinicalLogger.info(
-                    f"Pre-flight: asked IDs {ids_str} not in retrieved docs; "
-                    f"short-circuiting before LLM call.")
-                preflight_answer = self._preflight_rejection_text(missing_ids)
-                try:
-                    audit_id = log_request(
-                        question=question,
-                        retrieved_docs=retrieved_docs,
-                        reasoning_summaries=[],
-                        answer=preflight_answer,
-                        unsupported_claims=[],
-                        response_id=None,
-                        metadata={
-                            "hadm_id": hadm_id,
-                            "subject_id": subject_id,
-                            "section": section,
-                            "k": k,
-                            "search_time": time.time() - start_time,
-                            "preflight": "id_mismatch",
-                            "asked_ids": sorted(missing_ids),
-                        },
-                    )
-                except Exception as audit_err:
-                    ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
-                    audit_id = None
+            # context.
+            preflight = self._try_preflight_short_circuit(
+                original_question or question, retrieved_docs,
+                hadm_id, subject_id, section, k,
+                time.time() - start_time)
+            if preflight is not None:
+                preflight_answer, audit_id = preflight
                 return {
                     "answer": preflight_answer,
                     "source_documents": [],
@@ -751,25 +792,21 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 ClinicalLogger.warning(f"Claim check failed: {claim_err}")
                 unsupported_claims = []
             search_time = time.time() - start_time
-            try:
-                audit_id = log_request(
-                    question=question,
-                    retrieved_docs=audit_source_docs,
-                    reasoning_summaries=reasoning_summaries,
-                    answer=answer,
-                    unsupported_claims=unsupported_claims,
-                    response_id=response_id,
-                    metadata={
-                        "hadm_id": hadm_id,
-                        "subject_id": subject_id,
-                        "section": section,
-                        "k": k,
-                        "search_time": search_time,
-                    },
-                )
-            except Exception as audit_err:
-                ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
-                audit_id = None
+            audit_id = self._safe_audit_log(
+                question=question,
+                retrieved_docs=audit_source_docs,
+                reasoning_summaries=reasoning_summaries,
+                answer=answer,
+                unsupported_claims=unsupported_claims,
+                response_id=response_id,
+                metadata={
+                    "hadm_id": hadm_id,
+                    "subject_id": subject_id,
+                    "section": section,
+                    "k": k,
+                    "search_time": search_time,
+                },
+            )
             if unsupported_claims:
                 ClinicalLogger.warning(
                     f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
@@ -811,8 +848,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         extracted_entities = None
         if ENABLE_ENTITY_EXTRACTION and hadm_id is None and subject_id is None and section is None:
             try:
-                extracted_entities = extract_entities(
-                    question, use_llm_fallback=True, llm=self.llm)
+                extracted_entities = extract_entities(question, llm=self.llm)
                 if extracted_entities["confidence"] in ["high", "medium"]:
                     extracted_hadm_ids = extracted_entities.get("hadm_ids") or []
                     extracted_subject_ids = extracted_entities.get("subject_ids") or []
@@ -1240,39 +1276,14 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             # Pre-flight: if the user named admission/subject IDs and NONE of
             # the retrieved docs match, yield a clean SSE rejection instead
-            # of feeding the LLM mismatched context. Mirrors the same logic
-            # in clinical_search() so both endpoints behave the same.
-            missing_ids = self._preflight_id_mismatch(message, retrieved_docs)
-            if missing_ids:
-                ids_str = ", ".join(str(i) for i in sorted(missing_ids))
-                ClinicalLogger.info(
-                    f"Pre-flight (stream): asked IDs {ids_str} not in retrieved docs; "
-                    f"short-circuiting before LLM call.")
-                preflight_answer = self._preflight_rejection_text(missing_ids)
-                # Stream the rejection as a single content chunk so SSE
-                # clients see consistent event shape.
+            # of feeding the LLM mismatched context.
+            preflight = self._try_preflight_short_circuit(
+                message, retrieved_docs,
+                hadm_id, subject_id, section, k,
+                time.time() - performance_start, streaming=True)
+            if preflight is not None:
+                preflight_answer, audit_id = preflight
                 yield {"content": preflight_answer, "done": False}
-                try:
-                    audit_id = log_request(
-                        question=search_question,
-                        retrieved_docs=retrieved_docs,
-                        reasoning_summaries=[],
-                        answer=preflight_answer,
-                        unsupported_claims=[],
-                        response_id=None,
-                        metadata={
-                            "hadm_id": hadm_id,
-                            "subject_id": subject_id,
-                            "section": section,
-                            "k": k,
-                            "streaming": True,
-                            "preflight": "id_mismatch",
-                            "asked_ids": sorted(missing_ids),
-                        },
-                    )
-                except Exception as audit_err:
-                    ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
-                    audit_id = None
                 yield {
                     "done": True,
                     "metadata": {
@@ -1343,26 +1354,21 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 ClinicalLogger.warning(
                     f"Claim check failed: {claim_err}")
                 unsupported_claims = []
-            try:
-                audit_id = log_request(
-                    question=search_question,
-                    retrieved_docs=audit_source_docs,
-                    reasoning_summaries=reasoning_summaries,
-                    answer=final_answer,
-                    unsupported_claims=unsupported_claims,
-                    response_id=response_id,
-                    metadata={
-                        "hadm_id": hadm_id,
-                        "subject_id": subject_id,
-                        "section": section,
-                        "k": k,
-                        "streaming": True,
-                    },
-                )
-            except Exception as audit_err:
-                ClinicalLogger.warning(
-                    f"Audit log write failed: {audit_err}")
-                audit_id = None
+            audit_id = self._safe_audit_log(
+                question=search_question,
+                retrieved_docs=audit_source_docs,
+                reasoning_summaries=reasoning_summaries,
+                answer=final_answer,
+                unsupported_claims=unsupported_claims,
+                response_id=response_id,
+                metadata={
+                    "hadm_id": hadm_id,
+                    "subject_id": subject_id,
+                    "section": section,
+                    "k": k,
+                    "streaming": True,
+                },
+            )
             if unsupported_claims:
                 ClinicalLogger.warning(
                     f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")

@@ -84,7 +84,7 @@ def _llm_extract_entities(query: str, llm: Any) -> Optional[Dict[str, Any]]:
         return None
 
 
-def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dict[str, Any]:
+def extract_entities(query: str, llm=None) -> Dict[str, Any]:
     """Extract entities from a user query.
 
     Two-tier:
@@ -92,11 +92,9 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
          "patient 10006508", any 8-digit number) and section keywords
          from SECTION_KEYWORDS. Sub-millisecond, free, deterministic.
       2. LLM fallback — only fires when regex finds NOTHING useful
-         AND use_llm_fallback=True AND a usable llm is provided.
-         Handles indirect phrasing like "the diabetic patient's most
-         recent admission" or "the cardiac case's medications".
-         Strict JSON-only prompt, validated against the allowed
-         section enum.
+         AND a usable `llm` is provided. Handles indirect phrasing like
+         "the diabetic patient's most recent admission". Strict JSON-only
+         prompt, validated against the allowed section enum.
     """
     logger.debug("Extracting entities from query")
 
@@ -201,7 +199,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
         and result["subject_id"] is None
         and result["section"] is None
     )
-    if nothing_useful and use_llm_fallback and llm is not None:
+    if nothing_useful and llm is not None:
         llm_result = _llm_extract_entities(query, llm)
         if llm_result and any(llm_result.get(k) for k in ("hadm_id", "subject_id", "section")):
             # Merge LLM-found values, never overwriting a regex hit
