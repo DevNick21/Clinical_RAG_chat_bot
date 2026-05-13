@@ -2,6 +2,8 @@
 import sys
 import re
 import time
+from threading import Lock
+from cachetools import LRUCache
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.vectorstores import FAISS
@@ -20,9 +22,6 @@ from RAG_chat_pipeline.config.config import (
     GLOBAL_SEARCH_MAX_K,
     CANDIDATE_DOC_LIMIT,
     FINAL_DOCS_LIMIT,
-    STREAMING_CANDIDATE_DOC_LIMIT,
-    STREAMING_GLOBAL_SEARCH_MAX_K,
-    STREAMING_FINAL_DOCS_LIMIT,
 )
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
@@ -30,79 +29,28 @@ from RAG_chat_pipeline.audit.audit_log import log_request
 from RAG_chat_pipeline.audit.claim_checker import check_claims
 from collections import defaultdict
 
-# Robust import for logger with fallback
-try:
-    from RAG_chat_pipeline.utils.logger import ClinicalLogger  # type: ignore
-except Exception:  # pragma: no cover
-    class ClinicalLogger:
-        """Centralized logging utility with verbosity control (fallback)"""
-        LEVELS = {"quiet": 0, "error": 1, "warning": 2, "info": 3, "debug": 4}
-        level = "info"
-
-        @classmethod
-        def set_level(cls, level: str):
-            if level in cls.LEVELS:
-                cls.level = level
-
-        @classmethod
-        def _enabled(cls, lvl: str) -> bool:
-            return cls.LEVELS.get(cls.level, 3) >= cls.LEVELS.get(lvl, 3)
-
-        @staticmethod
-        def info(msg):
-            if ClinicalLogger._enabled("info"):
-                print(f" {msg}")
-
-        @staticmethod
-        def warning(msg):
-            if ClinicalLogger._enabled("warning"):
-                print(f" {msg}")
-
-        @staticmethod
-        def error(msg):
-            if ClinicalLogger._enabled("error"):
-                print(f" {msg}")
-
-        @staticmethod
-        def success(msg):
-            if ClinicalLogger._enabled("info"):
-                print(f" {msg}")
-
-        @staticmethod
-        def debug(msg):
-            if ClinicalLogger._enabled("debug"):
-                print(f" {msg}")
+from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
 # Initialize logger level from config
 ClinicalLogger.set_level(LOG_LEVEL)
 
 
 class _EmbCache:
-    """Lightweight embedding cache"""
+    """Thread-safe LRU embedding cache."""
 
     def __init__(self, embedder, max_items: int = 512):
         self.embedder = embedder
-        self.max_items = max_items
-        self._cache = {}
-        self._order = []
+        self._cache = LRUCache(maxsize=max_items)
+        self._lock = Lock()
 
     def get(self, text: str):
-        key = text
-        if key in self._cache:
-            # move to end (LRU)
-            try:
-                self._order.remove(key)
-            except ValueError:
-                pass
-            self._order.append(key)
-            return self._cache[key]
-        # compute and store
+        with self._lock:
+            vec = self._cache.get(text)
+            if vec is not None:
+                return vec
         vec = self.embedder.embed_query(text)
-        self._cache[key] = vec
-        self._order.append(key)
-        if len(self._order) > self.max_items:
-            oldest = self._order.pop(0)
-            self._cache.pop(oldest, None)
+        with self._lock:
+            self._cache[text] = vec
         return vec
 
 
@@ -505,6 +453,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 batch_size = 50
                 all_scored_docs = []
 
+                question_embedding = self._emb_cache.get(question)
                 for i in range(0, len(candidate_docs), batch_size):
                     batch = candidate_docs[i:i + batch_size]
                     for doc in batch:
@@ -1085,10 +1034,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         """Unified question method - handles both single and conversational queries with performance optimization"""
         is_conversational = chat_history is not None
 
-        # Detect call context
-        caller_info = sys._getframe(1)
-        caller_function = caller_info.f_code.co_name
-        is_from_chat = caller_function == "chat"
+        is_from_chat = False
 
         # Log differently based on context
         if is_from_chat:
@@ -1160,13 +1106,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
     def chat(self, message, chat_history=None):
         """Main chat interface for API - handles chat history format conversion"""
-        # Identify the context of the call
-        caller_info = sys._getframe(1)
-        caller_filename = caller_info.f_code.co_filename
-
-        is_api_call = "app.py" in caller_filename
-        is_cli_call = "main.py" in caller_filename
-        is_evaluation = "rag_evaluator.py" in caller_filename or "evaluator" in caller_filename
+        is_api_call = False
+        is_cli_call = False
+        is_evaluation = False
 
         # Log context appropriately
         if is_api_call:
@@ -1196,13 +1138,9 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
     def chat_stream(self, message, chat_history=None):
         """Streaming chat interface for API - yields response chunks"""
-        # Identify the context of the call
-        caller_info = sys._getframe(1)
-        caller_filename = caller_info.f_code.co_filename
-
-        is_api_call = "app.py" in caller_filename
-        is_cli_call = "main.py" in caller_filename
-        is_evaluation = "rag_evaluator.py" in caller_filename or "evaluator" in caller_filename
+        is_api_call = False
+        is_cli_call = False
+        is_evaluation = False
 
         # Log context appropriately
         if is_api_call:
@@ -1245,10 +1183,13 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 search_question = question
                 chat_context = {}
 
-            # Get relevant documents for context
+            # Get relevant documents for context. Streaming uses the same
+            # retrieval limits as non-streaming - the dissertation-era
+            # STREAMING_* constants got collapsed because gpt-5-nano's
+            # latency is reasoning-bound, not prompt-size-bound.
             k = min(k, RETRIEVAL_MAX_K)
             candidate_docs = self._filter_candidate_documents(
-                hadm_id, subject_id, section, limit=STREAMING_CANDIDATE_DOC_LIMIT)
+                hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)
 
             if candidate_docs is not None:
                 if not candidate_docs:
@@ -1265,8 +1206,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 retrieved_docs = self._semantic_search_on_docs(
                     candidate_docs, search_question, k) if len(candidate_docs) > k else candidate_docs
             else:
-                # Streaming cap from config
-                k_global = min(k, STREAMING_GLOBAL_SEARCH_MAX_K)
+                k_global = min(k, GLOBAL_SEARCH_MAX_K)
                 retrieved_docs = self.vectorstore.similarity_search(
                     search_question, k=k_global)
 
@@ -1274,8 +1214,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     retrieved_docs = [doc for doc in retrieved_docs
                                       if doc.metadata.get('section', '').lower() == section.lower()]
 
-            if len(retrieved_docs) > STREAMING_FINAL_DOCS_LIMIT:  # Reduced for speed
-                retrieved_docs = retrieved_docs[:STREAMING_FINAL_DOCS_LIMIT]
+            if len(retrieved_docs) > FINAL_DOCS_LIMIT:
+                retrieved_docs = retrieved_docs[:FINAL_DOCS_LIMIT]
 
             # Pre-flight: if the user named admission/subject IDs and NONE of
             # the retrieved docs match, yield a clean SSE rejection instead

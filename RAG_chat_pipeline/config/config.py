@@ -63,14 +63,11 @@ GLOBAL_SEARCH_MAX_K = 20
 CANDIDATE_DOC_LIMIT = 20
 FINAL_DOCS_LIMIT = 5
 
-# Streaming-specific limits. Originally lowered for Ollama-on-laptop
-# (every retrieved doc = more prompt = more local-model latency). In
-# cloud with gpt-5-nano, reasoning dominates latency regardless of
-# context size, so the streaming path now matches the non-streaming
-# path on quality. Was 10/5/2 in the dissertation-era config.
-STREAMING_CANDIDATE_DOC_LIMIT = 20
-STREAMING_GLOBAL_SEARCH_MAX_K = 20
-STREAMING_FINAL_DOCS_LIMIT = 5
+# Note: the streaming path now uses the same retrieval limits as the
+# non-streaming path. The previous STREAMING_* constants existed
+# because Ollama-on-laptop was prompt-size-bound; gpt-5-nano via
+# Foundry isn't. Removed the parallel constants — both paths read
+# CANDIDATE_DOC_LIMIT / GLOBAL_SEARCH_MAX_K / FINAL_DOCS_LIMIT above.
 
 # Feature flags. Both were disabled in the dissertation-era config for
 # Ollama latency reasons; re-enabled now because:
