@@ -1,8 +1,7 @@
 """Main clinical RAG chatbot"""
-import re
 import time
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
@@ -10,7 +9,7 @@ from RAG_chat_pipeline.inference.azure_client import get_llm
 from RAG_chat_pipeline.config.settings import get_settings
 from RAG_chat_pipeline.core.retriever import Retriever
 from RAG_chat_pipeline.core.content_processor import ContentProcessor
-from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
+from RAG_chat_pipeline.core.conversation_manager import ConversationManager
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from RAG_chat_pipeline.audit.audit_log import log_request
 from RAG_chat_pipeline.audit.claim_checker import check_claims
@@ -29,9 +28,6 @@ RETRIEVAL_MAX_K = _settings.retrieval_max_k
 GLOBAL_SEARCH_MAX_K = _settings.global_search_max_k
 CANDIDATE_DOC_LIMIT = _settings.candidate_doc_limit
 FINAL_DOCS_LIMIT = _settings.final_docs_limit
-STREAMING_CANDIDATE_DOC_LIMIT = _settings.streaming_candidate_doc_limit
-STREAMING_GLOBAL_SEARCH_MAX_K = _settings.streaming_global_search_max_k
-STREAMING_FINAL_DOCS_LIMIT = _settings.streaming_final_docs_limit
 
 
 class ClinicalRAGBot:
@@ -50,29 +46,15 @@ class ClinicalRAGBot:
         # the embedding cache all live behind this single object.
         self.retriever = Retriever(vectorstore, clinical_emb, chunked_docs)
 
-        # Setup prompts
-        self.condense_q_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Rephrase the follow-up question as a standalone medical question using ONLY the context from chat history.
-
-RULES:
-1. Preserve admission IDs (hadm_id), patient IDs (subject_id), and section references
-2. Only add context explicitly mentioned in chat history
-3. Do NOT add new medical terms, conditions, or test names
-4. Keep the question concise and focused
-
-Examples:
-Chat: "What medications were prescribed for admission 25282710?"
-Follow-up: "What are the diagnoses?"
-Output: "What diagnoses are recorded for admission 25282710?"
-
-Chat: "Show labs for patient 12345"
-Follow-up: "Any abnormal values?"
-Output: "What abnormal lab values are there for patient 12345?"
-
-If no relevant context exists, return the original question unchanged."""),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}")
-        ])
+        # Conversation layer: input validation, entity extraction, chat
+        # history shape/truncation, and follow-up rephrasing.
+        self.conversation = ConversationManager(
+            llm=self.llm,
+            section_keywords=SECTION_KEYWORDS,
+            max_chat_history=MAX_CHAT_HISTORY,
+            enable_rephrasing=ENABLE_REPHRASING,
+            enable_entity_extraction=ENABLE_ENTITY_EXTRACTION,
+        )
 
         # Clinical QA prompt. The strictness around "asked-about IDs not
         # in retrieved docs" was added after the cloud deploy surfaced a
@@ -403,220 +385,6 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             ClinicalLogger.error(f"Critical error in clinical_search: {e}")
             return self._handle_search_fallback(question, hadm_id, section, k, f"Critical search error: {str(e)}")
 
-    def _extract_and_validate_params(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K):
-        """Centralized parameter extraction and validation"""
-        # Validate inputs
-        question = self._validate_question(question)
-        hadm_id, subject_id, section, k = self._validate_parameters(
-            hadm_id, subject_id, section, k)
-
-        # Extract entities if needed. When the user mentions multiple
-        # admission/subject IDs (e.g., "compare admissions A and B"),
-        # surface the FULL list as the hadm_id / subject_id parameter so
-        # the downstream filter retrieves docs for any of them. The filter
-        # accepts both int and list[int]; downstream prompt + output code
-        # paths normalise the list when they need a scalar.
-        extracted_entities = None
-        if ENABLE_ENTITY_EXTRACTION and hadm_id is None and subject_id is None and section is None:
-            try:
-                extracted_entities = extract_entities(question, llm=self.llm)
-                if extracted_entities["confidence"] in ["high", "medium"]:
-                    extracted_hadm_ids = extracted_entities.get("hadm_ids") or []
-                    extracted_subject_ids = extracted_entities.get("subject_ids") or []
-                    if len(extracted_hadm_ids) > 1:
-                        hadm_id = extracted_hadm_ids
-                    elif extracted_hadm_ids:
-                        hadm_id = extracted_hadm_ids[0]
-                    elif extracted_entities.get("hadm_id") is not None:
-                        hadm_id = extracted_entities["hadm_id"]
-                    if len(extracted_subject_ids) > 1:
-                        subject_id = extracted_subject_ids
-                    elif extracted_subject_ids:
-                        subject_id = extracted_subject_ids[0]
-                    elif extracted_entities.get("subject_id") is not None:
-                        subject_id = extracted_entities["subject_id"]
-                    section = extracted_entities.get("section") or section
-                    ClinicalLogger.info(
-                        f"Auto-extracted - hadm_id: {hadm_id}, subject_id: {subject_id}, section: {section}")
-            except Exception as e:
-                ClinicalLogger.warning(f"Entity extraction failed: {e}")
-
-        return question, hadm_id, subject_id, section, k, extracted_entities
-
-    def _process_chat_context(self, chat_history, question, hadm_id=None, subject_id=None, section=None):
-        """Centralized chat history processing with minimal debugging"""
-        if not chat_history:
-            ClinicalLogger.debug("No chat history to process")
-            return question, hadm_id, subject_id, section, {}
-
-        try:
-            # Extract context from chat history
-            chat_context = extract_context_from_chat_history(
-                chat_history, question)
-
-            # Use chat context if parameters not explicitly provided
-            old_hadm_id, old_subject_id, old_section = hadm_id, subject_id, section
-            hadm_id = hadm_id or chat_context.get("hadm_id")
-            subject_id = subject_id or chat_context.get("subject_id")
-            section = section or chat_context.get("section")
-
-            # Log parameter updates from chat context
-            if hadm_id != old_hadm_id or subject_id != old_subject_id or section != old_section:
-                ClinicalLogger.info(
-                    f"Updated parameters from chat history - hadm_id: {hadm_id}, section: {section}")
-
-            # Store original question for validation
-            original_question = question
-
-            # Check if rephrasing is needed
-            needs_rephrasing = ENABLE_REPHRASING and self._should_rephrase_question(
-                question, chat_history, hadm_id, section)
-
-            if needs_rephrasing:
-                ClinicalLogger.info(
-                    "Rephrasing question using chat history...")
-                question = self._rephrase_question_safely(
-                    question, chat_history, hadm_id, original_question)
-
-            return question, hadm_id, subject_id, section, chat_context
-        except Exception as e:
-            ClinicalLogger.error(f"Chat context processing failed: {e}")
-            return question, hadm_id, subject_id, section, {}
-
-    def _should_rephrase_question(self, question, chat_history, hadm_id, section):
-        """Determine if question needs rephrasing"""
-        has_admission_context = "admission" in question.lower() and (
-            hadm_id is not None and str(hadm_id) in question
-        )
-        has_section_context = section and any(
-            kw in question.lower() for kw in SECTION_KEYWORDS.get(section, [])
-        )
-        is_likely_followup = len(
-            question.split()) < 8 and not has_admission_context
-
-        return (
-            len(chat_history) > 0 and
-            is_likely_followup and
-            not (has_admission_context or has_section_context) and
-            len(question.split()) < 6
-        )
-
-    def _rephrase_question_safely(self, question, chat_history, hadm_id, original_question):
-        """Safely rephrase question with validation"""
-        try:
-            rephrased = safe_llm_invoke(
-                self.llm,
-                self.condense_q_prompt.format_messages(
-                    chat_history=chat_history, input=question),
-                fallback_message=question,
-                context="Question rephrasing"
-            )
-
-            if not isinstance(rephrased, str) or len(rephrased.strip()) <= 5:
-                return question
-
-            # Clean up the rephrased question
-            rephrased = re.sub(
-                r'^(The standalone medical question is:?\s*|Standalone question:?\s*|Rephrased question:?\s*|The question is:?\s*)',
-                '', rephrased, flags=re.IGNORECASE
-            ).strip('" \t\n\'')
-
-            # Validate rephrasing quality
-            if self._is_rephrasing_valid(rephrased, original_question, chat_history):
-                return rephrased
-            else:
-                return self._create_template_question(hadm_id, original_question)
-
-        except Exception as e:
-            ClinicalLogger.warning(f"Rephrasing failed: {e}")
-            return question
-
-    def _is_rephrasing_valid(self, rephrased, original, chat_history):
-        """Simplified rephrasing validation - only check extreme cases"""
-        # Only reject extremely long rephrasings (likely hallucinated)
-        length_ratio = len(rephrased) / max(1, len(original))
-        if length_ratio > 5.0:  # Increased threshold
-            return False
-
-        # Accept all other rephrasings - removed medical term filtering
-        # as it was blocking legitimate medical queries
-        return True
-
-    def _create_template_question(self, hadm_id, original_question):
-        """Create safe template-based question"""
-        if not hadm_id:
-            return original_question
-
-        # Create contextual rephrasing based on question type
-        question_lower = original_question.lower()
-        if any(word in question_lower for word in ['diagnose', 'diagnosis', 'condition']):
-            return f"What diagnoses are recorded for admission {hadm_id}?"
-        elif any(word in question_lower for word in ['medication', 'drug', 'prescription', 'med']):
-            return f"What medications were prescribed for admission {hadm_id}?"
-        elif any(word in question_lower for word in ['lab', 'test', 'result']):
-            return f"What lab results are available for admission {hadm_id}?"
-        elif any(word in question_lower for word in ['procedure', 'surgery', 'operation']):
-            return f"What procedures were performed for admission {hadm_id}?"
-        elif any(word in question_lower for word in ['microbiology', 'culture', 'organism']):
-            return f"What microbiology results are available for admission {hadm_id}?"
-        else:
-            return f"For admission {hadm_id}, {original_question}"
-
-    def _validate_question(self, question):
-        """Validate and sanitize user input"""
-        if not isinstance(question, str):
-            raise ValueError("Question must be a string")
-
-        question = question.strip()
-
-        if not question:
-            raise ValueError("Question cannot be empty")
-
-        if len(question) < 3:
-            raise ValueError("Question is too short (minimum 3 characters)")
-
-        if len(question) > 2000:
-            raise ValueError("Question is too long (maximum 2000 characters)")
-
-        # Remove control characters but preserve medical symbols
-        sanitized = ''.join(char for char in question if ord(
-            char) >= 32 or char in '\n\t')
-
-        return sanitized
-
-    def _validate_parameters(self, hadm_id=None, subject_id=None, section=None, k=None):
-        """Validate search parameters"""
-        if hadm_id is not None:
-            if not isinstance(hadm_id, (int, str)):
-                raise ValueError("hadm_id must be an integer or string")
-            try:
-                hadm_id = int(hadm_id)
-                if hadm_id <= 0:
-                    raise ValueError("hadm_id must be positive")
-            except ValueError:
-                raise ValueError("hadm_id must be a valid integer")
-
-        if subject_id is not None:
-            if not isinstance(subject_id, (int, str)):
-                raise ValueError("subject_id must be an integer or string")
-            try:
-                subject_id = int(subject_id)
-                if subject_id <= 0:
-                    raise ValueError("subject_id must be positive")
-            except ValueError:
-                raise ValueError("subject_id must be a valid integer")
-
-        if section is not None:
-            if not isinstance(section, str) or not section.strip():
-                raise ValueError("section must be a non-empty string")
-            section = section.strip().lower()
-
-        if k is not None:
-            if not isinstance(k, int) or k <= 0 or k > 100:
-                raise ValueError("k must be an integer between 1 and 100")
-
-        return hadm_id, subject_id, section, k
-
     def _handle_search_fallback(self, question, hadm_id=None, section=None, k=DEFAULT_K, error_msg=""):
         """Graceful fallback for failed searches"""
         ClinicalLogger.warning(f"Search fallback triggered: {error_msg}")
@@ -683,7 +451,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             chat_history = chat_history or []
 
             # Validate and extract parameters
-            question, hadm_id, subject_id, section, k, extracted_entities = self._extract_and_validate_params(
+            question, hadm_id, subject_id, section, k, extracted_entities = self.conversation.extract_and_validate_params(
                 question, hadm_id, subject_id, section, k)
 
             # Performance check: Skip expensive chat processing for simple questions
@@ -692,7 +460,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Process chat context if conversational
             original_question = question
             if is_conversational and chat_history and processing_time < 1.0:  # Skip if already slow
-                search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
+                search_question, hadm_id, subject_id, section, chat_context = self.conversation.process_chat_context(
                     chat_history, question, hadm_id, subject_id, section)
             else:
                 search_question = question
@@ -710,8 +478,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 chat_history.extend(
                     [("human", question), ("assistant", result["answer"])]
                 )
-                if len(chat_history) > MAX_CHAT_HISTORY:
-                    chat_history = chat_history[-MAX_CHAT_HISTORY:]
+                chat_history = self.conversation.truncate_history(chat_history)
 
             total_time = time.time() - performance_start
             result.update({
@@ -736,61 +503,22 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
     def chat(self, message, chat_history=None):
         """Main chat interface for API - handles chat history format conversion"""
-        is_api_call = False
-        is_cli_call = False
-        is_evaluation = False
+        processed_chat_history = self.conversation.truncate_history(
+            self.conversation.process_api_chat_history(chat_history))
 
-        # Log context appropriately
-        if is_api_call:
-            ClinicalLogger.debug("Processing API request...")
-        elif is_cli_call:
-            ClinicalLogger.debug("Processing CLI request...")
-        elif is_evaluation:
-            ClinicalLogger.debug("Running in evaluation mode...")
-
-        # Convert and validate chat history
-        processed_chat_history = self._process_api_chat_history(chat_history)
-
-        # Truncate if too long
-        if processed_chat_history and len(processed_chat_history) > MAX_CHAT_HISTORY:
-            processed_chat_history = processed_chat_history[-MAX_CHAT_HISTORY:]
-            ClinicalLogger.warning(
-                f"Chat history truncated to {MAX_CHAT_HISTORY} messages")
-
-        # Basic input validation
-        if not is_evaluation and (not message or not isinstance(message, str) or len(message.strip()) < 2):
+        if not message or not isinstance(message, str) or len(message.strip()) < 2:
             ClinicalLogger.warning("Empty or invalid message received")
             return "I couldn't understand your message. Please provide a valid question."
 
-        # Call main processing method
         response = self.ask_question(message, processed_chat_history)
         return response.get('answer', 'No answer generated')
 
     def chat_stream(self, message, chat_history=None):
         """Streaming chat interface for API - yields response chunks"""
-        is_api_call = False
-        is_cli_call = False
-        is_evaluation = False
+        processed_chat_history = self.conversation.truncate_history(
+            self.conversation.process_api_chat_history(chat_history))
 
-        # Log context appropriately
-        if is_api_call:
-            ClinicalLogger.debug("Processing streaming API request...")
-        elif is_cli_call:
-            ClinicalLogger.debug("Processing streaming CLI request...")
-        elif is_evaluation:
-            ClinicalLogger.debug("Running in streaming evaluation mode...")
-
-        # Convert and validate chat history
-        processed_chat_history = self._process_api_chat_history(chat_history)
-
-        # Truncate if too long
-        if processed_chat_history and len(processed_chat_history) > MAX_CHAT_HISTORY:
-            processed_chat_history = processed_chat_history[-MAX_CHAT_HISTORY:]
-            ClinicalLogger.warning(
-                f"Chat history truncated to {MAX_CHAT_HISTORY} messages")
-
-        # Basic input validation
-        if not is_evaluation and (not message or not isinstance(message, str) or len(message.strip()) < 2):
+        if not message or not isinstance(message, str) or len(message.strip()) < 2:
             ClinicalLogger.warning("Empty or invalid message received")
             yield {"error": "I couldn't understand your message. Please provide a valid question."}
             return
@@ -801,13 +529,13 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             chat_history_processed = processed_chat_history or []
 
             # Validate and extract parameters
-            question, hadm_id, subject_id, section, k, extracted_entities = self._extract_and_validate_params(
+            question, hadm_id, subject_id, section, k, extracted_entities = self.conversation.extract_and_validate_params(
                 message, None, None, None, DEFAULT_K)
 
             # Process chat context if conversational
             original_question = question
             if chat_history_processed:
-                search_question, hadm_id, subject_id, section, chat_context = self._process_chat_context(
+                search_question, hadm_id, subject_id, section, chat_context = self.conversation.process_chat_context(
                     chat_history_processed, question, hadm_id, subject_id, section)
             else:
                 search_question = question
@@ -941,8 +669,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             if chat_history_processed:
                 chat_history_processed.extend(
                     [("human", message), ("assistant", final_answer)])
-                if len(chat_history_processed) > MAX_CHAT_HISTORY:
-                    chat_history_processed = chat_history_processed[-MAX_CHAT_HISTORY:]
+                chat_history_processed = self.conversation.truncate_history(chat_history_processed)
 
             # Send final metadata
             total_time = time.time() - performance_start
@@ -962,25 +689,3 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         except Exception as e:
             ClinicalLogger.error(f"Streaming error: {e}")
             yield {"error": f"An error occurred while processing your request: {str(e)}", "done": True}
-
-    def _process_api_chat_history(self, chat_history):
-        """Convert API chat history format to internal format"""
-        if not chat_history:
-            return []
-
-        processed = []
-        for msg in chat_history:
-            if isinstance(msg, dict):
-                role = msg.get('role', 'user')
-                content = msg.get('content', '')
-                if content.strip():
-                    processed.append((role, content))
-            elif isinstance(msg, (list, tuple)) and len(msg) >= 2:
-                role, content = msg[0], msg[1]
-                if content.strip():
-                    processed.append((role, content))
-            else:
-                ClinicalLogger.warning(
-                    f"Unexpected chat history format: {type(msg)}")
-
-        return processed
