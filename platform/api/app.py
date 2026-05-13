@@ -22,6 +22,15 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+from RAG_chat_pipeline.observability import setup_observability
+
+# Wire telemetry BEFORE any other RAG_chat_pipeline import or Flask
+# instantiation so the OpenTelemetry instrumentation can patch
+# Flask + requests + urllib3 cleanly. No-ops locally without
+# APPLICATIONINSIGHTS_CONNECTION_STRING; live in ACA via the Bicep
+# env wiring.
+setup_observability(service_name="clinical-rag-api")
+
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
 from RAG_chat_pipeline.config.config import model_names, vector_stores
 
