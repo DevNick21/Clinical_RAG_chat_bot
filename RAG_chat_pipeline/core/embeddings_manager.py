@@ -1,6 +1,4 @@
 """Embedding model and vectorstore management"""
-import pickle
-
 # Import compatibility fix before sentence-transformers
 from RAG_chat_pipeline.utils import huggingface_compat  # Auto-patches on import
 
@@ -56,21 +54,21 @@ def setup_clinical_embeddings():
 
 
 def load_or_create_vectorstore():
-    """Load existing vectorstore or create new one"""
+    """Load existing vectorstore or create new one.
+
+    Chunked docs always come through DataProvider (which decides between
+    Blob / local-real / local-synthetic per its own priority order).
+    The vectorstore itself is still loaded from disk in this commit;
+    Step 5 will move it to Blob.
+    """
     clinical_emb = setup_clinical_embeddings()
 
-    # Initialize data provider to get appropriate data (real or synthetic)
     data_provider = DataProvider()
 
     try:
-        # Get chunked docs from the appropriate source
-        if data_provider.using_synthetic:
-            chunked_docs = data_provider.load_chunked_docs()
-        else:
-            with open(cfg.CHUNKED_DOCS_PATH, "rb") as f:
-                chunked_docs = pickle.load(f)
+        chunked_docs = data_provider.load_chunked_docs()
     except Exception as e:
-        print(f" Error loading chunked documents: {e}")
+        print(f"Error loading chunked documents: {e}")
         chunked_docs = None
 
     # Try to load existing vectorstore
@@ -85,7 +83,7 @@ def load_or_create_vectorstore():
         return vectorstore, clinical_emb, chunked_docs
 
     except Exception as e:
-        print(f" Error loading vectorstore: {e}")
+        print(f"Error loading vectorstore: {e}")
 
         if chunked_docs is None:
             raise ValueError(
@@ -95,11 +93,7 @@ def load_or_create_vectorstore():
         vectorstore = FAISS.from_documents(chunked_docs, clinical_emb)
         vectorstore.save_local(cfg.VECTORSTORE_PATH)
 
-        # Save chunked docs
-        with open(cfg.CHUNKED_DOCS_PATH, "wb") as f:
-            pickle.dump(chunked_docs, f)
-
-        print(" New vectorstore created and saved")
+        print("New vectorstore created and saved")
         return vectorstore, clinical_emb, chunked_docs
 
 

@@ -1,6 +1,16 @@
 """
-Data provider module that automatically selects between real MIMIC-IV data
-and synthetic data based on availability.
+Data provider module that automatically selects a data source.
+
+Source priority (highest first):
+  1. Azure Blob (`v2-seed/`) — when USE_BLOB_DATA=true and the storage env
+     vars are set. Reads Parquet for silver/gold; FAISS bytes are handled
+     separately by embeddings_manager.
+  2. Local real MIMIC-IV pickles + CSVs (mimic_sample_1000/).
+  3. Local synthetic data (synthetic_data/), generating it if necessary.
+
+The Blob path uses fsspec/adlfs with DefaultAzureCredential, so the same
+code runs locally (`az login`) and in Azure Container Apps (Managed
+Identity). The Parquet form was produced by data_engineering.parquet_convert.
 """
 
 import os
@@ -8,12 +18,28 @@ import pickle
 import pandas as pd
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Idempotent: pulls AZURE_*, USE_BLOB_DATA from .env so callers don't have to.
+load_dotenv()
+
 
 class DataProvider:
     """
     Provides data loading capabilities that automatically selects between
-    real MIMIC-IV data and synthetic data based on availability.
+    Azure Blob (Parquet), real MIMIC-IV local data, and synthetic data.
     """
+
+    # Mapping from logical link-table name to the silver/<name>.parquet blob.
+    # Mirrors the dict structure in the original link_tables.pkl.
+    _LINK_TABLE_NAMES = (
+        "diagnoses_icd",
+        "procedures_icd",
+        "labevents",
+        "microbiologyevents",
+        "prescriptions",
+        "transfers",
+    )
 
     def __init__(self, real_data_path="mimic_sample_1000", synthetic_data_path="synthetic_data", verbose: bool = True):
         """
@@ -36,16 +62,78 @@ class DataProvider:
         self.using_synthetic = False
         self.verbose = verbose
 
-        # Check what data is available
-        self.data_source_path = self._determine_data_source()
+        # Blob mode — env-driven. Falls back to local if env vars are absent
+        # so callers don't need to know which mode they're in.
+        self.use_blob = os.getenv("USE_BLOB_DATA", "").lower() in ("true", "1", "yes")
+        self.azure_account = os.getenv("AZURE_STORAGE_ACCOUNT")
+        self.azure_container = os.getenv("AZURE_BLOB_CONTAINER")
+        if self.use_blob and not (self.azure_account and self.azure_container):
+            if self.verbose:
+                print(
+                    "USE_BLOB_DATA=true but AZURE_STORAGE_ACCOUNT/CONTAINER missing — "
+                    "falling back to local data."
+                )
+            self.use_blob = False
 
-        if self.using_synthetic:
+        # Lazy-init credential (DefaultAzureCredential does network probes
+        # on construction, so don't pay that cost if we never read from Blob).
+        self._azure_cred = None
+
+        # Local source detection only matters if we're not using Blob
+        self.data_source_path = None if self.use_blob else self._determine_data_source()
+
+        if self.use_blob:
+            if self.verbose:
+                print(
+                    f"Loading from Azure Blob: "
+                    f"{self.azure_account}/{self.azure_container} (Parquet)."
+                )
+        elif self.using_synthetic:
             if self.verbose:
                 print(
                     "Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
         else:
             if self.verbose:
                 print("Using real MIMIC-IV data.")
+
+    # ---------- Blob helpers ----------
+
+    def _credential(self):
+        if self._azure_cred is None:
+            from azure.identity import DefaultAzureCredential
+            self._azure_cred = DefaultAzureCredential()
+        return self._azure_cred
+
+    def _read_blob_parquet(self, blob_path: str) -> pd.DataFrame:
+        """Read a Parquet blob into a DataFrame.
+
+        The container itself (typically `v2-seed`) is the medallion root,
+        so `blob_path` looks like `gold/chunked_docs.parquet` or
+        `silver/admissions.parquet`.
+        """
+        return pd.read_parquet(
+            f"abfs://{self.azure_container}/{blob_path}",
+            storage_options={
+                "account_name": self.azure_account,
+                "credential": self._credential(),
+            },
+        )
+
+    @staticmethod
+    def _df_to_documents(df: pd.DataFrame):
+        """Convert a chunked-docs DataFrame back to LangChain Documents.
+
+        Drops NaN/NaT metadata values so consumers don't see them. Done lazily
+        in a list comprehension to avoid materialising 105k records dict twice.
+        """
+        from langchain.schema import Document
+        records = df.to_dict(orient="records")
+        docs = []
+        for rec in records:
+            content = rec.pop("content")
+            metadata = {k: v for k, v in rec.items() if pd.notna(v)}
+            docs.append(Document(page_content=content, metadata=metadata))
+        return docs
 
     def _determine_data_source(self):
         """
@@ -92,6 +180,9 @@ class DataProvider:
         """
         Load the chunked documents for the RAG system.
         """
+        if self.use_blob:
+            df = self._read_blob_parquet("gold/chunked_docs.parquet")
+            return self._df_to_documents(df)
         if self.using_synthetic:
             with open(self.data_source_path / "chunked_docs_synthetic.pkl", "rb") as f:
                 return pickle.load(f)
@@ -103,6 +194,8 @@ class DataProvider:
         """
         Load the admissions data.
         """
+        if self.use_blob:
+            return self._read_blob_parquet("silver/admissions.parquet")
         if self.using_synthetic:
             return pd.read_csv(self.data_source_path / "admissions_synthetic.csv")
         else:
@@ -112,6 +205,8 @@ class DataProvider:
         """
         Load the diagnoses data.
         """
+        if self.use_blob:
+            return self._read_blob_parquet("silver/diagnoses_icd.parquet")
         if self.using_synthetic:
             return pd.read_csv(self.data_source_path / "diagnoses_synthetic.csv")
         else:
@@ -121,6 +216,8 @@ class DataProvider:
         """
         Load the procedures data.
         """
+        if self.use_blob:
+            return self._read_blob_parquet("silver/procedures_icd.parquet")
         if self.using_synthetic:
             return pd.read_csv(self.data_source_path / "procedures_synthetic.csv")
         else:
@@ -130,6 +227,8 @@ class DataProvider:
         """
         Load the lab events data.
         """
+        if self.use_blob:
+            return self._read_blob_parquet("silver/labevents.parquet")
         if self.using_synthetic:
             return pd.read_csv(self.data_source_path / "labevents_synthetic.csv")
         else:
@@ -139,6 +238,8 @@ class DataProvider:
         """
         Load the medications data.
         """
+        if self.use_blob:
+            return self._read_blob_parquet("silver/prescriptions.parquet")
         if self.using_synthetic:
             return pd.read_csv(self.data_source_path / "medications_synthetic.csv")
         else:
@@ -148,10 +249,33 @@ class DataProvider:
         """
         Return a string indicating the type of data being used.
         """
+        if self.use_blob:
+            return "blob"
         return "synthetic" if self.using_synthetic else "real"
 
     def load_test_data(self):
         """Load exported data for testing - equivalent to data_loader.load_test_data()"""
+        if self.use_blob:
+            # silver/admissions.parquet + 6 link-table parquets, with grouped
+            # derived from link_tables on-the-fly (grouped_tables was dropped
+            # in Step 2 of the priming plan as redundant).
+            try:
+                admissions_df = self._read_blob_parquet("silver/admissions.parquet")
+                link_tables = {
+                    name: self._read_blob_parquet(f"silver/{name}.parquet")
+                    for name in self._LINK_TABLE_NAMES
+                }
+                grouped = {
+                    name: df.groupby("hadm_id")
+                    for name, df in link_tables.items()
+                    if "hadm_id" in df.columns
+                }
+                return admissions_df, link_tables, grouped
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error reading silver layer from Blob: {e}")
+                return None, None, None
+
         if self.using_synthetic:
             # For synthetic data, return basic structures
             try:
