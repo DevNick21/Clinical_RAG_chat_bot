@@ -63,14 +63,26 @@ GLOBAL_SEARCH_MAX_K = 20
 CANDIDATE_DOC_LIMIT = 20
 FINAL_DOCS_LIMIT = 5
 
-# Streaming-specific limits (lower for responsiveness)
-STREAMING_CANDIDATE_DOC_LIMIT = 10
-STREAMING_GLOBAL_SEARCH_MAX_K = 5
-STREAMING_FINAL_DOCS_LIMIT = 2
+# Streaming-specific limits. Originally lowered for Ollama-on-laptop
+# (every retrieved doc = more prompt = more local-model latency). In
+# cloud with gpt-5-nano, reasoning dominates latency regardless of
+# context size, so the streaming path now matches the non-streaming
+# path on quality. Was 10/5/2 in the dissertation-era config.
+STREAMING_CANDIDATE_DOC_LIMIT = 20
+STREAMING_GLOBAL_SEARCH_MAX_K = 20
+STREAMING_FINAL_DOCS_LIMIT = 5
 
-# Feature flags (centralized) - optimized for performance
-ENABLE_REPHRASING = False  # disabled for performance and to avoid validation issues
-ENABLE_ENTITY_EXTRACTION = False  # disabled for performance
+# Feature flags. Both were disabled in the dissertation-era config for
+# Ollama latency reasons; re-enabled now because:
+#   ENABLE_REPHRASING - multi-turn follow-ups ("and the medications?")
+#       were broken without it. The gpt-5-nano + audit layer catches
+#       the rephrase-hallucination risk that motivated the original
+#       disable.
+#   ENABLE_ENTITY_EXTRACTION - lets the retriever filter by hadm_id /
+#       subject_id when the user mentions one, instead of falling back
+#       to pure semantic search which returns unrelated admissions.
+ENABLE_REPHRASING = True
+ENABLE_ENTITY_EXTRACTION = True
 
 # Logging (set to quiet for max evaluation speed)
 LOG_LEVEL = "info"  # options: quiet, error, warning, info, debug

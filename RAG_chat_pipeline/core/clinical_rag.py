@@ -183,18 +183,37 @@ If no relevant context exists, return the original question unchanged."""),
             ("human", "{input}")
         ])
 
-        # Create base clinical prompt template - SIMPLIFIED FOR SPEED
-        self.base_clinical_qa_prompt = """Analyze these medical records and provide a concise, accurate response.
+        # Clinical QA prompt. The strictness around "asked-about IDs not
+        # in retrieved docs" was added after the cloud deploy surfaced a
+        # case where the model honestly admitted the asked admissions
+        # weren't present but then dumped unrelated retrieved docs as
+        # "Available data" — confusing for clinicians.
+        self.base_clinical_qa_prompt = """You are a clinical RAG assistant answering questions strictly from the retrieved MIMIC-IV documents below.
 
 {context_instruction}
 
-Based on the provided documents, answer the question directly and include:
-- Specific medical details (codes, values, dates)
-- Source: admission ID and section type
+ANSWERING RULES (apply in order):
 
-Use only information from the documents. End with: "ℹ️ Data from MIMIC-IV database for research/education only."
+1. If the user asks about specific admission IDs, patient IDs, or subject
+   IDs, and those IDs do NOT appear in the retrieved documents' metadata,
+   reply with: "No records were found for [the IDs they asked about] in
+   the available data." Then STOP. Do NOT surface unrelated admissions
+   as 'available data' — the user wanted those specific records, not a
+   tour of the database.
 
-Context: {context}"""
+2. If the retrieved documents DO contain the asked-about IDs, answer the
+   question concisely. Include:
+   - Specific medical details from the docs (codes, values, dates, units)
+   - Citation per claim: "(Admission <hadm_id>, <section>)"
+
+3. Never invent values, codes, dosages, or dates. If a specific value the
+   user asked about isn't in the documents, say so explicitly rather than
+   substituting a similar value from a different admission.
+
+4. End every answer with: "ℹ️ Data from MIMIC-IV database for research/education only."
+
+Context:
+{context}"""
 
         # Create chains
         self.question_answer_chain = None
@@ -349,6 +368,51 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             "search_time": time.time() - start_time,
             "documents_found": 0
         }
+
+    # Compiled once. Matches 6-10 digit runs as candidate hadm_id / subject_id
+    # mentions in user questions. MIMIC-IV uses 8-digit hadm_ids and 8-digit
+    # subject_ids; widening to 6-10 catches typos and the full ID family.
+    _USER_ID_RE = re.compile(r"\b\d{6,10}\b")
+
+    @classmethod
+    def _extract_user_ids(cls, question: str) -> set:
+        """Pull hadm_id / subject_id - shaped numbers from the user's text."""
+        return {int(m) for m in cls._USER_ID_RE.findall(question or "")}
+
+    def _preflight_id_mismatch(self, question, retrieved_docs):
+        """Pre-flight check: did the user name IDs that aren't in retrieved docs?
+
+        Returns the set of asked-about IDs that are NOT represented in
+        the retrieved docs' metadata. Returns empty set if either:
+          - the user didn't mention any IDs (nothing to validate)
+          - at least one mentioned ID IS in the retrieved set (mixed case;
+            let the prompt handle it)
+
+        A non-empty return value means "all asked-about IDs are missing"
+        and the caller should short-circuit with a clean rejection
+        instead of feeding mismatched docs to the LLM.
+        """
+        user_ids = self._extract_user_ids(question)
+        if not user_ids:
+            return set()
+
+        present = set()
+        for doc in retrieved_docs or []:
+            md = getattr(doc, "metadata", {}) or {}
+            for key in ("hadm_id", "subject_id"):
+                val = md.get(key)
+                if val is None:
+                    continue
+                try:
+                    present.add(int(val))
+                except (TypeError, ValueError):
+                    pass
+
+        missing = user_ids - present
+        # Only return "missing" if ALL asked IDs are missing. If user
+        # asked about A and B but retrieval found A, let the LLM
+        # handle it (the stricter prompt covers that case).
+        return missing if missing == user_ids else set()
 
     def _semantic_search_on_docs(self, candidate_docs, question, k):
         """Optimized semantic search using FAISS vectorstore efficiently"""
@@ -547,6 +611,59 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 ClinicalLogger.debug(
                     f"Processing {len(retrieved_docs)} documents - reducing to top {FINAL_DOCS_LIMIT}")
                 retrieved_docs = retrieved_docs[:FINAL_DOCS_LIMIT]
+
+            # Pre-flight: if the user named admission/subject IDs and NONE of
+            # the retrieved docs match those IDs, short-circuit with a clean
+            # rejection instead of asking the LLM to interpret mismatched
+            # context (which historically produced "the asked IDs aren't
+            # here, but here's unrelated data...").
+            missing_ids = self._preflight_id_mismatch(
+                original_question or question, retrieved_docs)
+            if missing_ids:
+                ids_str = ", ".join(str(i) for i in sorted(missing_ids))
+                ClinicalLogger.info(
+                    f"Pre-flight: asked IDs {ids_str} not in retrieved docs; "
+                    f"short-circuiting before LLM call.")
+                preflight_answer = (
+                    f"No records were found for admission/subject ID(s): "
+                    f"{ids_str}. The retrieved documents are about different "
+                    f"admissions, so I can't answer this question reliably. "
+                    f"Please verify the ID(s) or rephrase the question.\n\n"
+                    "ℹ️ Data from MIMIC-IV database for research/education only."
+                )
+                try:
+                    audit_id = log_request(
+                        question=question,
+                        retrieved_docs=retrieved_docs,
+                        reasoning_summaries=[],
+                        answer=preflight_answer,
+                        unsupported_claims=[],
+                        response_id=None,
+                        metadata={
+                            "hadm_id": hadm_id,
+                            "subject_id": subject_id,
+                            "section": section,
+                            "k": k,
+                            "search_time": time.time() - start_time,
+                            "preflight": "id_mismatch",
+                            "asked_ids": sorted(missing_ids),
+                        },
+                    )
+                except Exception as audit_err:
+                    ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
+                    audit_id = None
+                return {
+                    "answer": preflight_answer,
+                    "source_documents": [],
+                    "citations": [],
+                    "search_time": time.time() - start_time,
+                    "documents_found": 0,
+                    "search_method": "preflight_id_mismatch",
+                    "performance_optimized": True,
+                    "audit_id": audit_id,
+                    "unsupported_claims": [],
+                    "reasoning_summaries": [],
+                }
 
             # INTELLIGENT CONTENT EXTRACTION: Extract structured clinical data
             original_citations = [(doc.metadata.get('hadm_id'), doc.metadata.get(
@@ -1086,6 +1203,62 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             if len(retrieved_docs) > STREAMING_FINAL_DOCS_LIMIT:  # Reduced for speed
                 retrieved_docs = retrieved_docs[:STREAMING_FINAL_DOCS_LIMIT]
+
+            # Pre-flight: if the user named admission/subject IDs and NONE of
+            # the retrieved docs match, yield a clean SSE rejection instead
+            # of feeding the LLM mismatched context. Mirrors the same logic
+            # in clinical_search() so both endpoints behave the same.
+            missing_ids = self._preflight_id_mismatch(message, retrieved_docs)
+            if missing_ids:
+                ids_str = ", ".join(str(i) for i in sorted(missing_ids))
+                ClinicalLogger.info(
+                    f"Pre-flight (stream): asked IDs {ids_str} not in retrieved docs; "
+                    f"short-circuiting before LLM call.")
+                preflight_answer = (
+                    f"No records were found for admission/subject ID(s): "
+                    f"{ids_str}. The retrieved documents are about different "
+                    f"admissions, so I can't answer this question reliably. "
+                    f"Please verify the ID(s) or rephrase the question.\n\n"
+                    "ℹ️ Data from MIMIC-IV database for research/education only."
+                )
+                # Stream the rejection as a single content chunk so SSE
+                # clients see consistent event shape.
+                yield {"content": preflight_answer, "done": False}
+                try:
+                    audit_id = log_request(
+                        question=search_question,
+                        retrieved_docs=retrieved_docs,
+                        reasoning_summaries=[],
+                        answer=preflight_answer,
+                        unsupported_claims=[],
+                        response_id=None,
+                        metadata={
+                            "hadm_id": hadm_id,
+                            "subject_id": subject_id,
+                            "section": section,
+                            "k": k,
+                            "streaming": True,
+                            "preflight": "id_mismatch",
+                            "asked_ids": sorted(missing_ids),
+                        },
+                    )
+                except Exception as audit_err:
+                    ClinicalLogger.warning(f"Audit log write failed: {audit_err}")
+                    audit_id = None
+                yield {
+                    "done": True,
+                    "metadata": {
+                        "search_time": time.time() - performance_start,
+                        "documents_found": 0,
+                        "citations": [],
+                        "audit_id": audit_id,
+                        "unsupported_claims": [],
+                        "reasoning_summaries": [],
+                        "search_method": "preflight_id_mismatch",
+                        "final_answer": preflight_answer,
+                    },
+                }
+                return
 
             # Keep the unstructured docs for audit/claim-check; the merged
             # structured_doc loses per-source citations.
