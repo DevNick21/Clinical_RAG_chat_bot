@@ -6,6 +6,19 @@
 const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
+// Backend protects /api/* with Bearer auth (require_api_key in app.py).
+// Read the key from REACT_APP_API_KEY (set in platform/frontend/.env.local
+// for dev; injected at build time for prod).
+const API_KEY = process.env.REACT_APP_API_KEY || "";
+
+function authHeaders(extra = {}) {
+  return {
+    "Content-Type": "application/json",
+    ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+    ...extra,
+  };
+}
+
 class ApiService {
   constructor() {
     this.baseUrl = API_BASE_URL;
@@ -29,9 +42,7 @@ class ApiService {
       // Fallback to non-streaming for backward compatibility
       const response = await fetch(`${this.baseUrl}/chat/non-streaming`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders(),
         body: JSON.stringify({
           message: message.trim(),
           chat_history: this.formatChatHistory(chatHistory),
@@ -87,9 +98,7 @@ class ApiService {
       
       const response = await fetch(`${this.baseUrl}/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders(),
         body: JSON.stringify({
           message: message.trim(),
           chat_history: this.formatChatHistory(chatHistory),
@@ -195,9 +204,7 @@ class ApiService {
     try {
       const response = await fetch(`${this.baseUrl}/models`, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders(),
       });
 
       if (!response.ok) {
@@ -238,9 +245,7 @@ class ApiService {
     try {
       const response = await fetch(`${this.baseUrl}/sample-suggestions`, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders(),
       });
 
       if (!response.ok) {
@@ -271,6 +276,7 @@ class ApiService {
 
       const response = await fetch(`${this.baseUrl}/models`, {
         method: "GET",
+        headers: authHeaders(),
         signal: controller.signal,
       });
 
