@@ -46,6 +46,9 @@ ollama==0.5.1
 azure-storage-blob==12.28.0
 azure-identity==1.25.3
 
+# ---- Parquet engine (used by data_engineering/parquet_convert.py) ----
+pyarrow==24.0.0
+
 # ---- Web Requests & HTTP ----
 requests==2.32.3
 requests-toolbelt==1.0.0
