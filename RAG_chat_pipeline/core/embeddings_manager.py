@@ -12,6 +12,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from RAG_chat_pipeline.config import config as cfg
 from RAG_chat_pipeline.utils.data_provider import DataProvider
+from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
 load_dotenv()
 
@@ -68,15 +69,19 @@ def _ensure_blob_index_cached() -> Path:
             continue  # already cached
         target.parent.mkdir(parents=True, exist_ok=True)
         size_mb = (blob.size or 0) / (1024 * 1024)
-        print(f"  Downloading {rel} ({size_mb:.1f} MB)...")
+        ClinicalLogger.info("Downloading FAISS blob", blob=rel, size_mb=f"{size_mb:.1f}")
         with target.open("wb") as f:
             container_client.get_blob_client(blob.name).download_blob().readinto(f)
         downloaded += 1
 
     if downloaded == 0:
-        print(f"FAISS index cache hit: {_FAISS_CACHE_DIR}")
+        ClinicalLogger.info("FAISS index cache hit", path=str(_FAISS_CACHE_DIR))
     else:
-        print(f"FAISS index ready at {_FAISS_CACHE_DIR} ({downloaded} file(s) downloaded)")
+        ClinicalLogger.info(
+            "FAISS index ready",
+            path=str(_FAISS_CACHE_DIR),
+            files_downloaded=downloaded,
+        )
     return _FAISS_CACHE_DIR
 
 
@@ -93,13 +98,15 @@ def setup_clinical_embeddings():
             )
             # Test the model to ensure it's working
             test_vector = clinical_emb.embed_query("test medical query")
-            print(
-                f"Local model loaded successfully (test vector dim: {len(test_vector)})")
+            ClinicalLogger.info(
+                "Local model loaded successfully",
+                test_vector_dim=len(test_vector),
+            )
             return clinical_emb
 
         except Exception as e:
-            print(f" Error loading local model: {e}")
-            print("Downloading model...")
+            ClinicalLogger.warning("Error loading local model", error=str(e))
+            ClinicalLogger.info("Downloading model")
 
     # Download and save model locally
 
@@ -109,7 +116,7 @@ def setup_clinical_embeddings():
     # Download using SentenceTransformer first
     model = SentenceTransformer(cfg.CLINICAL_MODEL_NAME)
     model.save(str(cfg.LOCAL_MODEL_PATH))
-    print(f"Model saved to: {cfg.LOCAL_MODEL_PATH}")
+    ClinicalLogger.info("Model saved", path=str(cfg.LOCAL_MODEL_PATH))
 
     # LangChain embedding wrapper for SentenceTransformers (STMs)
     clinical_emb = HuggingFaceEmbeddings(
@@ -119,7 +126,7 @@ def setup_clinical_embeddings():
 
     # Test the model
     test_vector = clinical_emb.embed_query("test medical query")
-    print(f"Model setup complete (test vector dim: {len(test_vector)})")
+    ClinicalLogger.info("Model setup complete", test_vector_dim=len(test_vector))
 
     return clinical_emb
 
@@ -144,16 +151,16 @@ def load_or_create_vectorstore():
     try:
         chunked_docs = data_provider.load_chunked_docs()
     except Exception as e:
-        print(f"Error loading chunked documents: {e}")
+        ClinicalLogger.warning("Error loading chunked documents", error=str(e))
         chunked_docs = None
 
     use_blob_index = os.getenv("USE_BLOB_INDEX", "").lower() in ("true", "1", "yes")
     if use_blob_index:
         index_path = _ensure_blob_index_cached()
-        print(f"Loading vectorstore from Blob cache: {index_path}")
+        ClinicalLogger.info("Loading vectorstore from Blob cache", path=str(index_path))
     else:
         index_path = cfg.VECTORSTORE_PATH
-        print(f"Loading vectorstore from local: {index_path}")
+        ClinicalLogger.info("Loading vectorstore from local", path=str(index_path))
 
     try:
         vectorstore = FAISS.load_local(
@@ -161,11 +168,11 @@ def load_or_create_vectorstore():
             clinical_emb,
             allow_dangerous_deserialization=True
         )
-        print("Vectorstore loaded successfully")
+        ClinicalLogger.info("Vectorstore loaded successfully")
         return vectorstore, clinical_emb, chunked_docs
 
     except Exception as e:
-        print(f"Error loading vectorstore: {e}")
+        ClinicalLogger.warning("Error loading vectorstore", error=str(e))
 
         if chunked_docs is None:
             raise ValueError(
@@ -173,14 +180,14 @@ def load_or_create_vectorstore():
 
         # Rebuild path: only writes to local. The Blob copy of the winner
         # index is a release artefact, not something we regenerate at runtime.
-        print("Creating new vectorstore...")
+        ClinicalLogger.info("Creating new vectorstore")
         vectorstore = FAISS.from_documents(chunked_docs, clinical_emb)
         vectorstore.save_local(cfg.VECTORSTORE_PATH)
 
-        print("New vectorstore created and saved")
+        ClinicalLogger.info("New vectorstore created and saved")
         return vectorstore, clinical_emb, chunked_docs
 
 
 if __name__ == "__main__":
     vectorstore, clinical_emb, chunked_docs = load_or_create_vectorstore()
-    print("Embeddings setup complete!")
+    ClinicalLogger.info("Embeddings setup complete")

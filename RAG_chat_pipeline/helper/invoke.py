@@ -1,4 +1,5 @@
 import re
+from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
 
 def clean_llm_response(response):
@@ -39,5 +40,5 @@ def safe_llm_invoke(chain_or_llm, input_data, fallback_message="Error generating
         return response
 
     except Exception as e:
-        print(f" {context} Error: {e}")
+        ClinicalLogger.error("LLM invoke error", context=context, error=str(e))
         return fallback_message

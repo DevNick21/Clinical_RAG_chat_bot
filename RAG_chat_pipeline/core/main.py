@@ -1,21 +1,22 @@
 """Main execution script"""
 from RAG_chat_pipeline.core.embeddings_manager import load_or_create_vectorstore
 from RAG_chat_pipeline.core.clinical_rag import ClinicalRAGBot
+from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
 
 def main():
     """Main execution function"""
-    print(" Starting Clinical RAG System...")
+    ClinicalLogger.info("Starting Clinical RAG System")
 
     # Setup embeddings and vectorstore
-    print("\nSetting up embeddings and vectorstore...")
+    ClinicalLogger.info("Setting up embeddings and vectorstore")
     vectorstore, clinical_emb, chunked_docs = load_or_create_vectorstore()
 
     # Initialize chatbot
-    print("\nInitializing Clinical RAG Bot...")
+    ClinicalLogger.info("Initializing Clinical RAG Bot")
     chatbot = ClinicalRAGBot(vectorstore, clinical_emb, chunked_docs)
 
-    print(" Clinical RAG System Ready!")
+    ClinicalLogger.info("Clinical RAG System Ready")
     return chatbot
 
 
@@ -28,8 +29,8 @@ if __name__ == "__main__":
     chatbot = main()
 
     # Interactive loop (optional)
-    print("\n Clinical RAG Chatbot Ready!")
-    print("Type 'quit' to exit\n")
+    ClinicalLogger.info("Clinical RAG Chatbot Ready")
+    ClinicalLogger.info("Type 'quit' to exit")
 
     chat_history = []
     while True:
@@ -47,12 +48,12 @@ if __name__ == "__main__":
                 k=5
             )
 
-            print(f"\n Answer: {response['answer']}")
-            print(f" Citations: {len(response['citations'])} sources")
+            print(f"\nAnswer: {response['answer']}")
+            print(f"Citations: {len(response.get('citations', []))} sources")
             print("-" * 50)
 
         except KeyboardInterrupt:
-            print("\nGoodbye!")
+            ClinicalLogger.info("Goodbye")
             break
         except Exception as e:
-            print(f" Error: {e}")
+            ClinicalLogger.error("CLI error", error=str(e))

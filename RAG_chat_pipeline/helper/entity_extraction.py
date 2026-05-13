@@ -10,9 +10,10 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from RAG_chat_pipeline.config.config import SECTION_KEYWORDS
+from RAG_chat_pipeline.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+SECTION_KEYWORDS = get_settings().section_keywords
 
 # Sections the LLM is allowed to predict. Anything else gets dropped.
 _VALID_SECTIONS = {
@@ -97,7 +98,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
          Strict JSON-only prompt, validated against the allowed
          section enum.
     """
-    print(f"Extracting entities from: '{query}'")
+    logger.debug("Extracting entities from query")
 
     result = {
         "hadm_id": None,
@@ -141,7 +142,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
         result["confidence"] = "high"
         result["reasoning"] += f" Found {len(result['subject_ids'])} subject_id(s): {result['subject_ids']}"
         result["query_type"] = "patient_history"
-        print(f" Regex found {len(result['subject_ids'])} subject_id(s): {result['subject_ids']}")
+        logger.debug("Regex found subject_ids")
 
     # Extract ALL hadm_ids mentioned. Same multi-ID treatment as above
     # so a comparison query like "admissions 21342515 and 22240591"
@@ -173,7 +174,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
         result["hadm_id"] = result["hadm_ids"][0]  # backward compat: first
         result["confidence"] = "high"
         result["reasoning"] += f" Found {len(result['hadm_ids'])} hadm_id(s): {result['hadm_ids']}"
-        print(f" Regex found {len(result['hadm_ids'])} hadm_id(s): {result['hadm_ids']}")
+        logger.debug("Regex found hadm_ids")
     else:
         # If subject_ids consumed all the 8-digit numbers, clear hadm_id
         # too (we previously set it to the first number, but that number
@@ -188,7 +189,7 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
             if result["confidence"] == "low":
                 result["confidence"] = "medium"
             result["reasoning"] += f" Found section keywords for '{section}'"
-            print(f" Regex found section: {section}")
+            logger.debug("Regex found section")
             break
 
     # LLM fallback — only fires when regex found absolutely nothing.
@@ -210,13 +211,13 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
             # LLM-derived results are medium confidence (vs high for regex hits)
             result["confidence"] = "medium"
             result["reasoning"] = "LLM fallback extracted entities from free-form question"
-            print(f" LLM fallback found: {llm_result}")
+            logger.debug("LLM fallback extracted entities")
 
     # Set final confidence based on what was found
     if result["hadm_id"] is None and result["section"] is None and result["subject_id"] is None:
         result["reasoning"] = "No entities extracted from query"
 
-    print(f"Final extraction result: {result}")
+    logger.debug("Final extraction result computed")
     return result
 
 
@@ -253,8 +254,7 @@ def extract_context_from_chat_history(chat_history: List, current_query: str) ->
                     context["hadm_id"] = valid_hadm_ids[-1]
                     context["confidence"] = "high" if len(
                         valid_hadm_ids) == 1 else "medium"
-                    print(
-                        f" Found hadm_id {context['hadm_id']} in chat history (from {len(valid_hadm_ids)} candidates)")
+                    logger.debug("Found hadm_id in chat history")
                     break
 
     # Look for section context in recent messages
@@ -271,8 +271,7 @@ def extract_context_from_chat_history(chat_history: List, current_query: str) ->
     if section_matches:
         context["section"] = section_matches[0][0]  # Most recent
         context_role = section_matches[0][1]  # Role that mentioned it
-        print(
-            f"Found section '{context['section']}' context from {context_role} message")
+        logger.debug("Found section context in chat history")
 
     # Use current_query to enhance context if no history context found
     if context["hadm_id"] is None and context["section"] is None:
@@ -284,14 +283,13 @@ def extract_context_from_chat_history(chat_history: List, current_query: str) ->
         if query_hadm_id:
             context["hadm_id"] = query_hadm_id
             context["confidence"] = "high"
-            print(f" Found hadm_id {context['hadm_id']} in current query")
+            logger.debug("Found hadm_id in current query")
 
         # Look for section keywords in current query
         for section, keywords in SECTION_KEYWORDS.items():
             if any(keyword in current_query for keyword in keywords):
                 context["section"] = section
-                print(
-                    f" Found section '{context['section']}' in current query")
+                logger.debug("Found section in current query")
                 break
 
     return context

@@ -32,6 +32,7 @@ from RAG_chat_pipeline.observability import setup_observability
 setup_observability(service_name="clinical-rag-api")
 
 from RAG_chat_pipeline.core.main import main as initialize_clinical_rag
+from RAG_chat_pipeline.utils.logger import ClinicalLogger, summarize_text, mask_ids
 from RAG_chat_pipeline.config.config import model_names, vector_stores
 
 # Initialize Flask app
@@ -74,12 +75,12 @@ def require_api_key(fn):
 
 
 # Initialize RAG system
-print("Initializing Clinical RAG System...")
+ClinicalLogger.info("Initializing Clinical RAG System")
 try:
     chatbot = initialize_clinical_rag()
-    print("Clinical RAG System initialized successfully")
+    ClinicalLogger.info("Clinical RAG System initialized successfully")
 except Exception as e:
-    print(f"Error initializing Clinical RAG System: {e}")
+    ClinicalLogger.error("Error initializing Clinical RAG System", error=str(e))
     chatbot = None
 
 
@@ -117,12 +118,12 @@ def chat():
     user_message = data['message']
     chat_history = data.get('chat_history', [])
 
-    # Debug: Log incoming request details
-    print(f" API Streaming Chat Request:")
-    print(f"  - Message: '{user_message}'")
-    print(f"  - Chat history length: {len(chat_history) if chat_history else 0}")
-    if chat_history:
-        print(f"  - Last 2 history items: {chat_history[-2:] if len(chat_history) >= 2 else chat_history}")
+    ClinicalLogger.info(
+        "API streaming chat request",
+        message=summarize_text(user_message),
+        chat_history_len=len(chat_history) if chat_history else 0,
+        chat_history_ids=mask_ids([item.get("id") for item in chat_history if isinstance(item, dict)]),
+    )
 
     def generate():
         """Generator function for streaming responses"""
@@ -151,8 +152,8 @@ def chat():
             yield f"data: {json.dumps({'type': 'end', 'done': True})}\n\n"
             
         except Exception as e:
-            print(f"Error in streaming chat: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'content': f'Streaming error: {str(e)}', 'done': True})}\n\n"
+            ClinicalLogger.error("Error in streaming chat", error=str(e))
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Streaming error', 'done': True})}\n\n"
 
     return Response(
         generate(),
@@ -184,26 +185,28 @@ def chat_non_streaming():
     user_message = data['message']
     chat_history = data.get('chat_history', [])
 
-    # Debug: Log incoming request details
-    print(f" API Non-Streaming Chat Request:")
-    print(f"  - Message: '{user_message}'")
-    print(f"  - Chat history length: {len(chat_history) if chat_history else 0}")
+    ClinicalLogger.info(
+        "API non-streaming chat request",
+        message=summarize_text(user_message),
+        chat_history_len=len(chat_history) if chat_history else 0,
+        chat_history_ids=mask_ids([item.get("id") for item in chat_history if isinstance(item, dict)]),
+    )
 
     # Process with RAG system
     try:
         response = chatbot.chat(user_message, chat_history)
 
-        # Debug: Log response details
-        print(f" API Non-Streaming Chat Response:")
-        print(f"  - Response length: {len(str(response))}")
-        print(f"  - Response preview: {str(response)[:200]}...")
+        ClinicalLogger.info(
+            "API non-streaming chat response",
+            response_len=len(str(response)),
+        )
 
         return jsonify({
             'response': response,
             'sources': chatbot.sources if hasattr(chatbot, 'sources') else []
         })
     except Exception as e:
-        print(f"Error processing message: {e}")
+        ClinicalLogger.error("Error processing message", error=str(e))
         return jsonify({
             'error': str(e)
         }), 500
@@ -267,7 +270,7 @@ def get_sample_suggestions():
         })
 
     except Exception as e:
-        print(f"Error getting sample suggestions: {e}")
+        ClinicalLogger.error("Error getting sample suggestions", error=str(e))
         # Fallback suggestions
         return jsonify({
             'suggestions': [

@@ -19,6 +19,7 @@ import pandas as pd
 from pathlib import Path
 
 from dotenv import load_dotenv
+from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
 # Idempotent: pulls AZURE_*, USE_BLOB_DATA from .env so callers don't have to.
 load_dotenv()
@@ -69,9 +70,8 @@ class DataProvider:
         self.azure_container = os.getenv("AZURE_BLOB_CONTAINER")
         if self.use_blob and not (self.azure_account and self.azure_container):
             if self.verbose:
-                print(
-                    "USE_BLOB_DATA=true but AZURE_STORAGE_ACCOUNT/CONTAINER missing — "
-                    "falling back to local data."
+                ClinicalLogger.warning(
+                    "USE_BLOB_DATA=true but AZURE_STORAGE_ACCOUNT/CONTAINER missing; falling back to local data."
                 )
             self.use_blob = False
 
@@ -84,17 +84,19 @@ class DataProvider:
 
         if self.use_blob:
             if self.verbose:
-                print(
-                    f"Loading from Azure Blob: "
-                    f"{self.azure_account}/{self.azure_container} (Parquet)."
+                ClinicalLogger.info(
+                    "Loading from Azure Blob",
+                    account=self.azure_account,
+                    container=self.azure_container,
                 )
         elif self.using_synthetic:
             if self.verbose:
-                print(
-                    "Using synthetic data. For research with real data, please obtain MIMIC-IV access.")
+                ClinicalLogger.info(
+                    "Using synthetic data. For research with real data, please obtain MIMIC-IV access."
+                )
         else:
             if self.verbose:
-                print("Using real MIMIC-IV data.")
+                ClinicalLogger.info("Using real MIMIC-IV data.")
 
     # ---------- Blob helpers ----------
 
@@ -159,16 +161,14 @@ class DataProvider:
             synthetic_generator_path = self.synthetic_data_path / "synthetic_data_generator.py"
             if synthetic_generator_path.exists():
                 if self.verbose:
-                    print("Real data not found. Generating synthetic data...")
-                import sys
-                sys.path.append(str(self.synthetic_data_path.parent))
+                    ClinicalLogger.info("Real data not found. Generating synthetic data...")
                 from synthetic_data.synthetic_data_generator import create_synthetic_data
                 create_synthetic_data()
                 self.using_synthetic = True
                 return self.synthetic_data_path
         except Exception as e:
             if self.verbose:
-                print(f" Error generating synthetic data: {e}")
+                ClinicalLogger.warning("Error generating synthetic data", error=str(e))
 
         # If neither exists and synthetic data can't be created, raise error
         raise FileNotFoundError(
@@ -273,7 +273,7 @@ class DataProvider:
                 return admissions_df, link_tables, grouped
             except Exception as e:
                 if self.verbose:
-                    print(f"Error reading silver layer from Blob: {e}")
+                    ClinicalLogger.warning("Error reading silver layer from Blob", error=str(e))
                 return None, None, None
 
         if self.using_synthetic:
@@ -299,7 +299,7 @@ class DataProvider:
 
             except FileNotFoundError as e:
                 if self.verbose:
-                    print(f" Synthetic data files not found: {e}")
+                    ClinicalLogger.warning("Synthetic data files not found", error=str(e))
                 return None, None, None
         else:
             # Use real MIMIC data exports
@@ -321,9 +321,10 @@ class DataProvider:
 
             except FileNotFoundError as e:
                 if self.verbose:
-                    print(f" MIMIC data export files not found: {e}")
-                    print(
-                        "Please run the data processing notebook to export data first")
+                    ClinicalLogger.warning("MIMIC data export files not found", error=str(e))
+                    ClinicalLogger.info(
+                        "Please run the data processing notebook to export data first"
+                    )
                 return None, None, None
 
     def get_sample_data(self):
@@ -415,14 +416,10 @@ def get_sample_data():
 if __name__ == "__main__":
     # Test the provider
     provider = DataProvider()
-    print(f"Using {provider.get_data_source_type()} data")
+    ClinicalLogger.info("Using data source", source=provider.get_data_source_type())
 
     sample_data = provider.get_sample_data()
     if sample_data:
-        print("\nSample data loaded successfully!")
-        print(f"Sample admission IDs: {sample_data['hadm_ids'][:3]}")
-        print(f"Common diagnoses: {sample_data['diagnoses'][:2]}")
-        print(f"Common labs: {sample_data['labs'][:2]}")
-        print(f"Common medications: {sample_data['meds'][:2]}")
+        ClinicalLogger.info("Sample data loaded successfully")
     else:
-        print("Failed to load sample data")
+        ClinicalLogger.warning("Failed to load sample data")

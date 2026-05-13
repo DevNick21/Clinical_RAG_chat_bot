@@ -52,55 +52,8 @@ vector_stores = {key: val[2] for key, val in model_names.items()}
 
 DEFAULT_K = 5  # Slightly higher for better recall during evaluation
 
-# Retrieval and candidate limits (configurable)
-# - RETRIEVAL_MAX_K: caps the number of documents considered in focused searches
-# - GLOBAL_SEARCH_MAX_K: caps the number of docs returned by global vector search
-# - CANDIDATE_DOC_LIMIT: max docs to consider after metadata filtering
-# - FINAL_DOCS_LIMIT: final number of docs passed to LLM after structuring
-# Streaming variants are tuned for lower latency in streaming endpoints
-RETRIEVAL_MAX_K = 5
-GLOBAL_SEARCH_MAX_K = 20
-CANDIDATE_DOC_LIMIT = 20
-FINAL_DOCS_LIMIT = 5
-
-# Note: the streaming path now uses the same retrieval limits as the
-# non-streaming path. The previous STREAMING_* constants existed
-# because Ollama-on-laptop was prompt-size-bound; gpt-5-nano via
-# Foundry isn't. Removed the parallel constants — both paths read
-# CANDIDATE_DOC_LIMIT / GLOBAL_SEARCH_MAX_K / FINAL_DOCS_LIMIT above.
-
-# Feature flags. Both were disabled in the dissertation-era config for
-# Ollama latency reasons; re-enabled now because:
-#   ENABLE_REPHRASING - multi-turn follow-ups ("and the medications?")
-#       were broken without it. The gpt-5-nano + audit layer catches
-#       the rephrase-hallucination risk that motivated the original
-#       disable.
-#   ENABLE_ENTITY_EXTRACTION - lets the retriever filter by hadm_id /
-#       subject_id when the user mentions one, instead of falling back
-#       to pure semantic search which returns unrelated admissions.
-ENABLE_REPHRASING = True
-ENABLE_ENTITY_EXTRACTION = True
-
-# Logging (set to quiet for max evaluation speed)
-LOG_LEVEL = "info"  # options: quiet, error, warning, info, debug
-
-# Maximum number of chat history messages to keep (reduced for performance)
-# This is used to limit the context size for the LLM
-MAX_CHAT_HISTORY = 60
-
-# Section keywords for entity extraction
-SECTION_KEYWORDS = {
-    "diagnoses": ["diagnoses", "diagnosis", "conditions", "diseases", "dx", "icd", "icd codes", "diagnosis icd"],
-    "procedures": ["procedures", "operations", "surgery", "interventions", "procedures icd"],
-    "labs": ["labs", "laboratory", "test results", "lab results", "tests", "lab", "laboratory results", "lab tests"],
-    "prescriptions": ["medications", "drugs", "prescriptions", "meds", "orders", "emars", "poe", "pharmacy", "medication"],
-    "microbiology": ["microbiology", "cultures", "infections", "micro"],
-    # NOTE: bare "admission" and "admit" intentionally NOT here - they
-    # appear in almost every clinical query as ID-prefix words and would
-    # false-trigger the header-section filter. "admission type" stays
-    # because it's specific enough to be a section signal.
-    "header": ["header", "discharge", "admittime", "dischtime", "admission type"]
-}
+# Operational settings (k limits, flags, log level, section keywords) moved
+# to RAG_chat_pipeline/config/settings.py (CRAG_* env prefix).
 
 # =============================================
 # RAG EVALUATION CONFIGURATION

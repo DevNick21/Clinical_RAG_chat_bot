@@ -10,18 +10,7 @@ from langchain.schema import Document
 from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
 from RAG_chat_pipeline.inference.azure_client import get_llm
-from RAG_chat_pipeline.config.config import (
-    DEFAULT_K,
-    MAX_CHAT_HISTORY,
-    SECTION_KEYWORDS,
-    ENABLE_REPHRASING,
-    ENABLE_ENTITY_EXTRACTION,
-    LOG_LEVEL,
-    RETRIEVAL_MAX_K,
-    GLOBAL_SEARCH_MAX_K,
-    CANDIDATE_DOC_LIMIT,
-    FINAL_DOCS_LIMIT,
-)
+from RAG_chat_pipeline.config.settings import get_settings
 from RAG_chat_pipeline.helper.entity_extraction import extract_entities, extract_context_from_chat_history
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from RAG_chat_pipeline.audit.audit_log import log_request
@@ -30,8 +19,21 @@ from collections import defaultdict
 
 from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
-# Initialize logger level from config
-ClinicalLogger.set_level(LOG_LEVEL)
+_settings = get_settings()
+ClinicalLogger.set_level(_settings.log_level)
+
+DEFAULT_K = _settings.default_k
+MAX_CHAT_HISTORY = _settings.max_chat_history
+SECTION_KEYWORDS = _settings.section_keywords
+ENABLE_REPHRASING = _settings.enable_rephrasing
+ENABLE_ENTITY_EXTRACTION = _settings.enable_entity_extraction
+RETRIEVAL_MAX_K = _settings.retrieval_max_k
+GLOBAL_SEARCH_MAX_K = _settings.global_search_max_k
+CANDIDATE_DOC_LIMIT = _settings.candidate_doc_limit
+FINAL_DOCS_LIMIT = _settings.final_docs_limit
+STREAMING_CANDIDATE_DOC_LIMIT = _settings.streaming_candidate_doc_limit
+STREAMING_GLOBAL_SEARCH_MAX_K = _settings.streaming_global_search_max_k
+STREAMING_FINAL_DOCS_LIMIT = _settings.streaming_final_docs_limit
 
 
 class _EmbCache:

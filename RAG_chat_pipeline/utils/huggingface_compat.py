@@ -16,11 +16,9 @@ def patch_huggingface_hub():
 
         # Only patch if cached_download is missing
         if hasattr(huggingface_hub, 'cached_download'):
-            print("[OK] cached_download already available, no patching needed")
             return
 
         if not hasattr(huggingface_hub, 'hf_hub_download'):
-            print("[FAIL] Neither cached_download nor hf_hub_download available")
             return
 
         from huggingface_hub import hf_hub_download
@@ -77,10 +75,10 @@ def patch_huggingface_hub():
 
         # Add the compatibility function
         huggingface_hub.cached_download = cached_download
-        print("[OK] Applied huggingface-hub compatibility patch: cached_download -> hf_hub_download")
+        return
 
-    except Exception as e:
-        print(f" Could not apply huggingface-hub compatibility patch: {e}")
+    except Exception:
+        return
 
 
 # Apply the patch when this module is imported
