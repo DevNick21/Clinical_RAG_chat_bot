@@ -84,6 +84,16 @@ param apiKeyValue string
 @secure()
 param modelApiKeyValue string
 
+@description('Object ID (UUID) of the principal running this deploy. Granted Key Vault Secrets Officer on the new vault so the deployer can read/rotate secrets via az keyvault secret commands. deploy.sh fills this in via `az ad signed-in-user show --query id -o tsv`.')
+param deployerObjectId string
+
+@description('Type of the deployer principal. "User" for interactive az login, "ServicePrincipal" for CI / SP-based deploys.')
+@allowed([
+  'User'
+  'ServicePrincipal'
+])
+param deployerPrincipalType string = 'User'
+
 // ---- Derived names ----------------------------------------------------
 // ACR names must be alphanumeric only, 5-50 chars, globally unique.
 var acrName = toLower(replace('${baseName}acr', '-', ''))
@@ -97,6 +107,7 @@ var acaAppName = '${baseName}-api'
 // Built-in Azure role definition GUIDs (stable across all subscriptions)
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var roleKvSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
+var roleKvSecretsOfficer = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 var roleBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
 // ---- Existing resources -----------------------------------------------
@@ -164,6 +175,20 @@ resource kvSecretsAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01
     principalId: mi.properties.principalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleKvSecretsUser)
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Deployer -> KV (read + write secret values, so the human running
+// deploy.sh can rotate / verify secrets via `az keyvault secret`
+// commands. Without this, Bicep can still write secrets via the
+// control plane, but no-one can read them back.)
+resource kvSecretsOfficerForDeployer 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: kv
+  name: guid(kv.id, deployerObjectId, 'KvSecretsOfficer')
+  properties: {
+    principalId: deployerObjectId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleKvSecretsOfficer)
+    principalType: deployerPrincipalType
   }
 }
 

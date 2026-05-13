@@ -64,6 +64,17 @@ ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-}"
 
 echo "==> Deploying base=${BASE_NAME} image=${IMAGE_REF}"
 
+# Deployer's AAD object id - so the Bicep can grant them
+# Key Vault Secrets Officer on the new vault and they can
+# `az keyvault secret show` afterwards.
+DEPLOYER_OID=$(az ad signed-in-user show --query id -o tsv)
+if [[ -z "$DEPLOYER_OID" ]]; then
+  echo "ERROR: could not resolve deployer object id via az ad signed-in-user." >&2
+  echo "       (If you're deploying from CI as a service principal, set it manually" >&2
+  echo "        and pass deployerPrincipalType=ServicePrincipal too.)" >&2
+  exit 3
+fi
+
 # ---- Stage 1: infrastructure + secrets ------------------------------
 # Secrets live INSIDE the Bicep deploy (as @secure() params -> KV secret
 # resources) so they exist before ACA tries to resolve its secret refs.
@@ -83,6 +94,7 @@ az deployment group create \
       allowedOrigins="$ALLOWED_ORIGINS" \
       apiKeyValue="$API_KEY" \
       modelApiKeyValue="$MODEL_API_KEY" \
+      deployerObjectId="$DEPLOYER_OID" \
   --output none
 
 # ---- Stage 2: build & push image ------------------------------------
