@@ -1,0 +1,75 @@
+# Anything not needed at runtime in the container.
+# The Dockerfile only COPY's specific paths, but listing exclusions
+# here also speeds up the build context send to the daemon (otherwise
+# Docker streams ~10GB of venv + models + data over the local socket).
+
+# ---- Big stuff that would bloat the build context ----
+venv/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# ---- Local dev data — runtime fetches from Blob ----
+mimic_sample_1000/
+synthetic_data/
+vector_stores/
+audit/
+report/results/
+
+# ---- Models: only the winner is COPY'd in the Dockerfile, exclude
+#      every other HF snapshot from the context.
+models/all-MiniLM-L6-v2/
+models/all-mpnet-base-v2/
+models/BioBERT-mnli-snli-scinli-scitail-mednli-stsb/
+models/BioLORD-2023-C/
+models/e5-base-v2/
+models/multi-qa-mpnet-base-cos-v1/
+models/S-PubMedBert-MedQuAD/
+models/S-PubMedBert-MS-MARCO/
+
+# ---- Stuff not used by the Flask API ----
+benchmarks/
+notebooks/
+data_engineering/
+report/
+platform/frontend/
+tests/
+
+# ---- Dev tooling, docs, scripts ----
+.git/
+.github/
+.vscode/
+.idea/
+*.md
+!Dockerfile
+*.bat
+*.sh
+*.ipynb
+.gitignore
+.dockerignore
+Dockerfile.*
+LICENSE
+pyproject.toml
+setup.py
+*.egg-info/
+clinical_rag_production.egg-info/
+
+# ---- Secrets — must NEVER end up in an image layer ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Ad hoc / experimental ----
+run_model.py
+project_files/
+STATUS.md
+AUDIT_AND_PLAN.md
+CLAUDE.md
+CLINICAL_RAG_DECOMPOSITION_MAP.md
+PHASE_*.md
+STARTUP_CHECKLIST.md
+plan_*.md

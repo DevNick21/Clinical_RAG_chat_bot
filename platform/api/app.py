@@ -25,6 +25,19 @@ except Exception as e:
     chatbot = None
 
 
+@app.route('/health', methods=['GET'])
+def health():
+    """Liveness + readiness probe for ACA / load balancers.
+
+    Returns 200 only when the RAG bot finished initialising (embedding
+    model + FAISS + chunked docs all loaded). 503 otherwise so the
+    orchestrator holds traffic until we're warm.
+    """
+    if chatbot is None:
+        return jsonify({"status": "unready", "reason": "chatbot init failed or in progress"}), 503
+    return jsonify({"status": "ok"}), 200
+
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     """Handle streaming chat requests (default)"""
