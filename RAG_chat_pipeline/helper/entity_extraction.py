@@ -1,14 +1,101 @@
-"""Entity extraction utilities"""
+"""Entity extraction utilities.
+
+Two-tier extractor: regex first (fast, free, deterministic), LLM fallback
+only when regex finds nothing useful. The LLM call is intentionally rare
+because most clinical lookups contain explicit IDs or section keywords
+that regex catches outright.
+"""
+import json
+import logging
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from RAG_chat_pipeline.config.config import SECTION_KEYWORDS
+
+logger = logging.getLogger(__name__)
+
+# Sections the LLM is allowed to predict. Anything else gets dropped.
+_VALID_SECTIONS = {
+    "diagnoses",
+    "procedures",
+    "labs",
+    "prescriptions",
+    "microbiology",
+    "header",
+    "transfers",
+}
+
+# Tightly-scoped JSON-only prompt. Keeps the LLM's job small so even at
+# minimal reasoning effort it returns a clean, parseable answer in 1-2s.
+_LLM_EXTRACTION_PROMPT = """Extract structured entities from this clinical question. Return ONLY valid JSON, no commentary.
+
+Question: {query}
+
+Schema (use null when the field cannot be determined confidently):
+{{
+  "hadm_id":    integer or null,
+  "subject_id": integer or null,
+  "section":    one of ["diagnoses","procedures","labs","prescriptions","microbiology","header","transfers"] or null
+}}
+
+Return only the JSON object. Do not wrap in markdown fences."""
+
+
+def _llm_extract_entities(query: str, llm: Any) -> Optional[Dict[str, Any]]:
+    """Best-effort LLM-driven extraction. Returns None on any failure.
+
+    Strips common code-fence wrapping that chat models add even when told
+    not to. Validates the section against the allowed enum so a
+    hallucinated section name doesn't poison downstream filtering.
+    """
+    try:
+        prompt = _LLM_EXTRACTION_PROMPT.format(query=query)
+        response = llm.invoke(prompt)
+        text = getattr(response, "content", None) or str(response)
+        text = text.strip()
+
+        # Strip ```json ... ``` or ``` ... ``` if the model ignored the
+        # 'no fences' instruction.
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+            text = text.strip()
+
+        parsed = json.loads(text)
+        if not isinstance(parsed, dict):
+            return None
+
+        section = parsed.get("section")
+        if section is not None and section not in _VALID_SECTIONS:
+            section = None
+
+        return {
+            "hadm_id":    parsed.get("hadm_id") if isinstance(parsed.get("hadm_id"), int) else None,
+            "subject_id": parsed.get("subject_id") if isinstance(parsed.get("subject_id"), int) else None,
+            "section":    section,
+        }
+    except (json.JSONDecodeError, ValueError, AttributeError) as e:
+        logger.debug("LLM entity extraction failed (non-fatal): %s", e)
+        return None
+    except Exception as e:
+        # Catch-all: never block the main flow on an extraction-LLM hiccup.
+        logger.warning("Unexpected LLM entity extraction error: %s", e)
+        return None
 
 
 def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dict[str, Any]:
-    """Extract entities from a user query using regex only
+    """Extract entities from a user query.
 
-    Only regex-based extraction for robustness and predictability.
-    Now includes subject_id extraction for patient-level queries.
+    Two-tier:
+      1. Regex first — catches explicit IDs ("admission 21342515",
+         "patient 10006508", any 8-digit number) and section keywords
+         from SECTION_KEYWORDS. Sub-millisecond, free, deterministic.
+      2. LLM fallback — only fires when regex finds NOTHING useful
+         AND use_llm_fallback=True AND a usable llm is provided.
+         Handles indirect phrasing like "the diabetic patient's most
+         recent admission" or "the cardiac case's medications".
+         Strict JSON-only prompt, validated against the allowed
+         section enum.
     """
     print(f"Extracting entities from: '{query}'")
 
@@ -75,8 +162,29 @@ def extract_entities(query: str, use_llm_fallback: bool = True, llm=None) -> Dic
             print(f" Regex found section: {section}")
             break
 
+    # LLM fallback — only fires when regex found absolutely nothing.
+    # By construction this skips the common path (queries with explicit
+    # IDs or section keywords), so the LLM round-trip cost is paid only
+    # for genuinely ambiguous free-form clinical questions.
+    nothing_useful = (
+        result["hadm_id"] is None
+        and result["subject_id"] is None
+        and result["section"] is None
+    )
+    if nothing_useful and use_llm_fallback and llm is not None:
+        llm_result = _llm_extract_entities(query, llm)
+        if llm_result and any(llm_result.get(k) for k in ("hadm_id", "subject_id", "section")):
+            # Merge LLM-found values, never overwriting a regex hit
+            for key in ("hadm_id", "subject_id", "section"):
+                if result[key] is None and llm_result.get(key) is not None:
+                    result[key] = llm_result[key]
+            # LLM-derived results are medium confidence (vs high for regex hits)
+            result["confidence"] = "medium"
+            result["reasoning"] = "LLM fallback extracted entities from free-form question"
+            print(f" LLM fallback found: {llm_result}")
+
     # Set final confidence based on what was found
-    if result["hadm_id"] is None and result["section"] is None:
+    if result["hadm_id"] is None and result["section"] is None and result["subject_id"] is None:
         result["reasoning"] = "No entities extracted from query"
 
     print(f"Final extraction result: {result}")
