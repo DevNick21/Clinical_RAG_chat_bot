@@ -19,6 +19,12 @@ from RAG_chat_pipeline.utils.logger import ClinicalLogger
 _settings = get_settings()
 ClinicalLogger.set_level(_settings.log_level)
 
+# Sentinel for "caller did not pass this kwarg" so that injecting None
+# can mean "explicitly disable" (e.g., audit_llm=None to skip the
+# LLM-as-judge step in tests, distinct from "fall back to ENV-driven
+# default behaviour").
+_UNSET = object()
+
 DEFAULT_K = _settings.default_k
 MAX_CHAT_HISTORY = _settings.max_chat_history
 SECTION_KEYWORDS = _settings.section_keywords
@@ -33,38 +39,70 @@ ENABLE_LLM_AUDIT = _settings.enable_llm_audit
 
 
 class ClinicalRAGBot:
-    def __init__(self, vectorstore: FAISS, clinical_emb, chunked_docs: List):
+    def __init__(self, vectorstore: FAISS, clinical_emb, chunked_docs: List,
+                 *, llm=_UNSET, fast_llm=_UNSET, audit_llm=_UNSET):
+        """Compose the orchestrator over its three sub-services.
+
+        Three optional keyword-only LLM params support test injection
+        without touching production callers (which still pass only the
+        positional vectorstore / clinical_emb / chunked_docs trio):
+
+          llm        — clinical answer model.
+                       Default (unset): get_llm() factory.
+                       Pass any object to inject; None is a valid value
+                       and disables the answer model entirely (will
+                       break clinical_search, only useful if you mock
+                       the chain elsewhere).
+
+          fast_llm   — entity-extract + rephrase.
+                       Default (unset): get_fast_llm(), falling back to
+                       `llm` when FAST_MODEL_DEPLOYMENT_NAME is unset
+                       (TTFP regresses ~1-2s).
+                       Pass None to force fallback to `llm`.
+
+          audit_llm  — post-stream LLM-as-judge.
+                       Default (unset): get_audit_llm() when
+                       ENABLE_LLM_AUDIT, else None.
+                       Pass None to explicitly disable audit (tests).
+
+        Tests pass FakeLLM instances for any/all three to bypass network
+        + Azure auth entirely. See V3_PLAN.md for the test fixture pattern.
+        """
         self.vectorstore = vectorstore
         self.clinical_emb = clinical_emb
         self.chunked_docs = chunked_docs
 
         # Three model roles, one Foundry resource. See
         # inference/azure_client.py for the full rationale.
-        #   self.llm        — reasoning model, clinical answer
-        #   self.fast_llm   — small non-reasoning, entity-extract + rephrase
-        #   self.audit_llm  — capable non-reasoning, post-stream LLM-as-judge
-        # The fast / audit clients are constructed lazily inside try blocks
-        # so a missing FAST_MODEL_DEPLOYMENT_NAME or AUDIT_MODEL_DEPLOYMENT_NAME
-        # degrades gracefully (the answer model takes over those calls)
-        # instead of breaking process boot.
-        self.llm = get_llm()
-        try:
-            self.fast_llm = get_fast_llm()
-        except RuntimeError as e:
-            ClinicalLogger.warning(
-                "FAST model not configured; falling back to answer model "
-                "for entity extraction / rephrasing (TTFP will regress)",
-                error=str(e),
-            )
-            self.fast_llm = self.llm
-        try:
-            self.audit_llm = get_audit_llm() if ENABLE_LLM_AUDIT else None
-        except RuntimeError as e:
-            ClinicalLogger.warning(
-                "AUDIT model not configured; LLM-as-judge audit disabled",
-                error=str(e),
-            )
-            self.audit_llm = None
+        self.llm = get_llm() if llm is _UNSET else llm
+
+        if fast_llm is _UNSET:
+            try:
+                self.fast_llm = get_fast_llm()
+            except RuntimeError as e:
+                ClinicalLogger.warning(
+                    "FAST model not configured; falling back to answer model "
+                    "for entity extraction / rephrasing (TTFP will regress)",
+                    error=str(e),
+                )
+                self.fast_llm = self.llm
+        else:
+            self.fast_llm = fast_llm if fast_llm is not None else self.llm
+
+        if audit_llm is _UNSET:
+            if ENABLE_LLM_AUDIT:
+                try:
+                    self.audit_llm = get_audit_llm()
+                except RuntimeError as e:
+                    ClinicalLogger.warning(
+                        "AUDIT model not configured; LLM-as-judge audit disabled",
+                        error=str(e),
+                    )
+                    self.audit_llm = None
+            else:
+                self.audit_llm = None
+        else:
+            self.audit_llm = audit_llm
 
         # Retrieval layer: indices, filter, semantic search, ID preflight, and
         # the embedding cache all live behind this single object.
