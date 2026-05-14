@@ -1,0 +1,21 @@
+# Terraform: never commit local state, plan output, or anything with
+# secrets in cleartext. State lives on the faissprod azurerm backend
+# (see backend.tf).
+#
+# .terraform.lock.hcl IS committed (per HashiCorp guidance) so provider
+# versions stay reproducible across machines.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+# Captured plan/apply transcripts from local iteration — keep out of git.
+*.out

@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars (gitignored) or pass via -var on the CLI.
+# Secrets (api_key_value, model_api_key_value, fast/audit_model_api_key_value)
+# should be injected via TF_VAR_<name> env vars from .env, not committed.
+
+# ---- Required (no default) ----------------------------------------------
+foundry_endpoint      = "https://<your-foundry>.services.ai.azure.com/openai/v1"
+model_deployment_name = "gpt-5-nano"
+deployer_object_id    = "00000000-0000-0000-0000-000000000000"  # az ad signed-in-user show --query id -o tsv
+# api_key_value         = via TF_VAR_api_key_value
+# model_api_key_value   = via TF_VAR_model_api_key_value
+
+# ---- Optional overrides -------------------------------------------------
+# resource_group_name  = "msc_project"
+# base_name            = "msc-rag-v2"
+# location             = "uksouth"
+# reasoning_effort     = "low"
+# max_output_tokens    = 16384
+# allowed_origins      = "https://my-frontend.example.com"
+# min_replicas         = 1
+# max_replicas         = 4
+
+# ---- Foundry FAST/AUDIT (optional three-model split) --------------------
+# foundry_account_name        = "your-foundry-account"
+# foundry_resource_group      = "msc_project"      # if different from app RG
+# fast_model_deployment_name  = "gpt-5-mini"
+# audit_model_deployment_name = "gpt-5-nano"
+# deploy_fast_model           = true
+# deploy_audit_model          = true
