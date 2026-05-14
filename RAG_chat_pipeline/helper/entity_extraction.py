@@ -13,7 +13,9 @@ from typing import Any, Dict, List, Optional
 from RAG_chat_pipeline.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
-SECTION_KEYWORDS = get_settings().section_keywords
+_SETTINGS = get_settings()
+SECTION_KEYWORDS = _SETTINGS.section_keywords
+_ENABLE_LLM_FALLBACK = _SETTINGS.enable_llm_entity_extraction
 
 # Sections the LLM is allowed to predict. Anything else gets dropped.
 _VALID_SECTIONS = {
@@ -194,12 +196,16 @@ def extract_entities(query: str, llm=None) -> Dict[str, Any]:
     # By construction this skips the common path (queries with explicit
     # IDs or section keywords), so the LLM round-trip cost is paid only
     # for genuinely ambiguous free-form clinical questions.
+    #
+    # TTFP-sensitive: this is a synchronous reasoning-model round-trip
+    # that sits BEFORE retrieval. Gated by CRAG_ENABLE_LLM_ENTITY_EXTRACTION
+    # so the streaming path can opt out and keep TTFP tight.
     nothing_useful = (
         result["hadm_id"] is None
         and result["subject_id"] is None
         and result["section"] is None
     )
-    if nothing_useful and llm is not None:
+    if nothing_useful and llm is not None and _ENABLE_LLM_FALLBACK:
         llm_result = _llm_extract_entities(query, llm)
         if llm_result and any(llm_result.get(k) for k in ("hadm_id", "subject_id", "section")):
             # Merge LLM-found values, never overwriting a regex hit

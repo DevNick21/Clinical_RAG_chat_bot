@@ -5,14 +5,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from typing import List
-from RAG_chat_pipeline.inference.azure_client import get_llm
+from RAG_chat_pipeline.inference.azure_client import get_llm, get_fast_llm, get_audit_llm
 from RAG_chat_pipeline.config.settings import get_settings
 from RAG_chat_pipeline.core.retriever import Retriever
 from RAG_chat_pipeline.core.content_processor import ContentProcessor
 from RAG_chat_pipeline.core.conversation_manager import ConversationManager
 from RAG_chat_pipeline.helper.invoke import safe_llm_invoke
 from RAG_chat_pipeline.audit.audit_log import log_request
-from RAG_chat_pipeline.audit.claim_checker import check_claims
+from RAG_chat_pipeline.audit.claim_checker import check_claims, llm_judge_claims
 
 from RAG_chat_pipeline.utils.logger import ClinicalLogger
 
@@ -28,6 +28,8 @@ RETRIEVAL_MAX_K = _settings.retrieval_max_k
 GLOBAL_SEARCH_MAX_K = _settings.global_search_max_k
 CANDIDATE_DOC_LIMIT = _settings.candidate_doc_limit
 FINAL_DOCS_LIMIT = _settings.final_docs_limit
+ENABLE_STREAMING_WARMUP_EVENT = _settings.enable_streaming_warmup_event
+ENABLE_LLM_AUDIT = _settings.enable_llm_audit
 
 
 class ClinicalRAGBot:
@@ -36,11 +38,33 @@ class ClinicalRAGBot:
         self.clinical_emb = clinical_emb
         self.chunked_docs = chunked_docs
 
-        # Initialize LLM from Azure AI Foundry (deployment/key/endpoint via .env).
-        # Reasoning effort, model, and credentials all come from .env via the
-        # factory. Streaming is decided per-call in the Responses API, not at
-        # client construction.
+        # Three model roles, one Foundry resource. See
+        # inference/azure_client.py for the full rationale.
+        #   self.llm        — reasoning model, clinical answer
+        #   self.fast_llm   — small non-reasoning, entity-extract + rephrase
+        #   self.audit_llm  — capable non-reasoning, post-stream LLM-as-judge
+        # The fast / audit clients are constructed lazily inside try blocks
+        # so a missing FAST_MODEL_DEPLOYMENT_NAME or AUDIT_MODEL_DEPLOYMENT_NAME
+        # degrades gracefully (the answer model takes over those calls)
+        # instead of breaking process boot.
         self.llm = get_llm()
+        try:
+            self.fast_llm = get_fast_llm()
+        except RuntimeError as e:
+            ClinicalLogger.warning(
+                "FAST model not configured; falling back to answer model "
+                "for entity extraction / rephrasing (TTFP will regress)",
+                error=str(e),
+            )
+            self.fast_llm = self.llm
+        try:
+            self.audit_llm = get_audit_llm() if ENABLE_LLM_AUDIT else None
+        except RuntimeError as e:
+            ClinicalLogger.warning(
+                "AUDIT model not configured; LLM-as-judge audit disabled",
+                error=str(e),
+            )
+            self.audit_llm = None
 
         # Retrieval layer: indices, filter, semantic search, ID preflight, and
         # the embedding cache all live behind this single object.
@@ -50,6 +74,7 @@ class ClinicalRAGBot:
         # history shape/truncation, and follow-up rephrasing.
         self.conversation = ConversationManager(
             llm=self.llm,
+            fast_llm=self.fast_llm,
             section_keywords=SECTION_KEYWORDS,
             max_chat_history=MAX_CHAT_HISTORY,
             enable_rephrasing=ENABLE_REPHRASING,
@@ -88,43 +113,73 @@ ANSWERING RULES (apply in order):
 Context:
 {context}"""
 
-        # Create chains
-        self.question_answer_chain = None
+        # Pre-build the QA chain ONCE at init. The system prompt
+        # carries an unresolved {context_instruction} placeholder that
+        # gets filled per-request from a small string cache (the only
+        # part that varies on a per-call basis). This removes the
+        # per-request ChatPromptTemplate.from_messages +
+        # create_stuff_documents_chain construction from the TTFP path.
+        self._qa_chain = self._build_qa_chain()
 
-    def _create_clinical_prompt(self, hadm_id=None, subject_id=None):
-        """Create dynamic clinical prompt with admission/patient context.
+        # (hadm_ids_tuple, subject_ids_tuple) -> context_instruction str.
+        # Small bounded cache: most prod traffic concentrates on a few
+        # admission IDs per session, so this hits often.
+        self._instruction_cache: dict = {}
 
-        `hadm_id` and `subject_id` may be int OR list[int] (multi-ID
-        comparison query). The list is rendered into the instruction
-        text so the model knows the full scope of the filter.
+    def _build_qa_chain(self):
+        """Build the stuff-documents chain once. {context_instruction}
+        stays unfilled so we can substitute per-request via str input.
         """
-        hadm_ids = Retriever.to_id_list(hadm_id)
-        subject_ids = Retriever.to_id_list(subject_id)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", self.base_clinical_qa_prompt),
+            ("human", "{input}"),
+        ])
+        return create_stuff_documents_chain(self.llm, prompt)
+
+    def _context_instruction(self, hadm_id=None, subject_id=None) -> str:
+        """Per-request system-prompt rider, memoised by (hadm_ids, subject_ids)."""
+        hadm_ids = tuple(Retriever.to_id_list(hadm_id))
+        subject_ids = tuple(Retriever.to_id_list(subject_id))
+        key = (hadm_ids, subject_ids)
+        cached = self._instruction_cache.get(key)
+        if cached is not None:
+            return cached
 
         if hadm_ids:
             ids_str = ", ".join(str(i) for i in hadm_ids)
             label = "admission IDs" if len(hadm_ids) > 1 else "admission ID"
-            context_instruction = f"""You are analyzing documents specifically for {label} {ids_str}. The provided documents are filtered for {"these admissions" if len(hadm_ids) > 1 else "this admission"}, so they ARE relevant to the query.
-
-IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the admission ID. Never state "Source Citations: None provided" unless no documents were found."""
+            instruction = (
+                f"You are analyzing documents specifically for {label} {ids_str}. "
+                f"The provided documents are filtered for "
+                f"{'these admissions' if len(hadm_ids) > 1 else 'this admission'}, "
+                "so they ARE relevant to the query.\n\n"
+                "IMPORTANT: ALWAYS include source citations from each document, "
+                "even if they don't explicitly repeat the admission ID. Never "
+                "state \"Source Citations: None provided\" unless no documents were found."
+            )
         elif subject_ids:
             ids_str = ", ".join(str(i) for i in subject_ids)
             label = "patient/subject IDs" if len(subject_ids) > 1 else "patient/subject ID"
-            context_instruction = f"""You are analyzing documents specifically for {label} {ids_str}. The provided documents are filtered for {"these patients" if len(subject_ids) > 1 else "this patient"}, so they ARE relevant to the query.
-
-IMPORTANT: ALWAYS include source citations from each document, even if they don't explicitly repeat the patient ID. Never state "Source Citations: None provided" unless no documents were found."""
+            instruction = (
+                f"You are analyzing documents specifically for {label} {ids_str}. "
+                f"The provided documents are filtered for "
+                f"{'these patients' if len(subject_ids) > 1 else 'this patient'}, "
+                "so they ARE relevant to the query.\n\n"
+                "IMPORTANT: ALWAYS include source citations from each document, "
+                "even if they don't explicitly repeat the patient ID. Never "
+                "state \"Source Citations: None provided\" unless no documents were found."
+            )
         else:
-            context_instruction = "You are analyzing medical documents from the MIMIC-IV database. ALWAYS include source citations for any information provided."
+            instruction = (
+                "You are analyzing medical documents from the MIMIC-IV database. "
+                "ALWAYS include source citations for any information provided."
+            )
 
-        prompt_text = self.base_clinical_qa_prompt.format(
-            context_instruction=context_instruction,
-            context="{context}"
-        )
-
-        return ChatPromptTemplate.from_messages([
-            ("system", prompt_text),
-            ("human", "{input}")
-        ])
+        # Bound cache (defensive; in practice we expect <100 unique IDs/session).
+        if len(self._instruction_cache) > 256:
+            self._instruction_cache.clear()
+        self._instruction_cache[key] = instruction
+        return instruction
 
     @staticmethod
     def _safe_audit_log(**kwargs):
@@ -220,9 +275,18 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
     def _audit_and_claim_check(self, question, audit_source_docs, answer, metadata):
         """Run claim-check + audit log; tolerant of failure on either step.
 
-        Pulls reasoning summaries / response_id from the LLM (set by the
-        Responses API client). Used by both clinical_search and chat_stream
-        so the audit shape stays consistent across endpoints.
+        Two-stage faithfulness check:
+          1. Regex pre-filter (`check_claims`) — always runs, sub-ms.
+          2. LLM-as-judge (`llm_judge_claims`) on the capable audit
+             model — runs only when there's something to judge and
+             `self.audit_llm` is configured.
+
+        The judge can downgrade a regex flag to "supported" (false
+        positive) or confirm "not_supported" / "unclear" with a one-line
+        reason that lands in the audit log. The audit_id field flowing
+        back to the caller still contains the regex-flagged sentences;
+        the richer judge output goes into metadata for downstream
+        analytics.
 
         Returns (reasoning_summaries, response_id, unsupported_claims, audit_id).
         """
@@ -233,6 +297,29 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
         except Exception as claim_err:
             ClinicalLogger.warning(f"Claim check failed: {claim_err}")
             unsupported_claims = []
+
+        # LLM-as-judge second pass. Runs only on what regex flagged, so
+        # cost is bounded (typically 0-3 sentences) and post-stream, so
+        # it never touches TTFP.
+        judge_verdicts: list = []
+        if unsupported_claims and self.audit_llm is not None:
+            try:
+                judge_verdicts = llm_judge_claims(
+                    unsupported_claims, audit_source_docs, self.audit_llm,
+                )
+            except Exception as judge_err:
+                ClinicalLogger.warning(f"LLM-as-judge audit failed: {judge_err}")
+                judge_verdicts = []
+
+        # Persist judge output alongside the audit log so reviewers see
+        # both the regex flag and the model's verdict for each sentence.
+        audit_metadata = dict(metadata or {})
+        if judge_verdicts:
+            audit_metadata["llm_judge_verdicts"] = judge_verdicts
+            audit_metadata["llm_judge_model"] = getattr(
+                self.audit_llm, "model_name", None
+            ) or getattr(self.audit_llm, "model", None)
+
         audit_id = self._safe_audit_log(
             question=question,
             retrieved_docs=audit_source_docs,
@@ -240,11 +327,14 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             answer=answer,
             unsupported_claims=unsupported_claims,
             response_id=response_id,
-            metadata=metadata,
+            metadata=audit_metadata,
         )
         if unsupported_claims:
+            n_unsup = sum(1 for v in judge_verdicts if v.get("verdict") == "not_supported")
             ClinicalLogger.warning(
-                f"Flagged {len(unsupported_claims)} unsupported claim(s) for review; audit_id={audit_id}")
+                f"Flagged {len(unsupported_claims)} regex-suspect claim(s); "
+                f"judge marked {n_unsup} not_supported; audit_id={audit_id}",
+            )
         return reasoning_summaries, response_id, unsupported_claims, audit_id
 
     def clinical_search(self, question, hadm_id=None, subject_id=None, section=None, k=DEFAULT_K, chat_history=None, original_question=None):
@@ -339,14 +429,19 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             audit_source_docs = list(retrieved_docs)
             context_docs = self._build_context_doc(retrieved_docs)
 
-            # Generate answer
+            # Generate answer (uses the pre-built chain; only the
+            # {context_instruction} system-prompt rider varies per call).
             ClinicalLogger.info("Generating clinical response...")
             try:
-                clinical_prompt = self._create_clinical_prompt(hadm_id, subject_id)
-                dynamic_qa_chain = create_stuff_documents_chain(self.llm, clinical_prompt)
+                context_instruction = self._context_instruction(hadm_id, subject_id)
                 answer = safe_llm_invoke(
-                    dynamic_qa_chain,
-                    {"input": question, "context": context_docs, "chat_history": chat_history},
+                    self._qa_chain,
+                    {
+                        "input": question,
+                        "context": context_docs,
+                        "chat_history": chat_history,
+                        "context_instruction": context_instruction,
+                    },
                     fallback_message="Unable to generate clinical response due to system error.",
                     context="Clinical QA",
                 )
@@ -396,14 +491,15 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                 question, k, section=section)
 
             if retrieved_docs:
-                # Create dynamic prompt for fallback too
-                clinical_prompt = self._create_clinical_prompt(hadm_id, None)
-                fallback_qa_chain = create_stuff_documents_chain(
-                    self.llm, clinical_prompt)
-
+                context_instruction = self._context_instruction(hadm_id, None)
                 answer = safe_llm_invoke(
-                    fallback_qa_chain,
-                    {"input": question, "context": retrieved_docs, "chat_history": []},
+                    self._qa_chain,
+                    {
+                        "input": question,
+                        "context": retrieved_docs,
+                        "chat_history": [],
+                        "context_instruction": context_instruction,
+                    },
                     fallback_message="I found some relevant information, but cannot provide a detailed analysis due to technical limitations.",
                     context="Fallback search"
                 )
@@ -519,11 +615,18 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Process question and get context
             performance_start = time.time()
             chat_history_processed = processed_chat_history or []
+            # Per-stage timings for TTFP analysis. Surfaced in the final
+            # metadata event and the structured log, so we can spot
+            # regressions without re-instrumenting on every change.
+            timings: dict = {}
 
+            t = time.time()
             # Validate and extract parameters
             question, hadm_id, subject_id, section, k, extracted_entities = self.conversation.extract_and_validate_params(
                 message, None, None, None, DEFAULT_K)
+            timings["extract_params_ms"] = round((time.time() - t) * 1000, 1)
 
+            t = time.time()
             # Process chat context if conversational
             original_question = question
             if chat_history_processed:
@@ -532,11 +635,13 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             else:
                 search_question = question
                 chat_context = {}
+            timings["chat_context_ms"] = round((time.time() - t) * 1000, 1)
 
             # Streaming reuses the non-streaming retrieval limits — gpt-5-nano's
             # latency is reasoning-bound, not prompt-size-bound, so the
             # dissertation-era STREAMING_* constants didn't help.
             k = min(k, RETRIEVAL_MAX_K)
+            t = time.time()
             candidate_docs = self.retriever.filter_documents(
                 hadm_id, subject_id, section, limit=CANDIDATE_DOC_LIMIT)
 
@@ -556,6 +661,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             if len(retrieved_docs) > FINAL_DOCS_LIMIT:
                 retrieved_docs = retrieved_docs[:FINAL_DOCS_LIMIT]
+            timings["retrieval_ms"] = round((time.time() - t) * 1000, 1)
 
             # Pre-flight: if the user named admission/subject IDs and NONE of
             # the retrieved docs match, yield a clean SSE rejection instead
@@ -585,24 +691,52 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
             # Keep unstructured docs for audit/claim-check (the merged doc loses citations).
             audit_source_docs = list(retrieved_docs)
             context_docs = self._build_context_doc(retrieved_docs)
+            context_instruction = self._context_instruction(hadm_id, subject_id)
 
-            clinical_prompt = self._create_clinical_prompt(hadm_id, subject_id)
-            dynamic_qa_chain = create_stuff_documents_chain(self.llm, clinical_prompt)
+            # Perceived-TTFP win: emit an early SSE event the moment
+            # retrieval completes, BEFORE the LLM's reasoning phase
+            # delays the first output-text delta. The frontend can show
+            # a "Reading N documents…" badge during reasoning instead of
+            # an empty bubble. Off by config-flag if a stricter SSE
+            # contract is needed.
+            pre_llm_ms = round((time.time() - performance_start) * 1000, 1)
+            timings["pre_llm_total_ms"] = pre_llm_ms
+            if ENABLE_STREAMING_WARMUP_EVENT:
+                yield {
+                    "event": "retrieval_done",
+                    "done": False,
+                    "documents_found": len(retrieved_docs),
+                    "pre_llm_ms": pre_llm_ms,
+                }
 
-            ClinicalLogger.info("Starting streaming clinical response...")
+            ClinicalLogger.info(
+                "Starting streaming clinical response...",
+                **timings,
+            )
+            t_first_token = None
+            t_llm_start = time.time()
             full_response = ""
-            for chunk in dynamic_qa_chain.stream({
+            for chunk in self._qa_chain.stream({
                 "input": search_question,
                 "context": context_docs,
                 "chat_history": chat_history_processed,
+                "context_instruction": context_instruction,
             }):
                 if isinstance(chunk, str):
+                    if t_first_token is None and chunk:
+                        t_first_token = time.time()
                     full_response += chunk
                     yield {"content": chunk, "done": False}
                 elif isinstance(chunk, dict) and "answer" in chunk:
                     chunk_text = chunk["answer"]
+                    if t_first_token is None and chunk_text:
+                        t_first_token = time.time()
                     full_response += chunk_text
                     yield {"content": chunk_text, "done": False}
+            if t_first_token is not None:
+                timings["llm_first_token_ms"] = round((t_first_token - t_llm_start) * 1000, 1)
+                timings["ttfp_ms"] = round((t_first_token - performance_start) * 1000, 1)
+            timings["llm_total_ms"] = round((time.time() - t_llm_start) * 1000, 1)
 
             final_answer = ContentProcessor.validate_and_fix_response(
                 full_response, retrieved_docs, hadm_id)
@@ -623,6 +757,7 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
 
             # Send final metadata
             total_time = time.time() - performance_start
+            timings["total_ms"] = round(total_time * 1000, 1)
             yield {
                 "done": True,
                 "metadata": {
@@ -632,7 +767,8 @@ IMPORTANT: ALWAYS include source citations from each document, even if they don'
                     "audit_id": audit_id,
                     "unsupported_claims": unsupported_claims,
                     "reasoning_summaries": reasoning_summaries,
-                    "final_answer": final_answer
+                    "final_answer": final_answer,
+                    "timings": timings,
                 }
             }
 

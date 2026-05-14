@@ -131,11 +131,27 @@ def chat():
             chunk_count = 0
             for chunk in chatbot.chat_stream(user_message, chat_history):
                 chunk_count += 1
-                
+
                 # Format as Server-Sent Events
                 if 'error' in chunk:
                     yield f"data: {json.dumps({'type': 'error', 'content': chunk['error'], 'done': True})}\n\n"
                     break
+                elif chunk.get('event') == 'retrieval_done':
+                    # Early warmup event — emitted as soon as retrieval
+                    # finishes, before the LLM's reasoning phase delays
+                    # the first token. Frontend can render a progress
+                    # badge (or ignore the event entirely).
+                    yield (
+                        "data: "
+                        + json.dumps({
+                            'type': 'status',
+                            'stage': 'retrieval_done',
+                            'documents_found': chunk.get('documents_found', 0),
+                            'pre_llm_ms': chunk.get('pre_llm_ms'),
+                            'done': False,
+                        })
+                        + "\n\n"
+                    )
                 elif 'content' in chunk:
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk['content'], 'done': chunk.get('done', False)})}\n\n"
                 elif 'done' in chunk and chunk['done']:
@@ -143,14 +159,14 @@ def chat():
                     metadata = chunk.get('metadata', {})
                     yield f"data: {json.dumps({'type': 'metadata', 'metadata': metadata, 'done': True})}\n\n"
                     break
-                
+
                 # Periodic flush for better streaming experience
                 if chunk_count % 5 == 0:
                     yield ""  # Empty line to ensure flush
-            
+
             # Ensure stream ends properly
             yield f"data: {json.dumps({'type': 'end', 'done': True})}\n\n"
-            
+
         except Exception as e:
             ClinicalLogger.error("Error in streaming chat", error=str(e))
             yield f"data: {json.dumps({'type': 'error', 'content': 'Streaming error', 'done': True})}\n\n"

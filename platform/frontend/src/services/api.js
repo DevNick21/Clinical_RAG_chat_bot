@@ -150,6 +150,20 @@ class ApiService {
                     done: data.done
                   });
                 }
+              } else if (data.type === 'status') {
+                // Pre-LLM warmup signal (e.g. retrieval_done). Surfaced
+                // to the UI so it can show a "Reading N docs…" badge
+                // during the model's reasoning phase. UI consumers can
+                // ignore by checking chunk.stage.
+                if (onChunk) {
+                  onChunk({
+                    status: true,
+                    stage: data.stage,
+                    documentsFound: data.documents_found,
+                    preLlmMs: data.pre_llm_ms,
+                    done: false,
+                  });
+                }
               } else if (data.type === 'metadata') {
                 metadata = data.metadata || {};
                 console.log("Received metadata:", metadata);
