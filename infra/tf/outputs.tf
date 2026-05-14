@@ -3,8 +3,11 @@
 # `az deployment group show ... --query "properties.outputs.X.value"`).
 
 output "app_url" {
-  description = "Public HTTPS URL of the Container App."
-  value       = "https://${azurerm_container_app.api.latest_revision_fqdn}"
+  description = "Public HTTPS URL of the Container App (stable FQDN; doesn't change between revisions)."
+  # ingress[0].fqdn is the stable main FQDN. latest_revision_fqdn changes
+  # every revision and made `terraform plan` show output drift after every
+  # `az containerapp update --image` run from deploy.sh stage 3.
+  value       = "https://${azurerm_container_app.api.ingress[0].fqdn}"
 }
 
 output "acr_login_server" {
