@@ -41,6 +41,17 @@ sqlalchemy==2.0.41
 
 # ---- LLM Integration ----
 ollama==0.5.1
+# openai SDK used directly by inference/azure_client.py (the custom
+# ResponsesAPIChatModel hits Foundry's /v1/responses; not just a
+# langchain-openai transitive dep).
+openai==1.109.1
+
+# ---- Caching ----
+# cachetools.LRUCache used by core/retriever.py for the embedding cache
+# (replaced the hand-rolled O(n) cache during the god-class decomp).
+# Was previously satisfied transitively via langchain-openai; pin
+# explicitly so prod doesn't crash on import if that transitive ever drops.
+cachetools==5.3.2
 
 # ---- Azure (storage + identity for seed upload, future Blob-backed DataProvider) ----
 azure-storage-blob==12.28.0
