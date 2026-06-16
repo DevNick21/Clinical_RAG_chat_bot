@@ -29,6 +29,26 @@ if [[ ! -f .env ]]; then
   return 2 2>/dev/null || exit 2
 fi
 
+# Ensure terraform is on PATH. Git Bash on Windows often misses the
+# WinGet links dir, so probe common install locations before bailing.
+if ! command -v terraform >/dev/null 2>&1; then
+  for candidate in \
+    "$HOME/AppData/Local/Microsoft/WinGet/Links" \
+    "/c/Program Files/Terraform" \
+    "/c/HashiCorp/Terraform"; do
+    if [[ -x "$candidate/terraform.exe" || -x "$candidate/terraform" ]]; then
+      export PATH="$PATH:$candidate"
+      break
+    fi
+  done
+  if ! command -v terraform >/dev/null 2>&1; then
+    echo "ERROR: terraform not on PATH." >&2
+    echo "       Install: winget install HashiCorp.Terraform" >&2
+    echo "       Or add the install dir to PATH in ~/.bashrc." >&2
+    return 4 2>/dev/null || exit 4
+  fi
+fi
+
 # Mirror .env -> TF_VAR_*. Uses python-dotenv (same parser the rest
 # of the codebase uses) so .env behaves identically regardless of
 # who's reading it.
@@ -75,12 +95,17 @@ PY
 : "${TF_VAR_model_deployment_name:?MODEL_DEPLOYMENT_NAME missing in .env}"
 
 # Deployer object id — needed by the kv_secrets_officer_deployer role
-# assignment. Always resolved live via az so it tracks whoever's
-# actually running the script.
-TF_VAR_deployer_object_id=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true)
-if [[ -z "$TF_VAR_deployer_object_id" ]]; then
+# assignment. Resolved live via az unless the caller already set it
+# (CI / Conditional-Access-revoked-Graph-token workaround).
+if [[ -z "${TF_VAR_deployer_object_id:-}" ]]; then
+  TF_VAR_deployer_object_id=$(az ad signed-in-user show --query id -o tsv 2>/dev/null || true)
+fi
+if [[ -z "${TF_VAR_deployer_object_id:-}" ]]; then
   echo "ERROR: could not resolve deployer object id via az ad signed-in-user." >&2
-  echo "       (CI? Set TF_VAR_deployer_object_id explicitly + TF_VAR_deployer_principal_type=ServicePrincipal.)" >&2
+  echo "       Two ways out:" >&2
+  echo "         1. Refresh the Graph token:  az logout && az login" >&2
+  echo "         2. Set it explicitly:        export TF_VAR_deployer_object_id=<your-aad-object-id>" >&2
+  echo "       (CI service principal? Also export TF_VAR_deployer_principal_type=ServicePrincipal.)" >&2
   return 3 2>/dev/null || exit 3
 fi
 export TF_VAR_deployer_object_id

@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical RAG: V1 to V2</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/white.css">
+    <link rel="stylesheet" href="./styles.css?v=17">
+  </head>
+  <body>
+    <div class="deck-nav" aria-label="Presentation navigation">
+      <button id="nav-prev" type="button" aria-label="Previous slide">Back</button>
+      <span id="nav-status">1 / 15</span>
+      <button id="nav-next" type="button" aria-label="Next slide">Next</button>
+    </div>
+    <div class="reveal">
+      <div class="slides">
+        <section class="slide-dark hero" data-background-color="#061723">
+          <canvas id="rag-3d" class="scene-canvas" aria-label="Animated 3D RAG network"></canvas>
+          <div class="brand-lockup">
+            <svg class="rm-logo" viewBox="0 0 72 72" role="img" aria-label="Recreated RealityMine-style logo mark">
+              <rect x="0" y="0" width="72" height="72" rx="9"></rect>
+              <path class="rm-seg teal" d="M16 31 A22 22 0 0 1 24 15 L29 24 A12 12 0 0 0 25 31 Z"></path>
+              <path class="rm-seg cyan" d="M26 14 A22 22 0 0 1 38 11 L38 22 A12 12 0 0 0 31 24 Z"></path>
+              <path class="rm-seg blue" d="M41 12 A22 22 0 0 1 54 20 L46 27 A12 12 0 0 0 40 22 Z"></path>
+              <path class="rm-seg teal" d="M56 23 A22 22 0 0 1 60 36 L49 36 A12 12 0 0 0 47 29 Z"></path>
+              <path class="rm-smile" d="M20 40 A17 17 0 0 0 53 40"></path>
+              <circle class="rm-dot" cx="36" cy="39" r="8"></circle>
+            </svg>
+            <span>RealityMine presentation</span>
+          </div>
+          <div class="hero-content">
+            <p class="eyebrow">MSc AI project</p>
+            <h1>Clinical RAG</h1>
+            <p class="subtitle">From research prototype to live, audited clinical question-answering system</p>
+            <div class="tag-row">
+              <span>MIMIC-IV</span>
+              <span>Retrieval</span>
+              <span>Evaluation</span>
+              <span>Production V2</span>
+            </div>
+          </div>
+          <div class="scene-label q">Question</div>
+          <div class="scene-label e">Evidence</div>
+          <div class="scene-label a">Answer</div>
+          <aside class="notes">
+            Start simple. "This was my MSc dissertation project: a Retrieval-Augmented Generation chatbot over MIMIC-IV clinical records. I will explain it in two stages: V1, the research prototype, and V2, the production refactor. For a Junior Data Engineer role, the useful story is the data journey: how raw clinical records become structured, retrievable, traceable evidence."
+          </aside>
+        </section>
+
+        <section class="problem-slide">
+          <p class="eyebrow">The problem</p>
+          <h2>EHR systems are hard to query</h2>
+          <div class="ehr-problem-grid">
+            <div class="clinical-illustration" aria-label="Medical professionals reviewing evidence">
+              <svg class="medical-team" viewBox="0 0 360 180" role="img" aria-label="Animated clinicians">
+                <g class="clinician doctor">
+                  <circle class="skin" cx="95" cy="48" r="20"></circle>
+                  <path class="hair" d="M75 48 C78 25 112 25 115 48 C105 38 87 38 75 48"></path>
+                  <rect class="coat" x="63" y="70" width="64" height="82" rx="20"></rect>
+                  <path class="scrubs" d="M80 73 H110 L102 132 H88 Z"></path>
+                  <path class="steth" d="M79 77 C73 93 76 105 91 108 C106 105 109 93 103 77"></path>
+                  <circle class="scope" cx="91" cy="111" r="5"></circle>
+                  <path class="arm left" d="M65 92 C39 101 33 118 45 129"></path>
+                  <path class="arm right" d="M124 92 C151 78 164 86 172 103"></path>
+                </g>
+                <g class="clinician nurse">
+                  <circle class="skin" cx="235" cy="48" r="19"></circle>
+                  <path class="hair" d="M217 46 C218 26 252 25 254 47 C242 39 228 39 217 46"></path>
+                  <rect class="coat" x="204" y="70" width="63" height="82" rx="20"></rect>
+                  <path class="badge" d="M223 75 H249 V93 H223 Z"></path>
+                  <path class="cross" d="M236 78 V90 M230 84 H242"></path>
+                  <path class="arm left" d="M205 95 C183 92 174 106 176 124"></path>
+                  <path class="arm right" d="M265 95 C291 103 300 119 292 134"></path>
+                </g>
+                <g class="tablet">
+                  <rect x="136" y="108" width="92" height="48" rx="11"></rect>
+                  <path class="tablet-line" d="M150 124 H214"></path>
+                  <path class="tablet-line short" d="M150 138 H194"></path>
+                </g>
+                <path class="heart-line" d="M24 156 H68 L78 137 L94 167 L108 147 H145"></path>
+                <path class="heart-line right" d="M250 157 H292 L301 141 L314 168 L327 150 H350"></path>
+              </svg>
+              <strong>Lower the barrier to entry</strong>
+              <span>Users can ask clinical questions without knowing every EHR table, screen, or search path.</span>
+            </div>
+            <div class="ehr-card friction">
+              <span class="card-label">Traditional EHR path</span>
+              <h3>High effort</h3>
+              <p>Navigate modules, remember where data lives, search manually, then stitch together the evidence.</p>
+            </div>
+            <div class="ehr-card query">
+              <span class="card-label">Natural-language path</span>
+              <h3>"Show abnormal labs for admission 25282710"</h3>
+              <p>The system parses the intent, retrieves the relevant clinical context, and keeps the workflow conversational.</p>
+            </div>
+            <div class="ehr-card evidence">
+              <span class="card-label">RAG answer shape</span>
+              <h3>Evidence first, answer second</h3>
+              <p>Retrieved chunks come before generation, and claims are tied back to citations like <strong>(Admission, section)</strong>.</p>
+            </div>
+          </div>
+          <div class="focus-strip">
+            <span>Ease of use</span>
+            <span>Natural language</span>
+            <span>Metadata-aware retrieval</span>
+            <span>Citations</span>
+            <span>Safe failure</span>
+          </div>
+          <aside class="notes">
+            "The real product problem is not only that clinical records are long. It is that EHR systems have a high barrier to entry: users need to know where to look, what fields mean, and how to connect evidence across sections. This project reduces that barrier by letting the user ask in natural language. Retrieval happens first, then the generated answer is grounded with citations."
+          </aside>
+        </section>
+
+        <section class="product-slide">
+          <p class="eyebrow">Product view</p>
+          <h2>From clinical question to trusted insight</h2>
+          <div class="product-canvas">
+            <div class="persona-card">
+              <span class="persona-icon">User</span>
+              <h3>Researcher / analyst</h3>
+              <p>Needs to interrogate long clinical records without manually digging through every note.</p>
+            </div>
+            <div class="product-journey" aria-label="Product journey from question to audited answer">
+              <div class="journey-node question">Question</div>
+              <div class="journey-line"><span></span></div>
+              <div class="journey-node evidence">Evidence</div>
+              <div class="journey-line"><span></span></div>
+              <div class="journey-node answer">Answer</div>
+              <div class="journey-line"><span></span></div>
+              <div class="journey-node audit">Audit</div>
+            </div>
+            <div class="value-card">
+              <h3>Product value</h3>
+              <p>Move faster from raw clinical data to a grounded answer, while keeping enough traceability to challenge the result.</p>
+            </div>
+            <div class="requirements-card">
+              <h3>Product requirements</h3>
+              <div class="requirement-list">
+                <span>Natural-language entry</span>
+                <span>Evidence-first retrieval</span>
+                <span>Cited answer</span>
+                <span>Safe failure</span>
+                <span>Data-quality checks</span>
+              </div>
+            </div>
+          </div>
+          <aside class="notes">
+            "This is the product frame. The user is not asking for a clever AI demo; they are trying to lower the effort of using complex clinical records. The product value is natural-language access plus evidence. That leads directly to the data requirements: parse the question, preserve useful metadata, retrieve before generating, cite the answer, fail safely, and check data quality across the journey."
+          </aside>
+        </section>
+
+        <section class="arch-slide">
+          <p class="eyebrow">V1</p>
+          <h2>V1 architecture: metadata-aware retrieval</h2>
+          <div class="architecture-canvas" aria-label="Clinical RAG architecture">
+            <div class="data-lane">
+              <span class="lane-title">Restricted research data path</span>
+              <div class="arch-flow">
+                <div class="arch-step cyan">MIMIC-IV records</div>
+                <div class="arch-arrow"><span></span></div>
+                <div class="arch-step amber">Document formation<br><small>chunk + metadata</small></div>
+                <div class="arch-arrow"><span></span></div>
+                <div class="arch-step lime">FAISS vector index</div>
+              </div>
+              <div class="metadata-pills">
+                <span>hadm_id</span>
+                <span>section</span>
+              </div>
+            </div>
+            <div class="query-lane">
+              <span class="lane-title">Runtime query path</span>
+              <div class="arch-flow runtime">
+                <div class="arch-step blue">Natural-language question</div>
+                <div class="arch-arrow"><span></span></div>
+                <div class="arch-step magenta">Query parser<br><small>hadm_id + section</small></div>
+                <div class="arch-arrow"><span></span></div>
+                <div class="arch-step violet">Custom retriever<br><small>metadata filter + semantic rank</small></div>
+                <div class="arch-arrow"><span></span></div>
+                <div class="arch-step dark">Cited answer<br><small>(Admission, section)</small></div>
+              </div>
+            </div>
+            <div class="architecture-notes">
+              <span>Research path uses restricted MIMIC-IV-derived documents</span>
+              <span>Retriever first narrows by metadata, then ranks semantically</span>
+              <span>Citations preserve the evidence trail through hadm_id + section</span>
+            </div>
+          </div>
+          <aside class="notes">
+            "This is the architecture story. The real retrieval path builds documents with metadata, especially hadm_id and section. At runtime the query parser extracts those signals, the custom retriever filters by metadata, then re-ranks candidates semantically before the LLM answers with citations. The key point is that traceability starts during document formation, not at the final answer."
+          </aside>
+        </section>
+
+        <section class="lab-slide">
+          <p class="eyebrow">V1 evaluation</p>
+          <h2>The 54-combo model bake-off</h2>
+          <div class="metric-grid">
+            <div class="metric-tile"><span>9</span><small>embedding models</small></div>
+            <div class="metric-tile"><span>6</span><small>language models</small></div>
+            <div class="metric-tile hot"><span>54</span><small>model combinations</small></div>
+            <div class="metric-tile"><span>1,080</span><small>evaluations</small></div>
+          </div>
+          <div class="heatmap-layout">
+            <div>
+              <div id="model-heatmap" class="interactive-heatmap" aria-label="Interactive F1 score heatmap"></div>
+              <div id="heatmap-tip" class="heatmap-tip">Hover a cell</div>
+            </div>
+            <div class="score-panel">
+              <p class="panel-label">Selected model pair</p>
+              <h3 id="selected-combo">multi-qa + phi3</h3>
+              <div class="score-ring">
+                <span id="selected-score">0.758</span>
+                <small>F1</small>
+              </div>
+              <p id="selected-note">Best F1 in the V1 evaluation grid.</p>
+            </div>
+          </div>
+          <aside class="notes">
+            "The evaluation work was a major part of V1. I compared 9 embedding models with 6 LLMs, giving 54 combinations and 1,080 evaluations. The data-engineering lesson is that a pipeline can execute successfully but still produce weak downstream results if retrieval quality, metadata, or evidence traceability is poor."
+          </aside>
+        </section>
+
+        <section data-auto-animate class="shape-slide">
+          <p class="eyebrow">V1 outcome</p>
+          <h2>What worked, and what cracked</h2>
+          <div class="morph-stage">
+            <div class="mega-class" data-id="rag-core">
+              <span class="class-label">ClinicalRAGBot</span>
+              <div class="method-cloud">
+                <span>retrieval</span><span>prompting</span><span>chat</span><span>memory</span>
+                <span>LLM calls</span><span>validation</span><span>streaming</span><span>formatting</span>
+              </div>
+            </div>
+            <div class="stress-panel">
+              <div class="stress-card ok">RAG flow worked</div>
+              <div class="stress-card ok">54-combo evaluation</div>
+              <div class="stress-card warn">Median response around 62s</div>
+              <div class="stress-card warn">Weak production controls</div>
+            </div>
+          </div>
+          <aside class="notes">
+            "V1 succeeded as a dissertation system, but not as a production system. The key lesson was that a working prototype is not the same thing as reliable data infrastructure. The technical debt became visible: one large class, limited automated validation, weak operational controls, and slow response times. That shaped the V2 refactor."
+          </aside>
+        </section>
+
+        <section data-auto-animate class="shape-slide">
+          <p class="eyebrow">V2</p>
+          <h2>The monolith becomes maintainable data components</h2>
+          <div class="module-grid" data-id="rag-core">
+            <div class="module-card teal">Retriever</div>
+            <div class="module-card amber">Inference client</div>
+            <div class="module-card coral">Audit logger</div>
+            <div class="module-card violet">Claim checker</div>
+            <div class="module-card blue">API edge</div>
+            <div class="module-card lime">Data provider</div>
+          </div>
+          <div class="module-caption">
+            Clearer boundaries make data flow easier to operate, monitor, and explain.
+          </div>
+          <aside class="notes">
+            "This is the architectural improvement I want to highlight. When a class does everything, it is hard to reason about the data journey. Splitting responsibilities gives cleaner components: retrieval, inference, API edge, audit logging, and data providers. For a Junior Data Engineer role, that means I can talk about ownership, metadata, failure points, and observability."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed v2-slide" data-background-color="#061723">
+          <canvas id="ops-3d" class="scene-canvas" aria-label="Animated 3D production system"></canvas>
+          <p class="eyebrow">V2 production path</p>
+          <h2>Same RAG idea, stronger system</h2>
+          <div class="v2-overlay">
+            <div><strong>Security</strong><span>Bearer auth, CORS restrictions, rate limits</span></div>
+            <div><strong>Reliability</strong><span>health probes, gunicorn, container deployment</span></div>
+            <div><strong>Data</strong><span>Parquet + Blob-backed FAISS index</span></div>
+            <div><strong>Trust</strong><span>audit log and claim checker</span></div>
+            <div><strong>Ops</strong><span>Terraform, Azure Container Apps, App Insights</span></div>
+            <div><strong>UX</strong><span>true token streaming over SSE</span></div>
+          </div>
+          <aside class="notes">
+            "V2 kept the same core RAG idea but improved the engineering around it. Instead of a local-only research app, it became a deployed Azure service. I hardened the API with auth, CORS restrictions and rate limits, moved data to Blob and Parquet, containerised the system, added audit logging and claim checking, and wired telemetry into Application Insights."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed depth-slide" data-background-color="#061723">
+          <p class="eyebrow">Architecture depth</p>
+          <h2>V2 request journey: question to evidence trail</h2>
+          <div class="depth-map" aria-label="Connected V2 request lifecycle">
+            <div class="depth-node client">Client<br><small>React / curl</small></div>
+            <div class="depth-pipe"></div>
+            <div class="depth-node edge">API edge<br><small>auth, CORS, rate limit</small></div>
+            <div class="depth-pipe"></div>
+            <div class="depth-node core">Conversation layer<br><small>validate + enrich query</small></div>
+            <div class="depth-pipe split"></div>
+            <div class="depth-branch">
+              <div class="depth-node parse">Query parser<br><small>regex first, LLM fallback</small></div>
+              <div class="depth-node retrieve">Custom retriever<br><small>hadm/section filter + semantic re-rank</small></div>
+              <div class="depth-node infer">Inference<br><small>Foundry Responses API</small></div>
+              <div class="depth-node audit">Audit trail<br><small>citations + claim checks</small></div>
+            </div>
+          </div>
+          <div class="depth-contracts">
+            <div><strong>Parse query</strong><span>extract hadm_id + section before search</span></div>
+            <div><strong>Retrieve precisely</strong><span>filter by metadata, then semantic rank</span></div>
+            <div><strong>Trace answers</strong><span>return citations as hadm_id + section</span></div>
+          </div>
+          <aside class="notes">
+            "This is the engineering depth behind V2. The user asks naturally, but the system turns that into structured retrieval: validate the query, extract hadm_id and section, filter the indexed documents, semantically re-rank the candidates, then generate an answer with citations and audit metadata. This is the same product idea from the earlier slide, but shown as implementation."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed compare-slide" data-background-color="#061723">
+          <p class="eyebrow">V1 vs V2</p>
+          <h2>The upgrade path</h2>
+          <div class="compare-table">
+            <div class="row head"><span>Area</span><span>V1</span><span>V2</span></div>
+            <div class="row"><span>Purpose</span><span>Research prototype</span><span>Deployable service</span></div>
+            <div class="row"><span>Inference</span><span>Local Ollama models</span><span>Azure Foundry Responses API</span></div>
+            <div class="row"><span>Data</span><span>MIMIC-IV docs with hadm_id + section metadata</span><span>Parquet + Blob-backed FAISS</span></div>
+            <div class="row"><span>API</span><span>Open Flask app</span><span>Bearer auth, CORS, rate limits</span></div>
+            <div class="row"><span>Retrieval</span><span>Custom metadata filter + semantic search</span><span>Indexed retriever with audit-ready citations</span></div>
+            <div class="row"><span>Quality</span><span>Manual checks + benchmark scripts</span><span>Audit logs, claim checks, health checks</span></div>
+            <div class="row"><span>Ops</span><span>Run locally</span><span>Container Apps + Terraform + telemetry</span></div>
+          </div>
+          <aside class="notes">
+            "This slide is the clean V1 to V2 story. V1 answered 'can the RAG idea work with metadata-aware retrieval?' V2 answers 'can this data product be operated reliably?' For a Junior Data Engineer role, the key point is that every product requirement maps to a data contract: parsing, metadata quality, retrieval precision, citations, access control, health checks, streaming, and auditability."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed contract-slide" data-background-color="#061723">
+          <p class="eyebrow">Engineering depth</p>
+          <h2>Data quality gates behind the product requirements</h2>
+          <div class="contract-board">
+            <div class="contract-card">
+              <span>01</span>
+              <h3>Usability contract</h3>
+              <p>Clinical questions in ordinary language resolve to the right search intent.</p>
+            </div>
+            <div class="contract-card">
+              <span>02</span>
+              <h3>Access contract</h3>
+              <p>MIMIC-IV-derived data stays controlled, authenticated, and auditable across the request path.</p>
+            </div>
+            <div class="contract-card">
+              <span>03</span>
+              <h3>Retrieval contract</h3>
+              <p>Known hadm_id and section queries retrieve the expected evidence before generation.</p>
+            </div>
+            <div class="contract-card">
+              <span>04</span>
+              <h3>Citation contract</h3>
+              <p>Claims map back to source citations using admission and section metadata.</p>
+            </div>
+            <div class="contract-card">
+              <span>05</span>
+              <h3>Ops contract</h3>
+              <p>Auth, rate limits, health checks, audit IDs, and telemetry support diagnosis after failure.</p>
+            </div>
+          </div>
+          <aside class="notes">
+            "This is where I connect the product story to data engineering. I am not only showing an answer on screen. I am showing data contracts: can the system turn ordinary language into structured intent, does access fail closed, does the retriever return the right hadm_id and section evidence, do citations preserve lineage, and can operations diagnose failures?"
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed chat-slide" data-background-color="#061723">
+          <p class="eyebrow">User experience</p>
+          <h2>Streaming makes slow work visible</h2>
+          <div class="chat-stage">
+            <div class="chat-window">
+              <div class="status-row">
+                <span class="status-dot"></span>
+                Connected
+              </div>
+              <div class="bubble user">Show me lab results for admission 25282710</div>
+              <div class="bubble bot">
+                <span id="stream-text"></span><span class="cursor"></span>
+              </div>
+              <div class="audit-trail">
+                <span>audit_id</span>
+                <span>unsupported_claims: 0</span>
+                <span>reasoning summary captured</span>
+              </div>
+            </div>
+            <div class="event-rail">
+              <div class="event-card active">event: content</div>
+              <div class="event-card">event: content</div>
+              <div class="event-card">event: done</div>
+            </div>
+          </div>
+          <aside class="notes">
+            "The UI looks simple, but V2 makes the process more observable. Instead of waiting for one big response, the user sees tokens arrive through SSE. Behind the scenes the system records an audit ID, unsupported claims, retrieved context, and reasoning summaries. This makes answers easier to trace."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed testing-slide" data-background-color="#061723">
+          <p class="eyebrow">Data engineering mindset</p>
+          <h2>How I would support the data journey</h2>
+          <div class="test-lanes">
+            <div>
+              <span class="lane-number">01</span>
+              <h3>Source intent</h3>
+              <p>Plain-English clinical questions become structured intent without losing meaning.</p>
+            </div>
+            <div>
+              <span class="lane-number">02</span>
+              <h3>Query parsing</h3>
+              <p>Admission IDs and section intent are extracted as reusable fields.</p>
+            </div>
+            <div>
+              <span class="lane-number">03</span>
+              <h3>Retriever</h3>
+              <p>hadm_id + section filters narrow the corpus before semantic re-ranking.</p>
+            </div>
+            <div>
+              <span class="lane-number">04</span>
+              <h3>Lineage</h3>
+              <p>Every clinical claim links back to admission and section metadata.</p>
+            </div>
+            <div>
+              <span class="lane-number">05</span>
+              <h3>Access + ops</h3>
+              <p>Auth fails closed; health checks, audit logs, and telemetry hold under failure.</p>
+            </div>
+          </div>
+          <aside class="notes">
+            "For this interview, I would frame this as a data journey. First, does the product reduce EHR friction while preserving structured intent? Second, does the query parser extract hadm_id and section correctly? Third, does the custom retriever narrow and rank the right evidence? Fourth, do citations preserve lineage? Fifth, do access controls and operational checks hold?"
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed company-fit" data-background-color="#061723">
+          <p class="eyebrow">RealityMine fit</p>
+          <h2>Why this story fits the company</h2>
+          <div class="fit-grid">
+            <div>
+              <strong>Journey thinking</strong>
+              <p>RealityMine measures real user journeys across apps, web, devices, and touchpoints. My deck frames a RAG answer as a measurable request journey.</p>
+            </div>
+            <div>
+              <strong>Privacy-first data work</strong>
+              <p>Clinical records and behavioural data both demand careful handling, traceability, and auditable access boundaries.</p>
+            </div>
+            <div>
+              <strong>Testing beyond the UI</strong>
+              <p>The visible answer is only the final surface. The engineering quality lives in capture, processing, retrieval, inference, and auditability.</p>
+            </div>
+          </div>
+          <aside class="notes">
+            "This is the company-fit slide. RealityMine's public messaging is about privacy-first behavioural measurement and customer journeys across digital touchpoints. My project is a different domain, but the data-engineering habits transfer: capture the right data, process it reliably, preserve useful metadata, and make the journey auditable."
+          </aside>
+        </section>
+
+        <section class="slide-dark v2-themed close-slide" data-background-color="#061723">
+          <p class="eyebrow">Takeaway</p>
+          <h2>From "does it answer?" to "can I trust the whole system journey?"</h2>
+          <div class="closing-grid">
+            <div>
+              <h3>My contribution</h3>
+              <p>Engineered clinical-domain retrieval: HADM and section parsing, metadata-rich document formation, custom filters, semantic ranking, and V2 production hardening.</p>
+            </div>
+            <div>
+              <h3>What I learned</h3>
+              <p>Reliable systems need clear components, measurable behaviour, evidence, and checks around failure modes.</p>
+            </div>
+            <div>
+              <h3>Why it transfers</h3>
+              <p>It connects domain knowledge, data modelling, retrieval, product quality, testing, and operations in one traceable system.</p>
+            </div>
+          </div>
+          <aside class="notes">
+            "Close confidently. The main message is not just that I built a generic RAG pipeline. I shaped retrieval for the clinical domain by extracting HADM and section intent, preserving that metadata during document formation, and using it inside the custom retriever before semantic ranking. The broader takeaway is that the project connects domain understanding, data engineering, AI retrieval, software quality, testing, product thinking, and operations. The line to remember is: I moved from asking 'does it answer?' to 'can I trust the whole system journey?'"
+          </aside>
+        </section>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/notes/notes.js"></script>
+    <script>
+      Reveal.initialize({
+        hash: true,
+        controls: false,
+        progress: true,
+        slideNumber: false,
+        width: 1280,
+        height: 720,
+        margin: 0.045,
+        transition: "slide",
+        backgroundTransition: "fade",
+        autoAnimateDuration: 0.9,
+        plugins: [RevealNotes]
+      });
+      const navPrev = document.getElementById("nav-prev");
+      const navNext = document.getElementById("nav-next");
+      const navStatus = document.getElementById("nav-status");
+      const updateNav = () => {
+        const indices = Reveal.getIndices();
+        const total = Reveal.getTotalSlides();
+        navStatus.textContent = `${indices.h + 1} / ${total}`;
+        navPrev.disabled = indices.h === 0;
+        navNext.disabled = indices.h === total - 1;
+      };
+      navPrev.addEventListener("click", () => Reveal.prev());
+      navNext.addEventListener("click", () => Reveal.next());
+      Reveal.on("ready", updateNav);
+      Reveal.on("slidechanged", updateNav);
+    </script>
+    <script type="module" src="./deck.js?v=17"></script>
+  </body>
+</html>

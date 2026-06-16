@@ -142,3 +142,6 @@ htmlcov/
 
 # ----- Bicep build outputs (ARM JSON regenerated from infra/main.bicep) -----
 infra/.build/
+
+
+presentations\talking-points.md
