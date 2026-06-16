@@ -144,4 +144,5 @@ htmlcov/
 infra/.build/
 
 
-presentations\talking-points.md
+# ----- Local presentation rehearsal notes -----
+/presentations/clinical-rag-v1-v2/talking-points.md
